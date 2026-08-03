@@ -82,7 +82,7 @@ struct ManifestStore {
             }
 
             assets.removeAll { ($0["id"] as? String) == id }
-            assets = compactManagedAssets(assets)
+            assets = normalizeManagedAssets(assets)
 
             let managedCount = assets.filter {
                 (($0["categories"] as? [String]) ?? []).contains(Self.categoryID)
@@ -114,7 +114,7 @@ struct ManifestStore {
             guard assets.count != oldCount else {
                 throw AerialDropError.wallpaperNotFound
             }
-            assets = compactManagedAssets(assets)
+            assets = dropMissingManagedAssets(assets)
 
             let remainingIDs = assets.compactMap { asset -> String? in
                 guard
@@ -185,7 +185,7 @@ struct ManifestStore {
                 throw AerialDropError.malformedManifest("missing top-level categories array")
             }
 
-            assets = compactManagedAssets(assets)
+            assets = normalizeManagedAssets(assets)
 
             let managedIDs = assets.compactMap { asset -> String? in
                 guard
@@ -267,11 +267,10 @@ struct ManifestStore {
         "CUSTOM_\(id.replacingOccurrences(of: "-", with: "_"))"
     }
 
-    /// Drops AerialDrop-owned assets whose installed files are missing and normalizes the
-    /// metadata (titles and preferred order) of the remaining AerialDrop-owned assets while
-    /// leaving foreign entries untouched.
-    private func compactManagedAssets(_ assets: [[String: Any]]) -> [[String: Any]] {
-        let present = assets.filter { asset in
+    /// Drops AerialDrop-owned assets whose installed files are missing while leaving foreign
+    /// entries untouched.
+    private func dropMissingManagedAssets(_ assets: [[String: Any]]) -> [[String: Any]] {
+        assets.filter { asset in
             guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
                 return true
             }
@@ -279,6 +278,13 @@ struct ManifestStore {
             return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
                 && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
         }
+    }
+
+    /// Drops AerialDrop-owned assets whose installed files are missing and normalizes the
+    /// metadata (titles and preferred order) of the remaining AerialDrop-owned assets while
+    /// leaving foreign entries untouched.
+    private func normalizeManagedAssets(_ assets: [[String: Any]]) -> [[String: Any]] {
+        let present = dropMissingManagedAssets(assets)
 
         var managedOrder = 0
         return present.map { asset in
