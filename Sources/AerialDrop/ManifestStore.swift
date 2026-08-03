@@ -82,35 +82,12 @@ struct ManifestStore {
             }
 
             assets.removeAll { ($0["id"] as? String) == id }
-            // Drop stale entries owned by this app if their installed files no longer exist.
-            assets = assets.filter { asset in
-                guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
-                    return true
-                }
-                guard let assetID = asset["id"] as? String else { return false }
-                return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
-                    && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
-            }
+            assets = compactManagedAssets(assets)
 
             let managedCount = assets.filter {
                 (($0["categories"] as? [String]) ?? []).contains(Self.categoryID)
             }.count
             assets.append(makeAsset(id: id, title: title, preferredOrder: managedCount))
-
-            // Repair metadata from older AerialDrop prototypes while preserving titles and IDs.
-            var managedOrder = 0
-            assets = assets.map { asset in
-                guard
-                    let assetID = asset["id"] as? String,
-                    ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID)
-                else { return asset }
-
-                let assetTitle = (asset["accessibilityLabel"] as? String)
-                    ?? (asset["localizedNameKey"] as? String)
-                    ?? assetID
-                defer { managedOrder += 1 }
-                return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
-            }
 
             categories.removeAll { ($0["id"] as? String) == Self.categoryID }
             categories.append(makeCategory(representativeAssetID: id))
@@ -137,14 +114,7 @@ struct ManifestStore {
             guard assets.count != oldCount else {
                 throw AerialDropError.wallpaperNotFound
             }
-            assets = assets.filter { asset in
-                guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
-                    return true
-                }
-                guard let assetID = asset["id"] as? String else { return false }
-                return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
-                    && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
-            }
+            assets = compactManagedAssets(assets)
 
             let remainingIDs = assets.compactMap { asset -> String? in
                 guard
@@ -215,28 +185,7 @@ struct ManifestStore {
                 throw AerialDropError.malformedManifest("missing top-level categories array")
             }
 
-            assets = assets.filter { asset in
-                guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
-                    return true
-                }
-                guard let assetID = asset["id"] as? String else { return false }
-                return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
-                    && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
-            }
-
-            var managedOrder = 0
-            assets = assets.map { asset in
-                guard
-                    let assetID = asset["id"] as? String,
-                    ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID)
-                else { return asset }
-
-                let assetTitle = (asset["accessibilityLabel"] as? String)
-                    ?? (asset["localizedNameKey"] as? String)
-                    ?? assetID
-                defer { managedOrder += 1 }
-                return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
-            }
+            assets = compactManagedAssets(assets)
 
             let managedIDs = assets.compactMap { asset -> String? in
                 guard
@@ -316,6 +265,34 @@ struct ManifestStore {
 
     private func customShotID(for id: String) -> String {
         "CUSTOM_\(id.replacingOccurrences(of: "-", with: "_"))"
+    }
+
+    /// Drops AerialDrop-owned assets whose installed files are missing and normalizes the
+    /// metadata (titles and preferred order) of the remaining AerialDrop-owned assets while
+    /// leaving foreign entries untouched.
+    private func compactManagedAssets(_ assets: [[String: Any]]) -> [[String: Any]] {
+        let present = assets.filter { asset in
+            guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
+                return true
+            }
+            guard let assetID = asset["id"] as? String else { return false }
+            return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
+                && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
+        }
+
+        var managedOrder = 0
+        return present.map { asset in
+            guard
+                let assetID = asset["id"] as? String,
+                ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID)
+            else { return asset }
+
+            let assetTitle = (asset["accessibilityLabel"] as? String)
+                ?? (asset["localizedNameKey"] as? String)
+                ?? assetID
+            defer { managedOrder += 1 }
+            return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
+        }
     }
 
     private func mutateManifest(
