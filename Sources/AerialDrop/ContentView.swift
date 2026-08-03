@@ -61,7 +61,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Text("AerialDrop")
                         .font(.title2.bold())
-                    Text("v0.5.4")
+                    Text("v\(AppVersion.shortVersion)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)

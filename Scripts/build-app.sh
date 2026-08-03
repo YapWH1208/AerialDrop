@@ -15,11 +15,18 @@ printf 'Building %s from a clean cache…\n' "$APP_NAME"
 rm -rf .build
 swift build -c release
 
+VERSION=$(sed -n 's/.*static let shortVersion = "\([^"]*\)".*/\1/p' Sources/AerialDrop/AppVersion.swift)
+BUILD_NUMBER=$(sed -n 's/.*static let buildNumber = "\([^"]*\)".*/\1/p' Sources/AerialDrop/AppVersion.swift)
+if [[ -z "$VERSION" || -z "$BUILD_NUMBER" ]]; then
+    echo "Could not read the version or build number from Sources/AerialDrop/AppVersion.swift" >&2
+    exit 1
+fi
+
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILD_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 
-cat > "$CONTENTS/Info.plist" <<'PLIST'
+cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -37,9 +44,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.5.4</string>
+    <string>$VERSION</string>
     <key>CFBundleVersion</key>
-    <string>9</string>
+    <string>$BUILD_NUMBER</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>NSHighResolutionCapable</key>
