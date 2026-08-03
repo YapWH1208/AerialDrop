@@ -269,20 +269,7 @@ private struct WallpaperRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Group {
-                if let image = NSImage(contentsOf: wallpaper.thumbnailURL) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Image(systemName: "film")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 92, height: 55)
-            .background(.quaternary)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+            WallpaperThumbnail(url: wallpaper.thumbnailURL)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(wallpaper.title)
@@ -304,5 +291,33 @@ private struct WallpaperRow: View {
             .help("Remove this wallpaper")
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct WallpaperThumbnail: View {
+    let url: URL
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "film")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 92, height: 55)
+        .background(.quaternary)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .task(id: url) {
+            guard image == nil else { return }
+            image = await Task.detached(priority: .utility) {
+                NSImage(contentsOf: url)
+            }.value
+        }
     }
 }
