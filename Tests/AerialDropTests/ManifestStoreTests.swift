@@ -1,0 +1,179 @@
+import Foundation
+import XCTest
+@testable import AerialDrop
+
+final class ManifestStoreTests: XCTestCase {
+    private var home: URL!
+    private var paths: WallpaperPaths!
+    private var store: ManifestStore!
+
+    override func setUpWithError() throws {
+        home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AerialDropTests-\(UUID().uuidString)", isDirectory: true)
+        paths = WallpaperPaths(homeDirectory: home)
+        store = ManifestStore(paths: paths)
+        try store.prepareDirectories()
+        try fixtureData().write(to: paths.manifest, options: .atomic)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: home)
+    }
+
+    func testImportMatchesCompleteCustomEntryShapeAndPreservesForeignData() throws {
+        let original = try json(at: paths.manifest)
+        let originalForeignAsset = try XCTUnwrap((original["assets"] as? [[String: Any]])?.first)
+        let originalForeignCategory = try XCTUnwrap((original["categories"] as? [[String: Any]])?.first)
+
+        let id = "11111111-2222-4333-8444-555555ABCDEF"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Test Wallpaper")
+
+        let result = try json(at: paths.manifest)
+        let assets = try XCTUnwrap(result["assets"] as? [[String: Any]])
+        let categories = try XCTUnwrap(result["categories"] as? [[String: Any]])
+
+        XCTAssertEqual(canonical(assets[0]), canonical(originalForeignAsset))
+        XCTAssertEqual(canonical(categories[0]), canonical(originalForeignCategory))
+        XCTAssertEqual(result["initialAssetCount"] as? Int, 2)
+        XCTAssertEqual(result["version"] as? Int, 1)
+
+        let asset = try XCTUnwrap(assets.first(where: { ($0["id"] as? String) == id }))
+        XCTAssertEqual(asset["shotID"] as? String, "CUSTOM_11111111_2222_4333_8444_555555ABCDEF")
+        XCTAssertEqual((asset["pointsOfInterest"] as? [String: String])?["0"], "CUSTOM_11111111_2222_4333_8444_555555ABCDEF_0")
+        XCTAssertEqual(asset["categories"] as? [String], [ManifestStore.categoryID])
+        XCTAssertEqual(asset["subcategories"] as? [String], [ManifestStore.subcategoryID])
+        XCTAssertNotNil(asset["previewImage"] as? String)
+        XCTAssertNotNil(asset["url-4K-SDR-240FPS"] as? String)
+
+        let category = try XCTUnwrap(categories.first(where: { ($0["id"] as? String) == ManifestStore.categoryID }))
+        XCTAssertEqual(category["representativeAssetID"] as? String, id)
+        XCTAssertNotNil(category["previewImage"] as? String)
+        let subcategories = try XCTUnwrap(category["subcategories"] as? [[String: Any]])
+        let subcategory = try XCTUnwrap(subcategories.first)
+        XCTAssertEqual(subcategory["representativeAssetID"] as? String, id)
+        XCTAssertNotNil(subcategory["previewImage"] as? String)
+        XCTAssertEqual(subcategory["preferredOrder"] as? Int, 0)
+    }
+
+    func testRepairFixesVisibleAssetBoundaryAndPreservesForeignData() throws {
+        let id = "BBBBBBBB-CCCC-4DDD-8EEE-FFFFFF654321"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+
+        var broken = try json(at: paths.manifest)
+        var assets = try XCTUnwrap(broken["assets"] as? [[String: Any]])
+        var categories = try XCTUnwrap(broken["categories"] as? [[String: Any]])
+        let foreignAsset = try XCTUnwrap(assets.first)
+        let foreignCategory = try XCTUnwrap(categories.first)
+
+        assets.append([
+            "id": id,
+            "shotID": "CUSTOM_654321",
+            "localizedNameKey": "Hidden 0.2 Wallpaper",
+            "accessibilityLabel": "Hidden 0.2 Wallpaper",
+            "includeInShuffle": true,
+            "showInTopLevel": true,
+            "preferredOrder": 0,
+            "categories": [ManifestStore.categoryID],
+            "subcategories": [ManifestStore.subcategoryID],
+            "pointsOfInterest": ["0": "CUSTOM_654321_0"],
+            "previewImage": paths.thumbnailURL(for: id).absoluteString,
+            "url-4K-SDR-240FPS": paths.videoURL(for: id).absoluteString
+        ])
+        categories.append([
+            "id": ManifestStore.categoryID,
+            "localizedNameKey": ManifestStore.categoryName,
+            "localizedDescriptionKey": ManifestStore.categoryName,
+            "preferredOrder": 0,
+            "previewImage": paths.thumbnailURL(for: id).absoluteString,
+            "representativeAssetID": id,
+            "subcategories": [[
+                "id": ManifestStore.subcategoryID,
+                "localizedNameKey": ManifestStore.categoryName,
+                "localizedDescriptionKey": ManifestStore.categoryName,
+                "preferredOrder": 0,
+                "previewImage": paths.thumbnailURL(for: id).absoluteString,
+                "representativeAssetID": id
+            ]]
+        ])
+        broken["assets"] = assets
+        broken["categories"] = categories
+        broken["initialAssetCount"] = 1 // 0.2 bug: appended asset is outside the visible boundary.
+        try JSONSerialization.data(withJSONObject: broken, options: [.prettyPrinted])
+            .write(to: paths.manifest, options: .atomic)
+
+        XCTAssertThrowsError(try store.validateCurrentManifest())
+        try store.repairCatalogueRegistration()
+
+        let repaired = try json(at: paths.manifest)
+        let repairedAssets = try XCTUnwrap(repaired["assets"] as? [[String: Any]])
+        let repairedCategories = try XCTUnwrap(repaired["categories"] as? [[String: Any]])
+        XCTAssertEqual(repaired["initialAssetCount"] as? Int, repairedAssets.count)
+        XCTAssertEqual(canonical(repairedAssets[0]), canonical(foreignAsset))
+        XCTAssertEqual(canonical(repairedCategories[0]), canonical(foreignCategory))
+        XCTAssertNoThrow(try store.validateCurrentManifest())
+    }
+
+    func testRemoveAllReturnsToOriginalSemanticCatalogue() throws {
+        let original = try json(at: paths.manifest)
+        let id = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEE123456"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+
+        try store.addWallpaper(id: id, title: "Temporary")
+        try store.removeAllManaged()
+
+        let restored = try json(at: paths.manifest)
+        XCTAssertEqual(canonical(restored), canonical(original))
+    }
+
+    private func fixtureData() throws -> Data {
+        let fixture: [String: Any] = [
+            "version": 1,
+            "localizationVersion": "fixture",
+            "initialAssetCount": 1,
+            "assets": [[
+                "id": "EC42DAD0-E8D4-4408-9CA3-3B4767783453",
+                "shotID": "CUSTOM_783453",
+                "localizedNameKey": "Foreign Wallpaper",
+                "accessibilityLabel": "Foreign Wallpaper",
+                "includeInShuffle": true,
+                "showInTopLevel": true,
+                "preferredOrder": 0,
+                "categories": ["BD000000-0000-4000-8000-000000000001"],
+                "subcategories": ["BD000000-0000-4000-8000-000000000002"],
+                "pointsOfInterest": ["0": "CUSTOM_783453_0"],
+                "previewImage": "file:///foreign.png",
+                "url-4K-SDR-240FPS": "file:///foreign.mov"
+            ]],
+            "categories": [[
+                "id": "BD000000-0000-4000-8000-000000000001",
+                "localizedNameKey": "Foreign",
+                "localizedDescriptionKey": "Foreign",
+                "preferredOrder": 0,
+                "previewImage": "file:///foreign.png",
+                "representativeAssetID": "EC42DAD0-E8D4-4408-9CA3-3B4767783453",
+                "subcategories": [[
+                    "id": "BD000000-0000-4000-8000-000000000002",
+                    "localizedNameKey": "Foreign",
+                    "localizedDescriptionKey": "Foreign",
+                    "preferredOrder": 0,
+                    "previewImage": "file:///foreign.png",
+                    "representativeAssetID": "EC42DAD0-E8D4-4408-9CA3-3B4767783453"
+                ]]
+            ]]
+        ]
+        return try JSONSerialization.data(withJSONObject: fixture, options: [.prettyPrinted])
+    }
+
+    private func json(at url: URL) throws -> [String: Any] {
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
+        return try XCTUnwrap(object as? [String: Any])
+    }
+
+    private func canonical(_ object: Any) -> Data {
+        try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+}
