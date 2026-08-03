@@ -61,7 +61,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Text("AerialDrop")
                         .font(.title2.bold())
-                    Text("v0.5.4")
+                    Text("v0.5.5")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
@@ -111,7 +111,8 @@ struct ContentView: View {
 
             GroupBox("What happens") {
                 VStack(alignment: .leading, spacing: 7) {
-                    Label("Builds an 80-second, 30 fps HEVC Main10 full-range stream", systemImage: "film")
+                    Label("Encodes one closed-GOP HEVC Main10 source loop", systemImage: "film")
+                    Label("Repeats the encoded loop to 80 seconds without re-encoding", systemImage: "repeat")
                     Label("Normalizes timestamp zero and creates a Tahoe-compatible HEIF preview", systemImage: "photo")
                     Label("Backs up entries.json and preserves other apps’ entries", systemImage: "doc.badge.gearshape")
                     Label("Adds a complete Tahoe Aerial catalogue entry", systemImage: "rectangle.stack")
@@ -260,7 +261,6 @@ struct ContentView: View {
         }
         .padding(20)
     }
-
 }
 
 private struct WallpaperRow: View {
