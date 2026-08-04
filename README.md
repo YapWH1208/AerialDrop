@@ -9,7 +9,7 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 - **Native catalogue integration** — imports videos as full Tahoe Aerial catalogue entries with HEIF previews, visible under the AerialDrop section in System Settings → Wallpaper.
 - **Native-compatible encoding** — re-encodes sources to HEVC Main10, 30 fps, Rec.709 MOV with HEVC temporal scalability (two sub-layers, base layer at 15 fps) matching the `tscl`/`tsas` sample groups of Apple's own aerials. Lock/unlock slowdown and the fade back to the desktop run natively.
 - **Loop-safe passthrough repeats** — sources shorter than 80 seconds are repeated by passthrough export, with the loop duration snapped to whole 30 fps frames so every loop boundary lands on a sync sample.
-- **Automatic backups** — every write to Tahoe's private stores is backed up first, so the last known-good catalogue state always survives at `aerials/AerialDropBackups` and `Store/AerialDropBackups`.
+- **Automatic backups** — every write to the Aerial catalogue manifest is backed up first, so the last known-good catalogue state always survives at `aerials/AerialDropBackups`.
 - **Maintenance tools** — validate the catalogue, open the storage folder, or remove all imported wallpapers.
 
 ## Requirements
@@ -62,9 +62,9 @@ The pipeline is: validate input → build an 80-second video-only composition �
 
 ## Compatibility
 
-AerialDrop writes directly to Tahoe's private Aerial catalogue and wallpaper selection store, and restarts `WallpaperAgent` and `WallpaperAerialsExtension`. These data formats and processes are not a public API; a future macOS update may change the manifest or store schema and require an AerialDrop update.
+AerialDrop writes directly to Tahoe's private Aerial catalogue and restarts `WallpaperAgent` and `WallpaperAerialsExtension`. These data formats and processes are not a public API; a future macOS update may change the manifest schema and require an AerialDrop update.
 
-Every write is backed up automatically first: manifest backups under `aerials/AerialDropBackups` and selection-store backups under `Store/AerialDropBackups`.
+Every manifest write is backed up automatically first: backups live under `aerials/AerialDropBackups`.
 
 ## Documentation
 
