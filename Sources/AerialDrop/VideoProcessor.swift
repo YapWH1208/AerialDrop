@@ -7,29 +7,142 @@ import ImageIO
 import UniformTypeIdentifiers
 import VideoToolbox
 
-private struct WriterPump: @unchecked Sendable {
-    let reader: AVAssetReader
-    let output: AVAssetReaderVideoCompositionOutput
-    let writer: AVAssetWriter
-    let input: AVAssetWriterInput
-}
+/// Serializes the writer pump: pumps samples from the reader into the writer,
+/// reports encode progress, and resumes the continuation at most once — either
+/// from the writer queue on completion, or from the task-cancellation handler.
+private final class WriterPump: @unchecked Sendable {
+    private let reader: AVAssetReader
+    private let output: AVAssetReaderVideoCompositionOutput
+    private let writer: AVAssetWriter
+    private let input: AVAssetWriterInput
 
-/// Serializes the single-shot completion of the writer pump: resumes the
-/// continuation at most once, and only from the writer queue.
-private final class WriterPumpCompletion: @unchecked Sendable {
     private let queue: DispatchQueue
-    private var finished = false
+    private let lock = NSLock()
+    private var done = false
+    private var cancelRequested = false
+    private var continuation: CheckedContinuation<Void, Error>?
 
-    init(queue: DispatchQueue) {
+    init(
+        reader: AVAssetReader,
+        output: AVAssetReaderVideoCompositionOutput,
+        writer: AVAssetWriter,
+        input: AVAssetWriterInput,
+        queue: DispatchQueue
+    ) {
+        self.reader = reader
+        self.output = output
+        self.writer = writer
+        self.input = input
         self.queue = queue
     }
 
-    func finish(with result: Result<Void, Error>, resuming continuation: CheckedContinuation<Void, Error>) {
-        queue.async {
-            guard !self.finished else { return }
-            self.finished = true
-            continuation.resume(with: result)
+    func run(
+        duration: CMTime,
+        totalFrames: Double,
+        progress: @escaping @Sendable (Double) -> Void,
+        resuming continuation: CheckedContinuation<Void, Error>
+    ) {
+        lock.lock()
+        self.continuation = continuation
+        let wasCancelledEarly = cancelRequested
+        lock.unlock()
+
+        if wasCancelledEarly {
+            cancelWriting()
+            continuation.resume(throwing: CancellationError())
+            return
         }
+
+        input.requestMediaDataWhenReady(on: queue) { [weak self] in
+            guard let self else { return }
+            var writtenFrames = 0.0
+            var lastReported = -1.0
+            while self.input.isReadyForMoreMediaData {
+                if self.isCancelled() {
+                    self.finish(.failure(CancellationError()))
+                    return
+                }
+                if let sample = self.output.copyNextSampleBuffer() {
+                    guard self.input.append(sample) else {
+                        self.reader.cancelReading()
+                        self.writer.cancelWriting()
+                        self.finish(.failure(AerialDropError.exportFailed(
+                            self.writer.error?.localizedDescription
+                                ?? "The HEVC Main10 writer rejected a video sample."
+                        )))
+                        return
+                    }
+                    writtenFrames += 1
+                    let fraction = min(0.95, writtenFrames / max(totalFrames, 1))
+                    if fraction - lastReported >= 0.01 {
+                        lastReported = fraction
+                        progress(fraction)
+                    }
+                    continue
+                }
+
+                if self.reader.status == .failed {
+                    self.writer.cancelWriting()
+                    self.finish(.failure(AerialDropError.exportFailed(
+                        self.reader.error?.localizedDescription ?? "The 10-bit video reader failed."
+                    )))
+                    return
+                }
+
+                self.input.markAsFinished()
+                self.writer.endSession(atSourceTime: duration)
+                self.writer.finishWriting { [weak self] in
+                    guard let self else { return }
+                    switch self.writer.status {
+                    case .completed:
+                        self.finish(.success(()))
+                    case .failed, .cancelled:
+                        self.finish(.failure(AerialDropError.exportFailed(
+                            self.writer.error?.localizedDescription
+                                ?? "The HEVC Main10 writer did not finish."
+                        )))
+                    default:
+                        self.finish(.failure(AerialDropError.exportFailed(
+                            "Unexpected writer status: \(self.writer.status.rawValue)"
+                        )))
+                    }
+                }
+                return
+            }
+        }
+    }
+
+    /// Called from the task-cancellation handler; safe on any thread.
+    func cancel() {
+        lock.lock()
+        cancelRequested = true
+        let cont = continuation
+        continuation = nil
+        done = true
+        lock.unlock()
+        guard let cont else { return }
+        cancelWriting()
+        cont.resume(throwing: CancellationError())
+    }
+
+    private func isCancelled() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelRequested || done
+    }
+
+    private func finish(_ result: Result<Void, Error>) {
+        lock.lock()
+        let cont = continuation
+        continuation = nil
+        done = true
+        lock.unlock()
+        cont?.resume(with: result)
+    }
+
+    private func cancelWriting() {
+        reader.cancelReading()
+        writer.cancelWriting()
     }
 }
 
@@ -69,7 +182,14 @@ struct VideoProcessor: Sendable {
     /// Encodes one normalized source loop, then repeats that already-encoded segment
     /// without re-encoding. The working Wallper asset uses this sample-table shape:
     /// regular 1.9-second closed GOPs plus a fresh sync sample at every loop boundary.
-    func makeNativeMOV(from source: URL, destination: URL) async throws {
+    /// Reports 0…1 encode progress through `progress` and aborts when the calling
+    /// task is cancelled, throwing `CancellationError`.
+    func makeNativeMOV(
+        from source: URL,
+        destination: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws {
+        try Task.checkCancellation()
         try? FileManager.default.removeItem(at: destination)
 
         let sourceAsset = AVURLAsset(url: source)
@@ -149,8 +269,10 @@ struct VideoProcessor: Sendable {
             videoComposition: videoComposition,
             renderSize: renderSize,
             duration: segmentDuration,
-            destination: segmentURL
+            destination: segmentURL,
+            progress: progress
         )
+        try Task.checkCancellation()
 
         if CMTimeCompare(segmentDuration, nativeTargetDuration) >= 0 {
             try FileManager.default.moveItem(at: segmentURL, to: destination)
@@ -160,9 +282,11 @@ struct VideoProcessor: Sendable {
                 segmentDuration: segmentDuration,
                 destination: destination
             )
+            try Task.checkCancellation()
         }
 
         try await validateInstalledVideo(destination, loopDuration: segmentDuration)
+        try Task.checkCancellation()
     }
 
     private func makeVideoComposition(
@@ -211,8 +335,10 @@ struct VideoProcessor: Sendable {
         videoComposition: AVVideoComposition,
         renderSize: CGSize,
         duration: CMTime,
-        destination: URL
+        destination: URL,
+        progress: @escaping @Sendable (Double) -> Void
     ) async throws {
+        try Task.checkCancellation()
         let reader = try AVAssetReader(asset: composition)
         reader.timeRange = CMTimeRange(start: .zero, duration: duration)
 
@@ -282,54 +408,19 @@ struct VideoProcessor: Sendable {
         }
         writer.startSession(atSourceTime: .zero)
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let queue = DispatchQueue(label: "com.yapwh.aerialdrop.main10-writer")
-            let pump = WriterPump(reader: reader, output: output, writer: writer, input: input)
-            let completion = WriterPumpCompletion(queue: queue)
-
-            pump.input.requestMediaDataWhenReady(on: queue) {
-                while pump.input.isReadyForMoreMediaData {
-                    if let sample = pump.output.copyNextSampleBuffer() {
-                        guard pump.input.append(sample) else {
-                            pump.reader.cancelReading()
-                            pump.writer.cancelWriting()
-                            completion.finish(with: .failure(AerialDropError.exportFailed(
-                                pump.writer.error?.localizedDescription
-                                    ?? "The HEVC Main10 writer rejected a video sample."
-                            )), resuming: continuation)
-                            return
-                        }
-                        continue
-                    }
-
-                    if pump.reader.status == .failed {
-                        pump.writer.cancelWriting()
-                        completion.finish(with: .failure(AerialDropError.exportFailed(
-                            pump.reader.error?.localizedDescription ?? "The 10-bit video reader failed."
-                        )), resuming: continuation)
-                        return
-                    }
-
-                    pump.input.markAsFinished()
-                    pump.writer.endSession(atSourceTime: duration)
-                    pump.writer.finishWriting {
-                        switch pump.writer.status {
-                        case .completed:
-                            completion.finish(with: .success(()), resuming: continuation)
-                        case .failed, .cancelled:
-                            completion.finish(with: .failure(AerialDropError.exportFailed(
-                                pump.writer.error?.localizedDescription
-                                    ?? "The HEVC Main10 writer did not finish."
-                            )), resuming: continuation)
-                        default:
-                            completion.finish(with: .failure(AerialDropError.exportFailed(
-                                "Unexpected writer status: \(pump.writer.status.rawValue)"
-                            )), resuming: continuation)
-                        }
-                    }
-                    return
-                }
+        let queue = DispatchQueue(label: "com.yapwh.aerialdrop.main10-writer")
+        let pump = WriterPump(reader: reader, output: output, writer: writer, input: input, queue: queue)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                pump.run(
+                    duration: duration,
+                    totalFrames: Double(duration.seconds) * Double(nativeFrameRate),
+                    progress: progress,
+                    resuming: continuation
+                )
             }
+        } onCancel: {
+            pump.cancel()
         }
     }
 
@@ -393,6 +484,7 @@ struct VideoProcessor: Sendable {
         exporter.shouldOptimizeForNetworkUse = true
         exporter.timeRange = CMTimeRange(start: .zero, duration: nativeTargetDuration)
 
+        try Task.checkCancellation()
         do {
             try await exporter.export(to: destination, as: .mov)
         } catch {
@@ -401,6 +493,7 @@ struct VideoProcessor: Sendable {
                     + " The encoded segment could not be repeated into the final MOV."
             )
         }
+        try Task.checkCancellation()
     }
 
     private func firstRenderableSampleTime(asset: AVAsset, track: AVAssetTrack) throws -> CMTime {
@@ -560,6 +653,7 @@ struct VideoProcessor: Sendable {
     /// Wallper's working custom preview is a HEIF image even though the catalogue path uses
     /// a `.png` suffix. Tahoe detects the image by its contents, so AerialDrop mirrors that.
     func generateThumbnail(from video: URL, destination: URL) async throws {
+        try Task.checkCancellation()
         let asset = AVURLAsset(url: video)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
@@ -573,6 +667,7 @@ struct VideoProcessor: Sendable {
         } catch {
             throw AerialDropError.thumbnailFailed
         }
+        try Task.checkCancellation()
 
         let data = NSMutableData()
         guard let destinationWriter = CGImageDestinationCreateWithData(

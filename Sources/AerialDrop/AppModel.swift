@@ -13,6 +13,12 @@ final class AppModel {
     var isWorking = false
     var alertMessage: String?
     var showingFileImporter = false
+    var importProgress: Double = 0
+    var importSucceeded = false
+
+    private var selectionVersion = 0
+    private var importTask: Task<Void, Never>?
+    private var importGeneration = 0
 
     private let paths = WallpaperPaths()
     private let manifestStore: ManifestStore
@@ -28,12 +34,37 @@ final class AppModel {
         selectedVideo != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isWorking
     }
 
+    /// Maps the real encode fraction into the progress band occupied by the
+    /// video-processing stage; other stages use their fixed milestones.
+    var displayProgress: Double {
+        if stage == .processingVideo && importProgress > 0 {
+            return 0.15 + importProgress * 0.6
+        }
+        return stage.progress
+    }
+
     func chooseVideo(_ url: URL) {
+        selectionVersion += 1
+        let version = selectionVersion
         let previousTitle = selectedVideo.map { $0.deletingPathExtension().lastPathComponent }
         if title.isEmpty || title == previousTitle {
             title = url.deletingPathExtension().lastPathComponent
         }
         selectedVideo = url
+        Task {
+            do {
+                try await videoProcessor.validate(source: url)
+            } catch {
+                guard version == selectionVersion else { return }
+                alertMessage = error.localizedDescription
+                selectedVideo = nil
+                title = ""
+            }
+        }
+    }
+
+    func cancelImport() {
+        importTask?.cancel()
     }
 
     func importSelectedVideo() {
@@ -44,8 +75,13 @@ final class AppModel {
             return
         }
 
-        Task {
+        importTask?.cancel()
+        importGeneration += 1
+        let generation = importGeneration
+        importTask = Task {
             isWorking = true
+            importProgress = 0
+            importSucceeded = false
             defer { isWorking = false }
 
             let access = source.startAccessingSecurityScopedResource()
@@ -65,7 +101,11 @@ final class AppModel {
                 try manifestStore.prepareDirectories()
 
                 stage = .processingVideo
-                try await videoProcessor.makeNativeMOV(from: source, destination: videoDestination)
+                try await videoProcessor.makeNativeMOV(from: source, destination: videoDestination) { fraction in
+                    Task { @MainActor in
+                        self.importProgress = fraction
+                    }
+                }
 
                 stage = .generatingThumbnail
                 try await videoProcessor.generateThumbnail(from: videoDestination, destination: thumbnailDestination)
@@ -81,11 +121,27 @@ final class AppModel {
                 selectedVideo = nil
                 title = ""
                 await reload()
-                alertMessage = "Import completed. Select the new AerialDrop item in System Settings → Wallpaper and apply it as you would any Aerial; macOS links Desktop, Lock Screen and Screen Saver natively. You may quit AerialDrop."
+                importSucceeded = true
             } catch {
                 try? FileManager.default.removeItem(at: videoDestination)
                 try? FileManager.default.removeItem(at: thumbnailDestination)
+                guard generation == importGeneration else { return }
                 stage = .idle
+                importProgress = 0
+                guard !Task.isCancelled else { return }
+                alertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func rename(_ wallpaper: ManagedWallpaper, to newTitle: String) {
+        let cleanTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty, cleanTitle != wallpaper.title else { return }
+        Task {
+            do {
+                try manifestStore.renameWallpaper(id: wallpaper.id, title: cleanTitle)
+                await reload()
+            } catch {
                 alertMessage = error.localizedDescription
             }
         }
@@ -142,6 +198,10 @@ final class AppModel {
 
     func openStorageFolder() {
         systemService.openFolder(paths.base)
+    }
+
+    func revealInFinder(_ wallpaper: ManagedWallpaper) {
+        systemService.revealInFinder(wallpaper.videoURL)
     }
 
     private func requireTahoe() throws {

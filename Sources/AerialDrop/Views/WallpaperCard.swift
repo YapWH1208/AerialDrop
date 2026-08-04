@@ -5,8 +5,12 @@ struct WallpaperCard: View {
     let wallpaper: ManagedWallpaper
     let isSelected: Bool
     let namespace: Namespace.ID
-    let remove: () -> Void
     let onSelect: () -> Void
+    let onDoubleClick: () -> Void
+    let onPreview: () -> Void
+    let onRename: () -> Void
+    let onReveal: () -> Void
+    let onRemove: () -> Void
 
     @State private var image: NSImage?
     @State private var hovering = false
@@ -23,15 +27,7 @@ struct WallpaperCard: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer()
-                        if wallpaper.videoExists {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.tint)
-                                .help("Video installed")
-                        } else {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                                .help("Video missing")
-                        }
+                        statusIcon
                     }
                 }
                 .contentShape(.rect)
@@ -52,17 +48,62 @@ struct WallpaperCard: View {
         .overlay(alignment: .topTrailing) {
             topTrailingBadge
         }
+        .overlay(alignment: .bottom) {
+            if isSelected {
+                previewChip
+                    .padding(.bottom, 6)
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+            }
+        }
         .scaleEffect(hovering ? 1.02 : 1)
         .onHover { hovering = $0 }
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded(onDoubleClick)
+        )
+        .contextMenu {
+            Button("Preview") { onPreview() }
+            Button("Rename…") { onRename() }
+            Button("Reveal in Finder") { onReveal() }
+            Divider()
+            Button("Remove Wallpaper…", role: .destructive) { onRemove() }
+        }
         .animation(.spring(duration: 0.3, bounce: 0.2), value: hovering)
         .animation(.spring(duration: 0.35, bounce: 0.25), value: isSelected)
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        if wallpaper.videoExists {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.tint)
+                .accessibilityLabel("Video installed")
+                .help("Video installed")
+        } else {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityLabel("Video missing")
+                .help("Video missing")
+        }
+    }
+
+    private var previewChip: some View {
+        Button(action: onPreview) {
+            Label("Preview", systemImage: "play.fill")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(.regularMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Preview the wallpaper motion")
     }
 
     private var topTrailingBadge: some View {
         Group {
             if hovering {
-                Button(role: .destructive, action: remove) {
-                    Image(systemName: "trash.fill")
+                Button(role: .destructive, action: onRemove) {
+                    Label("Remove", systemImage: "trash.fill")
+                        .labelStyle(.iconOnly)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.red)
                         .padding(7)
@@ -80,6 +121,7 @@ struct WallpaperCard: View {
                     .padding(7)
                     .glassEffect(.regular.tint(.accentColor.opacity(0.4)), in: Circle())
                     .glassEffectUnion(id: wallpaper.id, namespace: namespace)
+                    .accessibilityLabel("Selected")
                     .help("Selected")
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             }

@@ -14,16 +14,5 @@ struct AerialDropApp: App {
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .windowBackgroundDragBehavior(.enabled)
-        .commands {
-            CommandMenu("Maintenance") {
-                Button("Validate Current Catalogue") {
-                    model.validateCatalogue()
-                }
-
-                Button("Open Aerial Storage Folder") {
-                    model.openStorageFolder()
-                }
-            }
-        }
     }
 }
