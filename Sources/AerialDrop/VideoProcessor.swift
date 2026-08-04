@@ -12,6 +12,8 @@ struct VideoProcessor {
     private let nativeTargetDuration = CMTime(seconds: 80, preferredTimescale: 600)
     private let nativeFrameRate: Int32 = 30
     private let targetBitRate = 20_000_000
+    private let nativeKeyFrameIntervalFrames = 57
+    private let nativeKeyFrameIntervalDuration = 1.9
 
     func validate(source: URL) async throws {
         let ext = source.pathExtension.lowercased()
@@ -39,9 +41,9 @@ struct VideoProcessor {
         }
     }
 
-    /// Builds the same media class observed in the working Wallper asset on Tahoe:
-    /// 4K/30 fps HEVC Main10, 10-bit full-range Rec.709, beginning at timestamp zero.
-    /// Short sources are repeated and long sources are trimmed to 80 seconds.
+    /// Encodes one normalized source loop, then repeats that already-encoded segment
+    /// without re-encoding. The working Wallper asset uses this sample-table shape:
+    /// regular 1.9-second closed GOPs plus a fresh sync sample at every loop boundary.
     func makeNativeMOV(from source: URL, destination: URL) async throws {
         try? fileManager.removeItem(at: destination)
 
@@ -54,34 +56,51 @@ struct VideoProcessor {
         let trackTimeRange = try await sourceTrack.load(.timeRange)
         let firstFrameTime = try firstRenderableSampleTime(asset: sourceAsset, track: sourceTrack)
         let loopStart = CMTimeMaximum(trackTimeRange.start, firstFrameTime)
-        let loopDuration = CMTimeSubtract(trackTimeRange.end, loopStart)
-        guard loopDuration.isNumeric, loopDuration.seconds > 0.20 else {
+        let availableDuration = CMTimeSubtract(trackTimeRange.end, loopStart)
+        guard availableDuration.isNumeric, availableDuration.seconds > 0.20 else {
             throw AerialDropError.videoTooShort
         }
 
-        let composition = AVMutableComposition()
-        guard let compositionTrack = composition.addMutableTrack(
+        // Snap to a whole number of 30 fps frames so the passthrough repeat keeps
+        // every insertion on the sample grid; fractional lengths drift one frame
+        // per repeat and the sync sample that should sit at each loop boundary
+        // lands outside the validator's tolerance.
+        let snapFrames = floor(
+            CMTimeMinimum(availableDuration, nativeTargetDuration).seconds
+                * Double(nativeFrameRate)
+        )
+        guard snapFrames >= 1 else {
+            throw AerialDropError.videoTooShort
+        }
+        let segmentDuration = CMTime(
+            seconds: snapFrames / Double(nativeFrameRate),
+            preferredTimescale: 600
+        )
+        let segmentURL = destination.deletingLastPathComponent().appendingPathComponent(
+            ".AerialDrop-\(UUID().uuidString)-segment.mov"
+        )
+        defer { try? fileManager.removeItem(at: segmentURL) }
+
+        let segmentComposition = AVMutableComposition()
+        guard let segmentTrack = segmentComposition.addMutableTrack(
             withMediaType: .video,
             preferredTrackID: kCMPersistentTrackID_Invalid
         ) else {
             throw AerialDropError.exportSessionUnavailable
         }
 
-        var cursor = CMTime.zero
-        while CMTimeCompare(cursor, nativeTargetDuration) < 0 {
-            let remaining = CMTimeSubtract(nativeTargetDuration, cursor)
-            let segmentDuration = CMTimeMinimum(loopDuration, remaining)
-            let sourceRange = CMTimeRange(start: loopStart, duration: segmentDuration)
-            do {
-                try compositionTrack.insertTimeRange(sourceRange, of: sourceTrack, at: cursor)
-            } catch {
-                throw AerialDropError.exportFailed(error.localizedDescription)
-            }
-            cursor = CMTimeAdd(cursor, segmentDuration)
+        do {
+            try segmentTrack.insertTimeRange(
+                CMTimeRange(start: loopStart, duration: segmentDuration),
+                of: sourceTrack,
+                at: .zero
+            )
+        } catch {
+            throw AerialDropError.exportFailed(error.localizedDescription)
         }
 
         let preferredTransform = try await sourceTrack.load(.preferredTransform)
-        compositionTrack.preferredTransform = preferredTransform
+        segmentTrack.preferredTransform = preferredTransform
 
         let naturalSize = try await sourceTrack.load(.naturalSize)
         let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
@@ -93,35 +112,48 @@ struct VideoProcessor {
         )
 
         let videoComposition = makeVideoComposition(
-            track: compositionTrack,
+            track: segmentTrack,
             preferredTransform: preferredTransform,
             transformedRect: transformedRect,
-            renderSize: renderSize
+            renderSize: renderSize,
+            duration: segmentDuration
         )
 
         try await encodeMain10FullRange(
-            composition: composition,
-            track: compositionTrack,
+            composition: segmentComposition,
+            track: segmentTrack,
             videoComposition: videoComposition,
             renderSize: renderSize,
-            destination: destination
+            duration: segmentDuration,
+            destination: segmentURL
         )
 
-        try await validateInstalledVideo(destination)
+        if CMTimeCompare(segmentDuration, nativeTargetDuration) >= 0 {
+            try fileManager.moveItem(at: segmentURL, to: destination)
+        } else {
+            try await repeatEncodedSegment(
+                segmentURL: segmentURL,
+                segmentDuration: segmentDuration,
+                destination: destination
+            )
+        }
+
+        try await validateInstalledVideo(destination, loopDuration: segmentDuration)
     }
 
     private func makeVideoComposition(
         track: AVCompositionTrack,
         preferredTransform: CGAffineTransform,
         transformedRect: CGRect,
-        renderSize: CGSize
+        renderSize: CGSize,
+        duration: CMTime
     ) -> AVMutableVideoComposition {
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
         videoComposition.frameDuration = CMTime(value: 1, timescale: nativeFrameRate)
 
         let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: nativeTargetDuration)
+        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
 
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
         let normalizedTransform = preferredTransform.translatedBy(
@@ -139,10 +171,11 @@ struct VideoProcessor {
         track: AVCompositionTrack,
         videoComposition: AVVideoComposition,
         renderSize: CGSize,
+        duration: CMTime,
         destination: URL
     ) async throws {
         let reader = try AVAssetReader(asset: composition)
-        reader.timeRange = CMTimeRange(start: .zero, duration: nativeTargetDuration)
+        reader.timeRange = CMTimeRange(start: .zero, duration: duration)
 
         let readerSettings: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarFullRange,
@@ -163,9 +196,15 @@ struct VideoProcessor {
         let compression: [String: Any] = [
             AVVideoAverageBitRateKey: targetBitRate,
             AVVideoExpectedSourceFrameRateKey: Int(nativeFrameRate),
-            AVVideoMaxKeyFrameIntervalKey: Int(nativeFrameRate * 2),
+            AVVideoMaxKeyFrameIntervalKey: nativeKeyFrameIntervalFrames,
+            AVVideoMaxKeyFrameIntervalDurationKey: nativeKeyFrameIntervalDuration,
             AVVideoProfileLevelKey: kVTProfileLevel_HEVC_Main10_AutoLevel as String,
-            AVVideoAllowFrameReorderingKey: true
+            AVVideoAllowFrameReorderingKey: true,
+            kVTCompressionPropertyKey_AllowOpenGOP as String: false,
+            kVTCompressionPropertyKey_AllowTemporalCompression as String: true,
+            kVTCompressionPropertyKey_BaseLayerFrameRate as String: NSNumber(
+                value: Double(nativeFrameRate) / 2.0
+            )
         ]
         let colorProperties: [String: Any] = [
             AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
@@ -192,11 +231,15 @@ struct VideoProcessor {
         writer.add(input)
 
         guard writer.startWriting() else {
-            throw AerialDropError.exportFailed(writer.error?.localizedDescription ?? "Could not start the native movie writer.")
+            throw AerialDropError.exportFailed(
+                writer.error?.localizedDescription ?? "Could not start the native movie writer."
+            )
         }
         guard reader.startReading() else {
             writer.cancelWriting()
-            throw AerialDropError.exportFailed(reader.error?.localizedDescription ?? "Could not start the native movie reader.")
+            throw AerialDropError.exportFailed(
+                reader.error?.localizedDescription ?? "Could not start the native movie reader."
+            )
         }
         writer.startSession(atSourceTime: .zero)
 
@@ -219,7 +262,8 @@ struct VideoProcessor {
                             reader.cancelReading()
                             writer.cancelWriting()
                             finish(.failure(AerialDropError.exportFailed(
-                                writer.error?.localizedDescription ?? "The HEVC Main10 writer rejected a video sample."
+                                writer.error?.localizedDescription
+                                    ?? "The HEVC Main10 writer rejected a video sample."
                             )))
                             return
                         }
@@ -235,14 +279,15 @@ struct VideoProcessor {
                     }
 
                     input.markAsFinished()
-                    writer.endSession(atSourceTime: nativeTargetDuration)
+                    writer.endSession(atSourceTime: duration)
                     writer.finishWriting {
                         switch writer.status {
                         case .completed:
                             finish(.success(()))
                         case .failed, .cancelled:
                             finish(.failure(AerialDropError.exportFailed(
-                                writer.error?.localizedDescription ?? "The HEVC Main10 writer did not finish."
+                                writer.error?.localizedDescription
+                                    ?? "The HEVC Main10 writer did not finish."
                             )))
                         default:
                             finish(.failure(AerialDropError.exportFailed(
@@ -251,6 +296,86 @@ struct VideoProcessor {
                         }
                     }
                     return
+                }
+            }
+        }
+    }
+
+    private func repeatEncodedSegment(
+        segmentURL: URL,
+        segmentDuration: CMTime,
+        destination: URL
+    ) async throws {
+        let encodedAsset = AVURLAsset(url: segmentURL)
+        let tracks = try await encodedAsset.loadTracks(withMediaType: .video)
+        guard let encodedTrack = tracks.first else {
+            throw AerialDropError.noVideoTrack
+        }
+
+        let encodedTimeRange = try await encodedTrack.load(.timeRange)
+        let usableDuration = CMTimeMinimum(segmentDuration, encodedTimeRange.duration)
+        guard usableDuration.isNumeric, usableDuration.seconds > 0.20 else {
+            throw AerialDropError.videoTooShort
+        }
+
+        let repeated = AVMutableComposition()
+        guard let repeatedTrack = repeated.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        ) else {
+            throw AerialDropError.exportSessionUnavailable
+        }
+        repeatedTrack.preferredTransform = try await encodedTrack.load(.preferredTransform)
+
+        var cursor = CMTime.zero
+        while CMTimeCompare(cursor, nativeTargetDuration) < 0 {
+            let remaining = CMTimeSubtract(nativeTargetDuration, cursor)
+            let insertionDuration = CMTimeMinimum(usableDuration, remaining)
+            do {
+                try repeatedTrack.insertTimeRange(
+                    CMTimeRange(start: encodedTimeRange.start, duration: insertionDuration),
+                    of: encodedTrack,
+                    at: cursor
+                )
+            } catch {
+                throw AerialDropError.exportFailed(
+                    "Could not repeat the encoded native segment: \(error.localizedDescription)"
+                )
+            }
+            cursor = CMTimeAdd(cursor, insertionDuration)
+        }
+
+        guard let exporter = AVAssetExportSession(
+            asset: repeated,
+            presetName: AVAssetExportPresetPassthrough
+        ) else {
+            throw AerialDropError.passthroughUnavailable
+        }
+        guard exporter.supportedFileTypes.contains(.mov) else {
+            throw AerialDropError.passthroughUnavailable
+        }
+
+        try? fileManager.removeItem(at: destination)
+        exporter.outputURL = destination
+        exporter.outputFileType = .mov
+        exporter.shouldOptimizeForNetworkUse = true
+        exporter.timeRange = CMTimeRange(start: .zero, duration: nativeTargetDuration)
+
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            exporter.exportAsynchronously {
+                switch exporter.status {
+                case .completed:
+                    continuation.resume(returning: ())
+                case .failed, .cancelled:
+                    continuation.resume(throwing: AerialDropError.exportFailed(
+                        exporter.error?.localizedDescription
+                            ?? "The encoded segment could not be repeated into the final MOV."
+                    ))
+                default:
+                    continuation.resume(throwing: AerialDropError.exportFailed(
+                        "Unexpected passthrough exporter status: \(exporter.status.rawValue)"
+                    ))
                 }
             }
         }
@@ -282,7 +407,7 @@ struct VideoProcessor {
         return .zero
     }
 
-    private func validateInstalledVideo(_ url: URL) async throws {
+    private func validateInstalledVideo(_ url: URL, loopDuration: CMTime) async throws {
         guard fileManager.fileExists(atPath: url.path) else {
             throw AerialDropError.installedFileMissing(url)
         }
@@ -338,6 +463,8 @@ struct VideoProcessor {
             throw AerialDropError.nativeVideoDoesNotStartAtZero(firstFrame.seconds)
         }
 
+        try validateLoopBoundarySyncSamples(asset: asset, track: track, loopDuration: loopDuration)
+
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = .zero
@@ -346,6 +473,66 @@ struct VideoProcessor {
             _ = try generator.copyCGImage(at: .zero, actualTime: nil)
         } catch {
             throw AerialDropError.thumbnailFailed
+        }
+    }
+
+    private func validateLoopBoundarySyncSamples(
+        asset: AVAsset,
+        track: AVAssetTrack,
+        loopDuration: CMTime
+    ) throws {
+        let loopSeconds = loopDuration.seconds
+        guard loopSeconds.isFinite,
+              loopSeconds > 0.20,
+              loopSeconds < nativeTargetDuration.seconds - 0.05 else {
+            return
+        }
+
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else {
+            throw AerialDropError.exportFailed("Could not inspect native loop sync samples.")
+        }
+        reader.add(output)
+        guard reader.startReading() else {
+            throw AerialDropError.exportFailed(
+                reader.error?.localizedDescription ?? "Could not read native loop sync samples."
+            )
+        }
+
+        var syncPTS: [Double] = []
+        while let sample = output.copyNextSampleBuffer() {
+            let duration = CMSampleBufferGetDuration(sample)
+            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+            guard duration.isNumeric, duration.seconds > 0, pts.isNumeric else { continue }
+
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                sample,
+                createIfNecessary: false
+            ) as? [[CFString: Any]]
+            let notSync = (attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool) ?? false
+            if !notSync {
+                syncPTS.append(pts.seconds)
+            }
+        }
+
+        if reader.status == .failed {
+            throw AerialDropError.exportFailed(
+                reader.error?.localizedDescription ?? "Native loop sync-sample inspection failed."
+            )
+        }
+
+        let tolerance = 1.5 / Double(nativeFrameRate)
+        var boundary = loopSeconds
+        while boundary < nativeTargetDuration.seconds - tolerance {
+            guard syncPTS.contains(where: { abs($0 - boundary) <= tolerance }) else {
+                throw AerialDropError.exportFailed(String(
+                    format: "The final native MOV has no sync sample at loop boundary %.3f seconds.",
+                    boundary
+                ))
+            }
+            boundary += loopSeconds
         }
     }
 

@@ -82,35 +82,12 @@ struct ManifestStore {
             }
 
             assets.removeAll { ($0["id"] as? String) == id }
-            // Drop stale entries owned by this app if their installed files no longer exist.
-            assets = assets.filter { asset in
-                guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
-                    return true
-                }
-                guard let assetID = asset["id"] as? String else { return false }
-                return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
-                    && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
-            }
+            assets = normalizeManagedAssets(assets)
 
             let managedCount = assets.filter {
                 (($0["categories"] as? [String]) ?? []).contains(Self.categoryID)
             }.count
             assets.append(makeAsset(id: id, title: title, preferredOrder: managedCount))
-
-            // Repair metadata from older AerialDrop prototypes while preserving titles and IDs.
-            var managedOrder = 0
-            assets = assets.map { asset in
-                guard
-                    let assetID = asset["id"] as? String,
-                    ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID)
-                else { return asset }
-
-                let assetTitle = (asset["accessibilityLabel"] as? String)
-                    ?? (asset["localizedNameKey"] as? String)
-                    ?? assetID
-                defer { managedOrder += 1 }
-                return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
-            }
 
             categories.removeAll { ($0["id"] as? String) == Self.categoryID }
             categories.append(makeCategory(representativeAssetID: id))
@@ -137,14 +114,7 @@ struct ManifestStore {
             guard assets.count != oldCount else {
                 throw AerialDropError.wallpaperNotFound
             }
-            assets = assets.filter { asset in
-                guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
-                    return true
-                }
-                guard let assetID = asset["id"] as? String else { return false }
-                return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
-                    && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
-            }
+            assets = dropMissingManagedAssets(assets)
 
             let remainingIDs = assets.compactMap { asset -> String? in
                 guard
@@ -197,83 +167,6 @@ struct ManifestStore {
         }
     }
 
-    /// Repairs catalogue registration for entries created by AerialDrop 0.2.
-    ///
-    /// Tahoe uses `initialAssetCount` as the visible asset boundary. Version 0.2
-    /// appended an asset but preserved the old count, so the JSON entry existed
-    /// while System Settings ignored it. This repair updates the count and
-    /// normalizes only AerialDrop-owned metadata.
-    func repairCatalogueRegistration() throws {
-        try requireManifest()
-        try prepareDirectories()
-
-        try mutateManifest(operation: "repair-registration") { root in
-            guard var assets = root["assets"] as? [[String: Any]] else {
-                throw AerialDropError.malformedManifest("missing top-level assets array")
-            }
-            guard var categories = root["categories"] as? [[String: Any]] else {
-                throw AerialDropError.malformedManifest("missing top-level categories array")
-            }
-
-            assets = assets.filter { asset in
-                guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
-                    return true
-                }
-                guard let assetID = asset["id"] as? String else { return false }
-                return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
-                    && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
-            }
-
-            var managedOrder = 0
-            assets = assets.map { asset in
-                guard
-                    let assetID = asset["id"] as? String,
-                    ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID)
-                else { return asset }
-
-                let assetTitle = (asset["accessibilityLabel"] as? String)
-                    ?? (asset["localizedNameKey"] as? String)
-                    ?? assetID
-                defer { managedOrder += 1 }
-                return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
-            }
-
-            let managedIDs = assets.compactMap { asset -> String? in
-                guard
-                    ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID),
-                    let assetID = asset["id"] as? String
-                else { return nil }
-                return assetID
-            }
-
-            categories.removeAll { ($0["id"] as? String) == Self.categoryID }
-            if let representative = managedIDs.first {
-                categories.append(makeCategory(representativeAssetID: representative))
-            }
-
-            root["assets"] = assets
-            root["categories"] = categories
-            root["initialAssetCount"] = assets.count
-        }
-    }
-
-    func restoreLatestBackup() throws {
-        let candidates = try validBackupCandidates()
-        guard let latest = candidates.first else {
-            throw AerialDropError.noBackup
-        }
-
-        let backupData = try Data(contentsOf: latest)
-        _ = try loadRoot(from: backupData)
-
-        // Preserve the current state before restoring an older state.
-        if fileManager.fileExists(atPath: paths.manifest.path) {
-            let currentData = try Data(contentsOf: paths.manifest)
-            _ = try backupManifest(data: currentData, operation: "pre-restore")
-        }
-        try backupData.write(to: paths.manifest, options: .atomic)
-    }
-
     private func makeAsset(id: String, title: String, preferredOrder: Int) -> [String: Any] {
         let shotID = customShotID(for: id)
         return [
@@ -316,6 +209,40 @@ struct ManifestStore {
 
     private func customShotID(for id: String) -> String {
         "CUSTOM_\(id.replacingOccurrences(of: "-", with: "_"))"
+    }
+
+    /// Drops AerialDrop-owned assets whose installed files are missing while leaving foreign
+    /// entries untouched.
+    private func dropMissingManagedAssets(_ assets: [[String: Any]]) -> [[String: Any]] {
+        assets.filter { asset in
+            guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
+                return true
+            }
+            guard let assetID = asset["id"] as? String else { return false }
+            return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
+                && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
+        }
+    }
+
+    /// Drops AerialDrop-owned assets whose installed files are missing and normalizes the
+    /// metadata (titles and preferred order) of the remaining AerialDrop-owned assets while
+    /// leaving foreign entries untouched.
+    private func normalizeManagedAssets(_ assets: [[String: Any]]) -> [[String: Any]] {
+        let present = dropMissingManagedAssets(assets)
+
+        var managedOrder = 0
+        return present.map { asset in
+            guard
+                let assetID = asset["id"] as? String,
+                ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID)
+            else { return asset }
+
+            let assetTitle = (asset["accessibilityLabel"] as? String)
+                ?? (asset["localizedNameKey"] as? String)
+                ?? assetID
+            defer { managedOrder += 1 }
+            return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
+        }
     }
 
     private func mutateManifest(
@@ -532,24 +459,5 @@ struct ManifestStore {
         }
         try data.write(to: backup, options: .atomic)
         return backup
-    }
-
-    private func validBackupCandidates() throws -> [URL] {
-        try fileManager.contentsOfDirectory(
-            at: paths.backups,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )
-        .filter { $0.pathExtension.lowercased() == "json" }
-        .filter { url in
-            guard let data = try? Data(contentsOf: url),
-                  let root = try? loadRoot(from: data) else { return false }
-            return (try? validateCandidate(root, preservingForeignEntriesFrom: root)) != nil
-        }
-        .sorted {
-            let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return lhs > rhs
-        }
     }
 }

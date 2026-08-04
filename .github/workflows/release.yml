@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release ${{ github.ref_name }}
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build app bundle
+        run: ./Scripts/build-app.sh
+
+      - name: Package artifact
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ditto -c -k --keepParent "dist/AerialDrop.app" "dist/AerialDrop-$VERSION-macOS.zip"
+
+      - name: Extract changelog for release
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 - "$VERSION" > release-notes.md <<'EOF'
+          import re, sys
+          version = sys.argv[1]
+          text = open('CHANGELOG.md').read()
+          header = '## ' + version
+          match = re.search(re.escape(header) + r'\n(.*?)(?=\n## |\Z)', text, re.DOTALL)
+          if not match:
+              raise SystemExit(f'No changelog section found for {header}')
+          print(match.group(1).strip())
+          EOF
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AerialDrop-*.zip
+          body_path: release-notes.md
+          generate_release_notes: false
