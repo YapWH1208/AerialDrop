@@ -37,6 +37,19 @@ enum ImportStage: Equatable {
         case .finished: return "Imported"
         }
     }
+
+    var progress: Double {
+        switch self {
+        case .idle: return 0
+        case .validating: return 0.15
+        case .preparingFolders: return 0.3
+        case .processingVideo: return 0.55
+        case .generatingThumbnail: return 0.7
+        case .updatingManifest: return 0.82
+        case .refreshingSystem: return 0.95
+        case .finished: return 1
+        }
+    }
 }
 
 enum AerialDropError: LocalizedError {
@@ -50,7 +63,6 @@ enum AerialDropError: LocalizedError {
     case thumbnailFailed
     case invalidTitle
     case wallpaperNotFound
-    case noBackup
     case videoTooShort
     case incompatibleExportCodec
     case incompatibleSourceCodec
@@ -66,7 +78,6 @@ enum AerialDropError: LocalizedError {
     case malformedWallpaperStore(String)
     case noManagedDesktopSelection
     case wallpaperStoreChangedDuringOperation
-    case noWallpaperStoreBackup
     case multipleManagedDesktopSelections([String])
     case nativeLinkDidNotPersist(linkedRecords: Int, individualRecords: Int)
     case manifestChangedDuringOperation
@@ -94,8 +105,6 @@ enum AerialDropError: LocalizedError {
             return "Enter a wallpaper name."
         case .wallpaperNotFound:
             return "The managed wallpaper entry was not found."
-        case .noBackup:
-            return "No valid AerialDrop manifest backup is available."
         case .videoTooShort:
             return "The selected video is too short to use as an Aerial wallpaper."
         case .incompatibleExportCodec:
@@ -126,8 +135,6 @@ enum AerialDropError: LocalizedError {
             return "Select an AerialDrop wallpaper in System Settings first, close System Settings, then click Finish Native Setup again."
         case .wallpaperStoreChangedDuringOperation:
             return "The wallpaper selection changed while AerialDrop was linking Desktop and Screen Saver. Nothing was overwritten; close System Settings and try again."
-        case .noWallpaperStoreBackup:
-            return "No AerialDrop wallpaper-selection backup is available."
         case .multipleManagedDesktopSelections(let ids):
             return "More than one AerialDrop wallpaper is selected across the active displays or Spaces: \(ids.joined(separator: ", " )). Set one wallpaper consistently, close System Settings, then try again."
         case .nativeLinkDidNotPersist(let linkedRecords, let individualRecords):

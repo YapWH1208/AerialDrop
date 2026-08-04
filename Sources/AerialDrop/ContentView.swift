@@ -6,20 +6,52 @@ struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @State private var removeAllConfirmation = false
 
+    private let wallpaperColumns = [GridItem(.adaptive(minimum: 200, maximum: 280), spacing: 14)]
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(2)
-            Divider()
-            HSplitView {
-                importerPane
-                    .frame(minWidth: 390, maxHeight: .infinity)
-                libraryPane
-                    .frame(minWidth: 300, maxHeight: .infinity)
+        HSplitView {
+            importerPane
+                .frame(minWidth: 420, maxWidth: 540)
+            libraryPane
+                .frame(minWidth: 470)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles.tv")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("AerialDrop")
+                        .font(.headline)
+                    Text("v\(AppVersion.shortVersion)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .layoutPriority(1)
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    model.openWallpaperSettings()
+                } label: {
+                    Label("Wallpaper Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await model.reload() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Reload catalogue")
+                .disabled(model.isWorking)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                maintenanceMenu
+            }
         }
         .alert("AerialDrop", isPresented: Binding(
             get: { model.alertMessage != nil },
@@ -53,82 +85,76 @@ struct ContentView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "sparkles.tv")
-                .font(.system(size: 28))
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text("AerialDrop")
-                        .font(.title2.bold())
-                    Text("v\(AppVersion.shortVersion)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
-                }
-                Text("Import a native 10-bit Aerial and link the same asset to Desktop, Lock Screen and Screen Saver")
-                    .foregroundStyle(.secondary)
+    // MARK: - Toolbar
+
+    private var maintenanceMenu: some View {
+        Menu {
+            Button("Open Aerial Storage Folder") { model.openStorageFolder() }
+            Button("Validate Current Catalogue") { model.validateCatalogue() }
+            Divider()
+            Button("Remove All AerialDrop Wallpapers", role: .destructive) {
+                removeAllConfirmation = true
             }
-            Spacer()
-            Button("Open Wallpaper Settings") { model.openWallpaperSettings() }
-                .buttonStyle(.borderedProminent)
+            .disabled(model.wallpapers.isEmpty || model.isWorking)
+        } label: {
+            Image(systemName: "ellipsis.circle")
         }
-        .padding(18)
+        .menuStyle(.button)
+        .labelStyle(.iconOnly)
+        .help("Maintenance")
     }
 
+    // MARK: - Import
+
     private var importerPane: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Import")
-                .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                sectionHeader("Import a Video", systemImage: "square.and.arrow.down")
 
-            dropZone
+                dropZone
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Wallpaper name")
-                    .font(.subheadline.weight(.medium))
-                TextField("Example: Yoimiya 4K", text: $model.title)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            if model.isWorking {
-                ProgressView()
-                Text(model.stage.label)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button {
-                model.importSelectedVideo()
-            } label: {
-                Label("Import into Aerials", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!model.canImport)
-
-            GroupBox("What happens") {
-                VStack(alignment: .leading, spacing: 7) {
-                    Label("Builds an 80-second, 30 fps HEVC Main10 full-range stream", systemImage: "film")
-                    Label("Normalizes timestamp zero and creates a Tahoe-compatible HEIF preview", systemImage: "photo")
-                    Label("Backs up entries.json and preserves other apps’ entries", systemImage: "doc.badge.gearshape")
-                    Label("Adds a complete Tahoe Aerial catalogue entry", systemImage: "rectangle.stack")
-                    Label("Updates Tahoe’s visible asset count", systemImage: "number")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Wallpaper name")
+                        .font(.callout.weight(.medium))
+                    TextField("Example: Yoimiya 4K", text: $model.title)
+                        .textFieldStyle(.roundedBorder)
+                        .controlSize(.large)
                 }
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
+
+                if model.isWorking {
+                    progressCard
+                }
+
+                Button {
+                    model.importSelectedVideo()
+                } label: {
+                    Label("Import into Aerials", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(!model.canImport)
+
+                whatHappensCard
+
+                Spacer(minLength: 12)
+
+                Text("After importing, select the new item in Wallpaper settings, close System Settings, then click Finish Native Setup. You may quit AerialDrop after setup; macOS handles playback natively.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer()
-
-            Text("After importing, select the new item in Wallpaper settings, close System Settings, then click Finish Native Setup. You may quit AerialDrop after setup; macOS handles playback natively.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            .padding(22)
         }
-        .padding(20)
+        .background(importPaneBackground)
+    }
+
+    private var importPaneBackground: some View {
+        LinearGradient(
+            colors: [Color(nsColor: .windowBackgroundColor), Color(nsColor: .windowBackgroundColor).opacity(0.4)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private var dropZone: some View {
@@ -138,31 +164,34 @@ struct ContentView: View {
             VStack(spacing: 10) {
                 if let url = model.selectedVideo {
                     Image(systemName: "film.fill")
-                        .font(.system(size: 52))
+                        .font(.system(size: 42, weight: .medium))
                         .foregroundStyle(.secondary)
                     Text(url.lastPathComponent)
+                        .font(.callout.weight(.medium))
                         .lineLimit(1)
+                        .truncationMode(.middle)
                     Text("Click to choose another file")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     Image(systemName: "film.stack")
-                        .font(.system(size: 42))
-                        .foregroundStyle(.secondary)
-                    Text("Choose an MP4 or MOV video")
+                        .font(.system(size: 40, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.tint)
+                    Text("Choose or drop a video")
                         .font(.headline)
-                    Text("The source file is not modified")
+                    Text("MP4 or MOV · The source file is not modified")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 220)
+            .frame(maxWidth: .infinity, minHeight: 240)
             .padding(12)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+            .glassEffect(.regular, in: .rect(cornerRadius: 18))
             .overlay {
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 18)
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [7]))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.quaternary)
             }
         }
         .buttonStyle(.plain)
@@ -173,150 +202,185 @@ struct ContentView: View {
         }
     }
 
-    private var libraryPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Text("Imported Wallpapers")
-                    .font(.headline)
-                Text("\(model.wallpapers.count)")
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Menu {
-                    Button("Open Aerial Storage Folder") { model.openStorageFolder() }
-                    Button("Validate Current Catalogue") { model.validateCatalogue() }
-                    Button("Repair Catalogue Registration") { model.repairCatalogueRegistration() }
-                        .disabled(model.wallpapers.isEmpty || model.isWorking)
-                    Button("Restore Latest Manifest Backup") { model.restoreLatestBackup() }
-                        .disabled(model.isWorking)
-                    Button("Restore Latest Selection Backup") { model.restoreLatestSelectionBackup() }
-                        .disabled(model.isWorking)
-                    Divider()
-                    Button("Remove All AerialDrop Wallpapers", role: .destructive) {
-                        removeAllConfirmation = true
-                    }
-                    .disabled(model.wallpapers.isEmpty || model.isWorking)
-                } label: {
-                    Label("Maintenance", systemImage: "wrench.and.screwdriver")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-
-                Button {
-                    Task { await model.reload() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("Reload catalogue")
-                .disabled(model.isWorking)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .layoutPriority(2)
-
-            if !model.wallpapers.isEmpty {
-                GroupBox("Complete Native Setup") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("""
-                        1. Select the AerialDrop item in System Settings → Wallpaper.
-                        2. Close System Settings.
-                        3. Click the button below to use that exact asset for both Desktop and Screen Saver.
-                        """)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Button {
-                            model.finishNativeSetup()
-                        } label: {
-                            Label("Finish Native Setup", systemImage: "rectangle.2.swap")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(model.isWorking)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(2)
-            }
-
-            if model.wallpapers.isEmpty {
-                ContentUnavailableView(
-                    "No AerialDrop Wallpapers",
-                    systemImage: "rectangle.stack.badge.plus",
-                    description: Text("Imported videos will appear here and under the AerialDrop section in System Settings.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(model.wallpapers) { wallpaper in
-                    WallpaperRow(wallpaper: wallpaper) {
-                        model.remove(wallpaper)
-                    }
-                }
-                .listStyle(.inset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .layoutPriority(1)
-            }
+    private var progressCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ProgressView(value: model.stage.progress)
+            Text(model.stage.label)
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
-        .padding(20)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
     }
 
+    private var whatHappensCard: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("What happens")
+                .font(.callout.weight(.semibold))
+            Label("Builds an 80-second, 30 fps HEVC Main10 stream with native temporal sub-layers", systemImage: "film")
+            Label("Normalizes timestamp zero and creates a Tahoe-compatible HEIF preview", systemImage: "photo")
+            Label("Backs up entries.json and preserves other apps’ entries", systemImage: "doc.badge.gearshape")
+            Label("Adds a complete Tahoe Aerial catalogue entry", systemImage: "rectangle.stack")
+        }
+        .font(.callout)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Library
+
+    private var libraryPane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 10) {
+                    sectionHeader("Imported Wallpapers", systemImage: "photo.stack")
+                    Text("\(model.wallpapers.count)")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                    Spacer()
+                }
+
+                if !model.wallpapers.isEmpty {
+                    nativeSetupCard
+                }
+
+                if model.wallpapers.isEmpty {
+                    ContentUnavailableView(
+                        "No AerialDrop Wallpapers",
+                        systemImage: "rectangle.stack.badge.plus",
+                        description: Text("Imported videos will appear here and under the AerialDrop section in System Settings.")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 380)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                } else {
+                    LazyVGrid(columns: wallpaperColumns, spacing: 14) {
+                        ForEach(model.wallpapers) { wallpaper in
+                            WallpaperCard(wallpaper: wallpaper) {
+                                model.remove(wallpaper)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(22)
+        }
+    }
+
+    private var nativeSetupCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Complete Native Setup", systemImage: "rectangle.2.swap")
+                .font(.callout.weight(.semibold))
+            Text("""
+            1. Select the AerialDrop item in System Settings → Wallpaper.
+            2. Close System Settings.
+            3. Click the button below to use that exact asset for both Desktop and Screen Saver.
+            """)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                model.finishNativeSetup()
+            } label: {
+                Label("Finish Native Setup", systemImage: "rectangle.2.swap")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(model.isWorking)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    private func sectionHeader(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.primary)
+    }
 }
 
-private struct WallpaperRow: View {
+// MARK: - Wallpaper card
+
+private struct WallpaperCard: View {
     let wallpaper: ManagedWallpaper
     let remove: () -> Void
 
-    var body: some View {
-        HStack(spacing: 12) {
-            WallpaperThumbnail(url: wallpaper.thumbnailURL)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(wallpaper.title)
-                    .lineLimit(1)
-                HStack(spacing: 5) {
-                    Image(systemName: wallpaper.videoExists ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    Text(wallpaper.videoExists ? "Video installed" : "Video missing")
-                }
-                .font(.caption)
-                .foregroundColor(wallpaper.videoExists ? .secondary : .orange)
-            }
-
-            Spacer()
-
-            Button(role: .destructive, action: remove) {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.borderless)
-            .help("Remove this wallpaper")
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct WallpaperThumbnail: View {
-    let url: URL
     @State private var image: NSImage?
+    @State private var hovering = false
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 9) {
+            thumbnail
+
+            HStack(spacing: 5) {
+                Text(wallpaper.title)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                if wallpaper.videoExists {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.tint)
+                        .help("Video installed")
+                } else {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .help("Video missing")
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            Color(nsColor: .controlBackgroundColor).opacity(0.75),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(.separator, lineWidth: 0.5)
+        }
+        .overlay(alignment: .topTrailing) {
+            if hovering {
+                Button(role: .destructive, action: remove) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(7)
+                        .background(.regularMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Remove this wallpaper")
+                .padding(8)
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
+        }
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
+    }
+
+    private var thumbnail: some View {
+        ZStack {
             if let image {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFill()
             } else {
+                Rectangle().fill(.quaternary.opacity(0.6))
                 Image(systemName: "film")
                     .font(.title2)
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 92, height: 55)
-        .background(.quaternary)
-        .clipShape(RoundedRectangle(cornerRadius: 7))
-        .task(id: url) {
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .task(id: wallpaper.id) {
             guard image == nil else { return }
             image = await Task.detached(priority: .utility) {
-                NSImage(contentsOf: url)
+                NSImage(contentsOf: wallpaper.thumbnailURL)
             }.value
         }
     }

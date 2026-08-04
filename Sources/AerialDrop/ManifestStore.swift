@@ -167,62 +167,6 @@ struct ManifestStore {
         }
     }
 
-    /// Repairs catalogue registration for entries created by AerialDrop 0.2.
-    ///
-    /// Tahoe uses `initialAssetCount` as the visible asset boundary. Version 0.2
-    /// appended an asset but preserved the old count, so the JSON entry existed
-    /// while System Settings ignored it. This repair updates the count and
-    /// normalizes only AerialDrop-owned metadata.
-    func repairCatalogueRegistration() throws {
-        try requireManifest()
-        try prepareDirectories()
-
-        try mutateManifest(operation: "repair-registration") { root in
-            guard var assets = root["assets"] as? [[String: Any]] else {
-                throw AerialDropError.malformedManifest("missing top-level assets array")
-            }
-            guard var categories = root["categories"] as? [[String: Any]] else {
-                throw AerialDropError.malformedManifest("missing top-level categories array")
-            }
-
-            assets = normalizeManagedAssets(assets)
-
-            let managedIDs = assets.compactMap { asset -> String? in
-                guard
-                    ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID),
-                    let assetID = asset["id"] as? String
-                else { return nil }
-                return assetID
-            }
-
-            categories.removeAll { ($0["id"] as? String) == Self.categoryID }
-            if let representative = managedIDs.first {
-                categories.append(makeCategory(representativeAssetID: representative))
-            }
-
-            root["assets"] = assets
-            root["categories"] = categories
-            root["initialAssetCount"] = assets.count
-        }
-    }
-
-    func restoreLatestBackup() throws {
-        let candidates = try validBackupCandidates()
-        guard let latest = candidates.first else {
-            throw AerialDropError.noBackup
-        }
-
-        let backupData = try Data(contentsOf: latest)
-        _ = try loadRoot(from: backupData)
-
-        // Preserve the current state before restoring an older state.
-        if fileManager.fileExists(atPath: paths.manifest.path) {
-            let currentData = try Data(contentsOf: paths.manifest)
-            _ = try backupManifest(data: currentData, operation: "pre-restore")
-        }
-        try backupData.write(to: paths.manifest, options: .atomic)
-    }
-
     private func makeAsset(id: String, title: String, preferredOrder: Int) -> [String: Any] {
         let shotID = customShotID(for: id)
         return [
@@ -515,24 +459,5 @@ struct ManifestStore {
         }
         try data.write(to: backup, options: .atomic)
         return backup
-    }
-
-    private func validBackupCandidates() throws -> [URL] {
-        try fileManager.contentsOfDirectory(
-            at: paths.backups,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )
-        .filter { $0.pathExtension.lowercased() == "json" }
-        .filter { url in
-            guard let data = try? Data(contentsOf: url),
-                  let root = try? loadRoot(from: data) else { return false }
-            return (try? validateCandidate(root, preservingForeignEntriesFrom: root)) != nil
-        }
-        .sorted {
-            let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return lhs > rhs
-        }
     }
 }

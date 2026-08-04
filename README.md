@@ -1,21 +1,78 @@
-# AerialDrop 0.5.6
+# AerialDrop
 
-AerialDrop imports custom videos into macOS Tahoe's native Aerial catalogue.
+[![CI](https://github.com/YapWH1208/AerialDrop/actions/workflows/ci.yml/badge.svg)](https://github.com/YapWH1208/AerialDrop/actions/workflows/ci.yml)
 
-## 0.5.6 native temporal-scalable encoding
+AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) catalogue, so custom videos play as screen savers and lock screen wallpapers using Apple's own playback pipeline — no helper processes, no app-managed player.
 
-The 0.5.5 movies (closed GOP, Main10, 30 fps) matched Apple's file shape but still black-screened the desktop after unlock. The unlock transition works by dropping the higher HEVC temporal layer to slow the video ("native slowdown"), and every sample read failed with `VideoSampleReadingErrors Code=4 (noTemporalInfo)` on a single-layer encode.
+## Features
 
-0.5.6 encodes each imported video with HEVC temporal scalability — two sub-layers (base layer at 15 fps within a 30 fps stream) — so the native file carries the same `tscl`/`tsas` sample groups as Apple's own aerials. Unlock slowdown and the fade back to the static desktop now run natively with no helper processes.
+- **Native catalogue integration** — imports videos as full Tahoe Aerial catalogue entries with HEIF previews, visible under the AerialDrop section in System Settings → Wallpaper.
+- **Native-compatible encoding** — re-encodes sources to HEVC Main10, 30 fps, Rec.709 MOV with HEVC temporal scalability (two sub-layers, base layer at 15 fps) matching the `tscl`/`tsas` sample groups of Apple's own aerials. Lock/unlock slowdown and the fade back to the desktop run natively.
+- **Loop-safe passthrough repeats** — sources shorter than 80 seconds are repeated by passthrough export, with the loop duration snapped to whole 30 fps frames so every loop boundary lands on a sync sample.
+- **Automatic backups** — every write to Tahoe's private stores is backed up first, so the last known-good catalogue state always survives at `aerials/AerialDropBackups` and `Store/AerialDropBackups`.
+- **Maintenance tools** — validate the catalogue, open the storage folder, or remove all imported wallpapers.
 
-Imported videos before this release must be reimported once.
+## Requirements
 
-## 0.5.5 loop-boundary sync samples
+- macOS Tahoe 26 or later
+- Swift 5.10 or later (Xcode command line tools)
+- Source videos: MP4 or MOV, H.264 or HEVC
 
-Sources shorter than 80 seconds are encoded once and repeated by passthrough export. The loop duration is snapped to a whole number of 30 fps frames so every loop boundary lands exactly on a sync sample; fractional lengths drifted one frame per repeat and failed native-movie validation.
+## Installation
+
+### Prebuilt release
+
+Download `AerialDrop-<version>-macOS.zip` from the [Releases](https://github.com/YapWH1208/AerialDrop/releases) page, unzip, and drag `AerialDrop.app` into your Applications folder. It is ad-hoc signed, so right-click → Open the first time if Gatekeeper complains.
+
+### Build from source
+
+```sh
+git clone https://github.com/YapWH1208/AerialDrop.git
+cd AerialDrop
+swift build -c release
+```
+
+The binary is produced at `.build/release/AerialDrop`. To build a proper `.app` bundle (signed ad-hoc, with Info.plist):
+
+```sh
+Scripts/build-app.sh
+```
+
+This creates `dist/AerialDrop.app`. Open it with:
+
+```sh
+open -n dist/AerialDrop.app
+```
+
+## Usage
+
+1. **Import** — choose or drop an MP4/MOV in the Import pane, give the wallpaper a name, and click **Import into Aerials**. The source file is never modified; it is re-encoded into an 80-second, 30 fps HEVC Main10 stream with temporal sub-layers and registered in the Aerial catalogue.
+2. **Select** — in System Settings → Wallpaper, select the imported item under the AerialDrop section.
+3. **Finish Native Setup** — close System Settings and click **Finish Native Setup** in AerialDrop to bind the asset to both Desktop and Screen Saver.
+4. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
+
+### Maintenance menu
+
+- Open Aerial Storage Folder
+- Validate Current Catalogue
+- Remove All AerialDrop Wallpapers
+
+## How it works
+
+The pipeline is: validate input → build an 80-second video-only composition → decode via `AVAssetReader` → re-encode as HEVC Main10 with temporal sub-layers → generate a HEIF preview at timestamp zero → register in the catalogue → bind the selection → restart `WallpaperAgent` and `WallpaperAerialsExtension`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full flow.
 
 ## Compatibility
 
 AerialDrop writes directly to Tahoe's private Aerial catalogue and wallpaper selection store, and restarts `WallpaperAgent` and `WallpaperAerialsExtension`. These data formats and processes are not a public API; a future macOS update may change the manifest or store schema and require an AerialDrop update.
 
-Every write is backed up automatically first: manifest backups under `aerials/AerialDropBackups` and selection-store backups under `Store/AerialDropBackups`. Earlier states can be restored from the Maintenance menu (Restore Latest Manifest Backup / Restore Latest Selection Backup).
+Every write is backed up automatically first: manifest backups under `aerials/AerialDropBackups` and selection-store backups under `Store/AerialDropBackups`.
+
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — processing pipeline
+- [TESTING.md](TESTING.md) — manual test procedure
+- [CHANGELOG.md](CHANGELOG.md) — release history
+
+## License
+
+[MIT](LICENSE)

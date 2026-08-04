@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- Redesigned the interface as a macOS Tahoe 26 app: a split import/library view with glass drop zone, preview-card gallery with hover-to-remove, toolbar actions, and an empty state.
+- Targets macOS 26 (the Swift package now builds against the Tahoe SDK) so `glassEffect` materials are available.
+- Removed the legacy “Repair Catalogue Registration” action (only fixed 0.2-era `initialAssetCount` entries) and the “Restore Latest Backup” actions for the manifest and selection stores; automatic backups are still written on every write.
+- Kept **Finish Native Setup**, which is the core workflow step that binds the selected asset to Desktop and Screen Saver via Tahoe’s native `linked` record.
+
 ## 0.5.6
 
 - Encodes with HEVC temporal scalability (base-layer frame rate 15 at 30 fps) so the native movie carries `tscl`/`tsas` sample groups like Apple's own aerials.

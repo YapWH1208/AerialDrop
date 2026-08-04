@@ -116,35 +116,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func repairCatalogueRegistration() {
-        Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try manifestStore.repairCatalogueRegistration()
-                await systemService.refresh()
-                await reload()
-                alertMessage = "Catalogue registration repaired. Close and reopen Wallpaper settings; the AerialDrop section should now be visible."
-            } catch {
-                alertMessage = error.localizedDescription
-            }
-        }
-    }
-
-    func restoreLatestBackup() {
-        Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try manifestStore.restoreLatestBackup()
-                await systemService.refresh()
-                await reload()
-            } catch {
-                alertMessage = error.localizedDescription
-            }
-        }
-    }
-
     func reload() async {
         do {
             wallpapers = try manifestStore.importedWallpapers()
@@ -189,20 +160,6 @@ final class AppModel: ObservableObject {
 
                 let name = wallpapers.first(where: { $0.id == linkedID })?.title ?? linkedID
                 alertMessage = "Native setup completed for \(name). Tahoe retained a linked useAsBoth wallpaper record after WallpaperAgent restarted. Quit AerialDrop and test several lock/unlock cycles."
-            } catch {
-                alertMessage = error.localizedDescription
-            }
-        }
-    }
-
-    func restoreLatestSelectionBackup() {
-        Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try selectionStore.restoreLatestBackup()
-                await systemService.refresh()
-                alertMessage = "The latest AerialDrop wallpaper-selection backup was restored."
             } catch {
                 alertMessage = error.localizedDescription
             }

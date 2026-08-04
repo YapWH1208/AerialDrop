@@ -83,42 +83,6 @@ struct WallpaperSelectionStore {
         try validateLinkedStore(data: data, managedID: managedID)
     }
 
-    func restoreLatestBackup() throws {
-        guard fileManager.fileExists(atPath: paths.storeBackups.path) else {
-            throw AerialDropError.noWallpaperStoreBackup
-        }
-
-        let candidates = try fileManager.contentsOfDirectory(
-            at: paths.storeBackups,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )
-        .filter { $0.pathExtension == "plist" }
-        .sorted {
-            let lhs = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let rhs = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return lhs > rhs
-        }
-
-        guard let latest = candidates.first else {
-            throw AerialDropError.noWallpaperStoreBackup
-        }
-
-        let backupData = try Data(contentsOf: latest)
-        var format = PropertyListSerialization.PropertyListFormat.binary
-        _ = try PropertyListSerialization.propertyList(from: backupData, options: [], format: &format)
-
-        if fileManager.fileExists(atPath: paths.storeIndex.path) {
-            let currentData = try Data(contentsOf: paths.storeIndex)
-            let safetyURL = paths.storeBackups.appendingPathComponent(
-                "Index-\(timestamp())-pre-restore.plist",
-                isDirectory: false
-            )
-            try currentData.write(to: safetyURL, options: .atomic)
-        }
-        try backupData.write(to: paths.storeIndex, options: .atomic)
-    }
-
     private func mutateRoot(
         _ root: inout [String: Any],
         managedIDs: Set<String>,

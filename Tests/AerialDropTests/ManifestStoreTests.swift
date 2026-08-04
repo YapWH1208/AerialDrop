@@ -57,65 +57,6 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(subcategory["preferredOrder"] as? Int, 0)
     }
 
-    func testRepairFixesVisibleAssetBoundaryAndPreservesForeignData() throws {
-        let id = "BBBBBBBB-CCCC-4DDD-8EEE-FFFFFF654321"
-        try Data("video".utf8).write(to: paths.videoURL(for: id))
-        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
-
-        var broken = try json(at: paths.manifest)
-        var assets = try XCTUnwrap(broken["assets"] as? [[String: Any]])
-        var categories = try XCTUnwrap(broken["categories"] as? [[String: Any]])
-        let foreignAsset = try XCTUnwrap(assets.first)
-        let foreignCategory = try XCTUnwrap(categories.first)
-
-        assets.append([
-            "id": id,
-            "shotID": "CUSTOM_654321",
-            "localizedNameKey": "Hidden 0.2 Wallpaper",
-            "accessibilityLabel": "Hidden 0.2 Wallpaper",
-            "includeInShuffle": true,
-            "showInTopLevel": true,
-            "preferredOrder": 0,
-            "categories": [ManifestStore.categoryID],
-            "subcategories": [ManifestStore.subcategoryID],
-            "pointsOfInterest": ["0": "CUSTOM_654321_0"],
-            "previewImage": paths.thumbnailURL(for: id).absoluteString,
-            "url-4K-SDR-240FPS": paths.videoURL(for: id).absoluteString
-        ])
-        categories.append([
-            "id": ManifestStore.categoryID,
-            "localizedNameKey": ManifestStore.categoryName,
-            "localizedDescriptionKey": ManifestStore.categoryName,
-            "preferredOrder": 0,
-            "previewImage": paths.thumbnailURL(for: id).absoluteString,
-            "representativeAssetID": id,
-            "subcategories": [[
-                "id": ManifestStore.subcategoryID,
-                "localizedNameKey": ManifestStore.categoryName,
-                "localizedDescriptionKey": ManifestStore.categoryName,
-                "preferredOrder": 0,
-                "previewImage": paths.thumbnailURL(for: id).absoluteString,
-                "representativeAssetID": id
-            ]]
-        ])
-        broken["assets"] = assets
-        broken["categories"] = categories
-        broken["initialAssetCount"] = 1 // 0.2 bug: appended asset is outside the visible boundary.
-        try JSONSerialization.data(withJSONObject: broken, options: [.prettyPrinted])
-            .write(to: paths.manifest, options: .atomic)
-
-        XCTAssertThrowsError(try store.validateCurrentManifest())
-        try store.repairCatalogueRegistration()
-
-        let repaired = try json(at: paths.manifest)
-        let repairedAssets = try XCTUnwrap(repaired["assets"] as? [[String: Any]])
-        let repairedCategories = try XCTUnwrap(repaired["categories"] as? [[String: Any]])
-        XCTAssertEqual(repaired["initialAssetCount"] as? Int, repairedAssets.count)
-        XCTAssertEqual(canonical(repairedAssets[0]), canonical(foreignAsset))
-        XCTAssertEqual(canonical(repairedCategories[0]), canonical(foreignCategory))
-        XCTAssertNoThrow(try store.validateCurrentManifest())
-    }
-
     func testRemoveAllReturnsToOriginalSemanticCatalogue() throws {
         let original = try json(at: paths.manifest)
         let id = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEE123456"
