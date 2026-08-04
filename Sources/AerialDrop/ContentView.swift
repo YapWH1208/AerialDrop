@@ -44,13 +44,10 @@ struct ContentView: View {
                 .controlSize(.large)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                Button("Reload Catalogue", systemImage: "arrow.clockwise") {
                     Task { await model.reload() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.glass)
-                .help("Reload catalogue")
                 .disabled(model.isWorking)
             }
             ToolbarItem(placement: .primaryAction) {
@@ -97,7 +94,7 @@ struct ContentView: View {
     // MARK: - Toolbar
 
     private var maintenanceMenu: some View {
-        Menu {
+        Menu("Maintenance", systemImage: "ellipsis.circle") {
             Button("Open Aerial Storage Folder") { model.openStorageFolder() }
             Button("Validate Current Catalogue") { model.validateCatalogue() }
             Divider()
@@ -105,12 +102,9 @@ struct ContentView: View {
                 removeAllConfirmation = true
             }
             .disabled(model.wallpapers.isEmpty || model.isWorking)
-        } label: {
-            Image(systemName: "ellipsis.circle")
         }
         .menuStyle(.button)
         .buttonStyle(.glass)
         .labelStyle(.iconOnly)
-        .help("Maintenance")
     }
 }
