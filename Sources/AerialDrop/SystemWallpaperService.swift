@@ -6,7 +6,7 @@ struct SystemWallpaperService {
     func refresh() async {
         await terminateProcess(named: "WallpaperAerialsExtension", signal: nil)
         await terminateProcess(named: "WallpaperAgent", signal: nil)
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        try? await Task.sleep(for: .seconds(1))
     }
 
     private func terminateProcess(named name: String, signal: String?) async {

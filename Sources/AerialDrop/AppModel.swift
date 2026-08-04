@@ -1,23 +1,26 @@
 import AppKit
 import Foundation
+import Observation
 import UniformTypeIdentifiers
 
 @MainActor
-final class AppModel: ObservableObject {
-    @Published var selectedVideo: URL?
-    @Published var title = ""
-    @Published var wallpapers: [ManagedWallpaper] = []
-    @Published var stage: ImportStage = .idle
-    @Published var isWorking = false
-    @Published var alertMessage: String?
-    @Published var showingFileImporter = false
+@Observable
+final class AppModel {
+    var selectedVideo: URL?
+    var title = ""
+    var wallpapers: [ManagedWallpaper] = []
+    var stage: ImportStage = .idle
+    var isWorking = false
+    var alertMessage: String?
+    var showingFileImporter = false
 
     private let paths = WallpaperPaths()
-    private lazy var manifestStore = ManifestStore(paths: paths)
+    private let manifestStore: ManifestStore
     private let videoProcessor = VideoProcessor()
     private let systemService = SystemWallpaperService()
 
     init() {
+        manifestStore = ManifestStore(paths: paths)
         Task { await reload() }
     }
 
@@ -26,10 +29,11 @@ final class AppModel: ObservableObject {
     }
 
     func chooseVideo(_ url: URL) {
-        selectedVideo = url
-        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let previousTitle = selectedVideo.map { $0.deletingPathExtension().lastPathComponent }
+        if title.isEmpty || title == previousTitle {
             title = url.deletingPathExtension().lastPathComponent
         }
+        selectedVideo = url
     }
 
     func importSelectedVideo() {

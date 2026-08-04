@@ -7,8 +7,33 @@ import ImageIO
 import UniformTypeIdentifiers
 import VideoToolbox
 
-struct VideoProcessor {
-    private let fileManager = FileManager.default
+private struct WriterPump: @unchecked Sendable {
+    let reader: AVAssetReader
+    let output: AVAssetReaderVideoCompositionOutput
+    let writer: AVAssetWriter
+    let input: AVAssetWriterInput
+}
+
+/// Serializes the single-shot completion of the writer pump: resumes the
+/// continuation at most once, and only from the writer queue.
+private final class WriterPumpCompletion: @unchecked Sendable {
+    private let queue: DispatchQueue
+    private var finished = false
+
+    init(queue: DispatchQueue) {
+        self.queue = queue
+    }
+
+    func finish(with result: Result<Void, Error>, resuming continuation: CheckedContinuation<Void, Error>) {
+        queue.async {
+            guard !self.finished else { return }
+            self.finished = true
+            continuation.resume(with: result)
+        }
+    }
+}
+
+struct VideoProcessor: Sendable {
     private let nativeTargetDuration = CMTime(seconds: 80, preferredTimescale: 600)
     private let nativeFrameRate: Int32 = 30
     private let targetBitRate = 20_000_000
@@ -45,7 +70,7 @@ struct VideoProcessor {
     /// without re-encoding. The working Wallper asset uses this sample-table shape:
     /// regular 1.9-second closed GOPs plus a fresh sync sample at every loop boundary.
     func makeNativeMOV(from source: URL, destination: URL) async throws {
-        try? fileManager.removeItem(at: destination)
+        try? FileManager.default.removeItem(at: destination)
 
         let sourceAsset = AVURLAsset(url: source)
         let sourceTracks = try await sourceAsset.loadTracks(withMediaType: .video)
@@ -79,7 +104,7 @@ struct VideoProcessor {
         let segmentURL = destination.deletingLastPathComponent().appendingPathComponent(
             ".AerialDrop-\(UUID().uuidString)-segment.mov"
         )
-        defer { try? fileManager.removeItem(at: segmentURL) }
+        defer { try? FileManager.default.removeItem(at: segmentURL) }
 
         let segmentComposition = AVMutableComposition()
         guard let segmentTrack = segmentComposition.addMutableTrack(
@@ -104,12 +129,11 @@ struct VideoProcessor {
 
         let naturalSize = try await sourceTrack.load(.naturalSize)
         let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
-        let renderSize = evenSize(
-            CGSize(
-                width: max(2, abs(transformedRect.width)),
-                height: max(2, abs(transformedRect.height))
-            )
+        let sourceSize = CGSize(
+            width: max(2, abs(transformedRect.width)),
+            height: max(2, abs(transformedRect.height))
         )
+        let renderSize = evenSize(target16by9Size(from: sourceSize))
 
         let videoComposition = makeVideoComposition(
             track: segmentTrack,
@@ -129,7 +153,7 @@ struct VideoProcessor {
         )
 
         if CMTimeCompare(segmentDuration, nativeTargetDuration) >= 0 {
-            try fileManager.moveItem(at: segmentURL, to: destination)
+            try FileManager.default.moveItem(at: segmentURL, to: destination)
         } else {
             try await repeatEncodedSegment(
                 segmentURL: segmentURL,
@@ -147,23 +171,38 @@ struct VideoProcessor {
         transformedRect: CGRect,
         renderSize: CGSize,
         duration: CMTime
-    ) -> AVMutableVideoComposition {
-        let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = CMTime(value: 1, timescale: nativeFrameRate)
-
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
-
-        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        let normalizedTransform = preferredTransform.translatedBy(
-            x: -transformedRect.minX,
-            y: -transformedRect.minY
+    ) -> AVVideoComposition {
+        var layerConfiguration = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
+        let sourceSize = CGSize(
+            width: max(2, abs(transformedRect.width)),
+            height: max(2, abs(transformedRect.height))
         )
-        layerInstruction.setTransform(normalizedTransform, at: .zero)
-        instruction.layerInstructions = [layerInstruction]
-        videoComposition.instructions = [instruction]
-        return videoComposition
+        let scale = max(
+            renderSize.width / sourceSize.width,
+            renderSize.height / sourceSize.height
+        )
+        let offsetX = (renderSize.width - sourceSize.width * scale) / 2
+        let offsetY = (renderSize.height - sourceSize.height * scale) / 2
+
+        let cropTransform = preferredTransform
+            .translatedBy(x: -transformedRect.minX, y: -transformedRect.minY)
+            .scaledBy(x: scale, y: scale)
+            .translatedBy(x: offsetX, y: offsetY)
+        layerConfiguration.setTransform(cropTransform, at: .zero)
+
+        var instructionConfiguration = AVVideoCompositionInstruction.Configuration()
+        instructionConfiguration.timeRange = CMTimeRange(start: .zero, duration: duration)
+        instructionConfiguration.layerInstructions = [
+            AVVideoCompositionLayerInstruction(configuration: layerConfiguration)
+        ]
+
+        var configuration = AVVideoComposition.Configuration()
+        configuration.renderSize = renderSize
+        configuration.frameDuration = CMTime(value: 1, timescale: nativeFrameRate)
+        configuration.instructions = [
+            AVVideoCompositionInstruction(configuration: instructionConfiguration)
+        ]
+        return AVVideoComposition(configuration: configuration)
     }
 
     private func encodeMain10FullRange(
@@ -245,54 +284,47 @@ struct VideoProcessor {
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let queue = DispatchQueue(label: "com.yapwh.aerialdrop.main10-writer")
-            var completed = false
+            let pump = WriterPump(reader: reader, output: output, writer: writer, input: input)
+            let completion = WriterPumpCompletion(queue: queue)
 
-            func finish(_ result: Result<Void, Error>) {
-                queue.async {
-                    guard !completed else { return }
-                    completed = true
-                    continuation.resume(with: result)
-                }
-            }
-
-            input.requestMediaDataWhenReady(on: queue) {
-                while input.isReadyForMoreMediaData, !completed {
-                    if let sample = output.copyNextSampleBuffer() {
-                        guard input.append(sample) else {
-                            reader.cancelReading()
-                            writer.cancelWriting()
-                            finish(.failure(AerialDropError.exportFailed(
-                                writer.error?.localizedDescription
+            pump.input.requestMediaDataWhenReady(on: queue) {
+                while pump.input.isReadyForMoreMediaData {
+                    if let sample = pump.output.copyNextSampleBuffer() {
+                        guard pump.input.append(sample) else {
+                            pump.reader.cancelReading()
+                            pump.writer.cancelWriting()
+                            completion.finish(with: .failure(AerialDropError.exportFailed(
+                                pump.writer.error?.localizedDescription
                                     ?? "The HEVC Main10 writer rejected a video sample."
-                            )))
+                            )), resuming: continuation)
                             return
                         }
                         continue
                     }
 
-                    if reader.status == .failed {
-                        writer.cancelWriting()
-                        finish(.failure(AerialDropError.exportFailed(
-                            reader.error?.localizedDescription ?? "The 10-bit video reader failed."
-                        )))
+                    if pump.reader.status == .failed {
+                        pump.writer.cancelWriting()
+                        completion.finish(with: .failure(AerialDropError.exportFailed(
+                            pump.reader.error?.localizedDescription ?? "The 10-bit video reader failed."
+                        )), resuming: continuation)
                         return
                     }
 
-                    input.markAsFinished()
-                    writer.endSession(atSourceTime: duration)
-                    writer.finishWriting {
-                        switch writer.status {
+                    pump.input.markAsFinished()
+                    pump.writer.endSession(atSourceTime: duration)
+                    pump.writer.finishWriting {
+                        switch pump.writer.status {
                         case .completed:
-                            finish(.success(()))
+                            completion.finish(with: .success(()), resuming: continuation)
                         case .failed, .cancelled:
-                            finish(.failure(AerialDropError.exportFailed(
-                                writer.error?.localizedDescription
+                            completion.finish(with: .failure(AerialDropError.exportFailed(
+                                pump.writer.error?.localizedDescription
                                     ?? "The HEVC Main10 writer did not finish."
-                            )))
+                            )), resuming: continuation)
                         default:
-                            finish(.failure(AerialDropError.exportFailed(
-                                "Unexpected writer status: \(writer.status.rawValue)"
-                            )))
+                            completion.finish(with: .failure(AerialDropError.exportFailed(
+                                "Unexpected writer status: \(pump.writer.status.rawValue)"
+                            )), resuming: continuation)
                         }
                     }
                     return
@@ -355,29 +387,19 @@ struct VideoProcessor {
             throw AerialDropError.passthroughUnavailable
         }
 
-        try? fileManager.removeItem(at: destination)
+        try? FileManager.default.removeItem(at: destination)
         exporter.outputURL = destination
         exporter.outputFileType = .mov
         exporter.shouldOptimizeForNetworkUse = true
         exporter.timeRange = CMTimeRange(start: .zero, duration: nativeTargetDuration)
 
-        try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Void, Error>) in
-            exporter.exportAsynchronously {
-                switch exporter.status {
-                case .completed:
-                    continuation.resume(returning: ())
-                case .failed, .cancelled:
-                    continuation.resume(throwing: AerialDropError.exportFailed(
-                        exporter.error?.localizedDescription
-                            ?? "The encoded segment could not be repeated into the final MOV."
-                    ))
-                default:
-                    continuation.resume(throwing: AerialDropError.exportFailed(
-                        "Unexpected passthrough exporter status: \(exporter.status.rawValue)"
-                    ))
-                }
-            }
+        do {
+            try await exporter.export(to: destination, as: .mov)
+        } catch {
+            throw AerialDropError.exportFailed(
+                error.localizedDescription
+                    + " The encoded segment could not be repeated into the final MOV."
+            )
         }
     }
 
@@ -408,7 +430,7 @@ struct VideoProcessor {
     }
 
     private func validateInstalledVideo(_ url: URL, loopDuration: CMTime) async throws {
-        guard fileManager.fileExists(atPath: url.path) else {
+        guard FileManager.default.fileExists(atPath: url.path) else {
             throw AerialDropError.installedFileMissing(url)
         }
 
@@ -470,7 +492,7 @@ struct VideoProcessor {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = CMTime(seconds: 0.05, preferredTimescale: 600)
         do {
-            _ = try generator.copyCGImage(at: .zero, actualTime: nil)
+            _ = try await generator.image(at: .zero)
         } catch {
             throw AerialDropError.thumbnailFailed
         }
@@ -527,10 +549,9 @@ struct VideoProcessor {
         var boundary = loopSeconds
         while boundary < nativeTargetDuration.seconds - tolerance {
             guard syncPTS.contains(where: { abs($0 - boundary) <= tolerance }) else {
-                throw AerialDropError.exportFailed(String(
-                    format: "The final native MOV has no sync sample at loop boundary %.3f seconds.",
-                    boundary
-                ))
+                throw AerialDropError.exportFailed(
+                    "The final native MOV has no sync sample at loop boundary \(boundary.formatted(.number.precision(.fractionLength(3)))) seconds."
+                )
             }
             boundary += loopSeconds
         }
@@ -548,7 +569,7 @@ struct VideoProcessor {
 
         let image: CGImage
         do {
-            image = try generator.copyCGImage(at: .zero, actualTime: nil)
+            image = try await generator.image(at: .zero).image
         } catch {
             throw AerialDropError.thumbnailFailed
         }
@@ -570,8 +591,21 @@ struct VideoProcessor {
             throw AerialDropError.thumbnailFailed
         }
 
-        try? fileManager.removeItem(at: destination)
+        try? FileManager.default.removeItem(at: destination)
         try (data as Data).write(to: destination, options: .atomic)
+    }
+
+    /// Fits a source into a 16:9 frame capped at 4K, never upscaling. Sources that
+    /// already fit (16:9, ≤ 3840×2160) pass through unchanged. The crop-to-fill
+    /// scale and centering are applied by the video-composition layer transform.
+    private func target16by9Size(from sourceSize: CGSize) -> CGSize {
+        if sourceSize.width / sourceSize.height >= 16.0 / 9.0 {
+            let height = min(sourceSize.height, 2160)
+            return CGSize(width: height * (16.0 / 9.0), height: height)
+        } else {
+            let width = min(sourceSize.width, 3840)
+            return CGSize(width: width, height: width * (9.0 / 16.0))
+        }
     }
 
     private func evenSize(_ size: CGSize) -> CGSize {
