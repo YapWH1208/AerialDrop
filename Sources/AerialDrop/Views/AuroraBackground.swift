@@ -7,8 +7,14 @@ struct AuroraBackground: View {
     private static let gridSize = 4
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { context in
-            mesh(time: reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate)
+        Group {
+            if reduceMotion {
+                mesh(time: 0)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { context in
+                    mesh(time: context.date.timeIntervalSinceReferenceDate)
+                }
+            }
         }
         .opacity(colorScheme == .dark ? 0.55 : 0.4)
         .allowsHitTesting(false)
