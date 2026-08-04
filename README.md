@@ -1,20 +1,18 @@
-# AerialDrop 0.5.4
+# AerialDrop 0.5.6
 
 AerialDrop imports custom videos into macOS Tahoe's native Aerial catalogue.
 
-## 0.5.4 native-link correction
+## 0.5.6 native temporal-scalable encoding
 
-The 0.5.3 diagnostic showed that the generated media already matched the working Wallper media class, but Tahoe still stored the active wallpaper as two independent presentations:
+The 0.5.5 movies (closed GOP, Main10, 30 fps) matched Apple's file shape but still black-screened the desktop after unlock. The unlock transition works by dropping the higher HEVC temporal layer to slow the video ("native slowdown"), and every sample read failed with `VideoSampleReadingErrors Code=4 (noTemporalInfo)` on a single-layer encode.
 
-- Desktop: the selected AerialDrop asset
-- Idle: an older Wallper asset
-- Type: `individual`
+0.5.6 encodes each imported video with HEVC temporal scalability — two sub-layers (base layer at 15 fps within a 30 fps stream) — so the native file carries the same `tscl`/`tsas` sample groups as Apple's own aerials. Unlock slowdown and the fade back to the static desktop now run natively with no helper processes.
 
-That produces `useAsBoth:false` in WallpaperAgent and breaks native Aerial continuity.
+Imported videos before this release must be reimported once.
 
-0.5.4 converts the selected AerialDrop presentation to Tahoe's native `linked` store form. It also force-reloads WallpaperAgent so the process cannot overwrite the new plist with its stale in-memory `individual` state, then reopens the store and verifies that the linked state survived.
+## 0.5.5 loop-boundary sync samples
 
-You do not need to reimport an existing 0.5.3 wallpaper. Select it in Wallpaper settings, close System Settings, and click **Finish Native Setup** in AerialDrop 0.5.4.
+Sources shorter than 80 seconds are encoded once and repeated by passthrough export. The loop duration is snapped to a whole number of 30 fps frames so every loop boundary lands exactly on a sync sample; fractional lengths drifted one frame per repeat and failed native-movie validation.
 
 ## Compatibility
 

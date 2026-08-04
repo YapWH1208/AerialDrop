@@ -61,7 +61,21 @@ struct VideoProcessor {
             throw AerialDropError.videoTooShort
         }
 
-        let segmentDuration = CMTimeMinimum(availableDuration, nativeTargetDuration)
+        // Snap to a whole number of 30 fps frames so the passthrough repeat keeps
+        // every insertion on the sample grid; fractional lengths drift one frame
+        // per repeat and the sync sample that should sit at each loop boundary
+        // lands outside the validator's tolerance.
+        let snapFrames = floor(
+            CMTimeMinimum(availableDuration, nativeTargetDuration).seconds
+                * Double(nativeFrameRate)
+        )
+        guard snapFrames >= 1 else {
+            throw AerialDropError.videoTooShort
+        }
+        let segmentDuration = CMTime(
+            seconds: snapFrames / Double(nativeFrameRate),
+            preferredTimescale: 600
+        )
         let segmentURL = destination.deletingLastPathComponent().appendingPathComponent(
             ".AerialDrop-\(UUID().uuidString)-segment.mov"
         )
@@ -186,7 +200,11 @@ struct VideoProcessor {
             AVVideoMaxKeyFrameIntervalDurationKey: nativeKeyFrameIntervalDuration,
             AVVideoProfileLevelKey: kVTProfileLevel_HEVC_Main10_AutoLevel as String,
             AVVideoAllowFrameReorderingKey: true,
-            kVTCompressionPropertyKey_AllowOpenGOP as String: false
+            kVTCompressionPropertyKey_AllowOpenGOP as String: false,
+            kVTCompressionPropertyKey_AllowTemporalCompression as String: true,
+            kVTCompressionPropertyKey_BaseLayerFrameRate as String: NSNumber(
+                value: Double(nativeFrameRate) / 2.0
+            )
         ]
         let colorProperties: [String: Any] = [
             AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,

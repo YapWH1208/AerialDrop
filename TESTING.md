@@ -1,17 +1,14 @@
-# Testing AerialDrop 0.5.4
+# Testing AerialDrop 0.5.6
 
-1. Build and open AerialDrop 0.5.4.
-2. Keep the existing 0.5.3 imported wallpaper; no reimport is required.
-3. Select that wallpaper in System Settings → Wallpaper.
-4. Close System Settings completely.
-5. Click **Finish Native Setup** in AerialDrop.
-6. Wait for the success message confirming that Tahoe retained a linked `useAsBoth` record.
-7. Quit AerialDrop with Command-Q.
-8. Test three lock/unlock cycles.
+1. Build and open AerialDrop 0.5.6.
+2. Reimport the video so it is encoded with native temporal sub-layers (0.5.5 files lack them).
+3. Select the imported wallpaper in System Settings → Wallpaper.
+4. Click **Finish Native Setup** in AerialDrop.
+5. Quit AerialDrop with Command-Q.
+6. Test multiple lock/unlock cycles.
 
-Expected store state:
+Expected:
 
-- `Type = linked`
-- `Linked` references the selected AerialDrop asset
-- no separate Desktop/Idle records for that asset
-- WallpaperAgent resolves `useAsBoth:true`
+- No `VideoSampleReadingErrors Code=4` entries in the WallpaperAerialsExtension log during the unlock transition.
+- The desktop fades straight back to the static frame (no black window) and the lock screen plays the video at speed.
+- Short sources (< 80 s) import without "no sync sample at loop boundary" validation errors.
