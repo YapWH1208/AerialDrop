@@ -47,9 +47,8 @@ open -n dist/AerialDrop.app
 ## Usage
 
 1. **Import** — choose or drop an MP4/MOV in the Import pane, give the wallpaper a name, and click **Import into Aerials**. The source file is never modified; it is re-encoded into an 80-second, 30 fps HEVC Main10 stream with temporal sub-layers and registered in the Aerial catalogue.
-2. **Select** — in System Settings → Wallpaper, select the imported item under the AerialDrop section.
-3. **Finish Native Setup** — close System Settings and click **Finish Native Setup** in AerialDrop to bind the asset to both Desktop and Screen Saver.
-4. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
+2. **Select** — in System Settings → Wallpaper, select the imported item under the AerialDrop section and apply it as you would any Aerial. Tahoe itself writes the native `linked` record that binds Desktop, Lock Screen and Screen Saver.
+3. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
 
 ### Maintenance menu
 
@@ -59,7 +58,7 @@ open -n dist/AerialDrop.app
 
 ## How it works
 
-The pipeline is: validate input → build an 80-second video-only composition → decode via `AVAssetReader` → re-encode as HEVC Main10 with temporal sub-layers → generate a HEIF preview at timestamp zero → register in the catalogue → bind the selection → restart `WallpaperAgent` and `WallpaperAerialsExtension`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full flow.
+The pipeline is: validate input → build an 80-second video-only composition → decode via `AVAssetReader` → re-encode as HEVC Main10 with temporal sub-layers → generate a HEIF preview at timestamp zero → register in the catalogue → restart `WallpaperAgent` and `WallpaperAerialsExtension`. Selecting the entry in System Settings then binds Desktop, Lock Screen and Screen Saver natively. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full flow.
 
 ## Compatibility
 

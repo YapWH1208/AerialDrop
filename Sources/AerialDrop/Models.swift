@@ -74,12 +74,6 @@ enum AerialDropError: LocalizedError {
     case nativeVideoNotMain10(Int)
     case nativeVideoNotFullRange
     case main10EncodingUnavailable
-    case missingWallpaperStore(URL)
-    case malformedWallpaperStore(String)
-    case noManagedDesktopSelection
-    case wallpaperStoreChangedDuringOperation
-    case multipleManagedDesktopSelections([String])
-    case nativeLinkDidNotPersist(linkedRecords: Int, individualRecords: Int)
     case manifestChangedDuringOperation
     case foreignManifestDataChanged(String)
 
@@ -127,18 +121,6 @@ enum AerialDropError: LocalizedError {
             return "The native Aerial export is limited-range video. The working Tahoe custom Aerial asset uses full-range 10-bit HEVC."
         case .main10EncodingUnavailable:
             return "This Mac could not initialize the HEVC Main10 encoder required for reliable Tahoe Aerial playback."
-        case .missingWallpaperStore(let url):
-            return "The Tahoe wallpaper selection store was not found at:\n\(url.path)"
-        case .malformedWallpaperStore(let reason):
-            return "The Tahoe wallpaper selection store is invalid: \(reason)"
-        case .noManagedDesktopSelection:
-            return "Select an AerialDrop wallpaper in System Settings first, close System Settings, then click Finish Native Setup again."
-        case .wallpaperStoreChangedDuringOperation:
-            return "The wallpaper selection changed while AerialDrop was linking Desktop and Screen Saver. Nothing was overwritten; close System Settings and try again."
-        case .multipleManagedDesktopSelections(let ids):
-            return "More than one AerialDrop wallpaper is selected across the active displays or Spaces: \(ids.joined(separator: ", " )). Set one wallpaper consistently, close System Settings, then try again."
-        case .nativeLinkDidNotPersist(let linkedRecords, let individualRecords):
-            return "Tahoe did not retain the native linked wallpaper state after WallpaperAgent restarted (linked: \(linkedRecords), individual: \(individualRecords)). The previous selection backup remains available."
         case .manifestChangedDuringOperation:
             return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close Wallper and System Settings, then try again."
         case .foreignManifestDataChanged(let description):

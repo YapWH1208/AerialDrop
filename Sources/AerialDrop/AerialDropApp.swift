@@ -14,14 +14,6 @@ struct AerialDropApp: App {
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
         .commands {
-            CommandMenu("Native Setup") {
-                Button("Finish Native Setup") {
-                    model.finishNativeSetup()
-                }
-                .keyboardShortcut("f", modifiers: [.command, .option])
-                .disabled(model.wallpapers.isEmpty || model.isWorking)
-            }
-
             CommandMenu("Maintenance") {
                 Button("Validate Current Catalogue") {
                     model.validateCatalogue()

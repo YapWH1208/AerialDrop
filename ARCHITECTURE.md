@@ -13,10 +13,10 @@ AVAssetWriter: HEVC Main10, 30 fps, Rec.709 MOV, temporal sub-layers (base 15 fp
 Generate HEIF preview at timestamp zero
     ↓
 Register video, preview and UUID metadata in entries.json
-    ↓ user selects the item in System Settings
-Finish Native Setup
-    ↓ copy the selected AerialDrop Desktop choice to Idle in Store/Index.plist
+    ↓
 Restart WallpaperAgent and WallpaperAerialsExtension
+    ↓ user selects the item in System Settings
+Tahoe writes the native `linked` record binding Desktop, Lock Screen and Screen Saver
     ↓
 macOS native pipeline
 Screen saver → Lock Screen → native slowdown → static desktop

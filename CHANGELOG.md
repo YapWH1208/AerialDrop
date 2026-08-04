@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+- Removed the manual **Finish Native Setup** step: on current Tahoe builds System Settings itself writes the native `linked` record when the imported Aerial is applied, so Desktop, Lock Screen and Screen Saver bind without any AerialDrop involvement. Verified on-device (a `Type = linked` record with Tahoe's empty-options payload appeared after selecting in System Settings, with no AerialDrop store backup written).
+- Removed the selection-store linking machinery (`WallpaperSelectionStore`), its tests, and the related error cases.
+- Made the toolbar title a hero header and extended Liquid Glass materials to the wallpaper cards, progress card, notes card, and primary buttons.
+
 ## 0.6.0
 
 - Redesigned the interface as a macOS Tahoe 26 app: a split import/library view with glass drop zone, preview-card gallery with hover-to-remove, toolbar actions, and an empty state.

@@ -18,16 +18,18 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     Image(systemName: "sparkles.tv")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 22, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.tint)
                     Text("AerialDrop")
-                        .font(.headline)
+                        .font(.system(size: 24, weight: .bold))
                     Text("v\(AppVersion.shortVersion)")
-                        .font(.caption.weight(.semibold))
+                        .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
                         .background(.quaternary, in: Capsule())
                 }
             }
@@ -37,7 +39,7 @@ struct ContentView: View {
                 } label: {
                     Label("Wallpaper Settings", systemImage: "gearshape")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .controlSize(.large)
             }
             ToolbarItem(placement: .primaryAction) {
@@ -131,7 +133,7 @@ struct ContentView: View {
                     Label("Import into Aerials", systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 .disabled(!model.canImport)
 
@@ -139,7 +141,7 @@ struct ContentView: View {
 
                 Spacer(minLength: 12)
 
-                Text("After importing, select the new item in Wallpaper settings, close System Settings, then click Finish Native Setup. You may quit AerialDrop after setup; macOS handles playback natively.")
+                Text("After importing, select the new item in System Settings → Wallpaper; macOS applies it to Desktop, Lock Screen and Screen Saver natively. You may quit AerialDrop after setup; macOS handles playback natively.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -211,7 +213,7 @@ struct ContentView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
     }
 
     private var whatHappensCard: some View {
@@ -226,7 +228,7 @@ struct ContentView: View {
         .font(.callout)
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
     }
 
     // MARK: - Library
@@ -243,10 +245,6 @@ struct ContentView: View {
                         .padding(.vertical, 2)
                         .background(.quaternary, in: Capsule())
                     Spacer()
-                }
-
-                if !model.wallpapers.isEmpty {
-                    nativeSetupCard
                 }
 
                 if model.wallpapers.isEmpty {
@@ -269,33 +267,6 @@ struct ContentView: View {
             }
             .padding(22)
         }
-    }
-
-    private var nativeSetupCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Complete Native Setup", systemImage: "rectangle.2.swap")
-                .font(.callout.weight(.semibold))
-            Text("""
-            1. Select the AerialDrop item in System Settings → Wallpaper.
-            2. Close System Settings.
-            3. Click the button below to use that exact asset for both Desktop and Screen Saver.
-            """)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button {
-                model.finishNativeSetup()
-            } label: {
-                Label("Finish Native Setup", systemImage: "rectangle.2.swap")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(model.isWorking)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
     }
 
     private func sectionHeader(_ title: String, systemImage: String) -> some View {
@@ -336,10 +307,7 @@ private struct WallpaperCard: View {
             }
         }
         .padding(10)
-        .background(
-            Color(nsColor: .controlBackgroundColor).opacity(0.75),
-            in: RoundedRectangle(cornerRadius: 16)
-        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(.separator, lineWidth: 0.5)

@@ -14,7 +14,6 @@ final class AppModel: ObservableObject {
 
     private let paths = WallpaperPaths()
     private lazy var manifestStore = ManifestStore(paths: paths)
-    private lazy var selectionStore = WallpaperSelectionStore(paths: paths)
     private let videoProcessor = VideoProcessor()
     private let systemService = SystemWallpaperService()
 
@@ -78,7 +77,7 @@ final class AppModel: ObservableObject {
                 selectedVideo = nil
                 title = ""
                 await reload()
-                alertMessage = "Import completed. Select the new AerialDrop item in System Settings, close System Settings, then return here and click Finish Native Setup so the same asset is used for Desktop, Lock Screen and Screen Saver."
+                alertMessage = "Import completed. Select the new AerialDrop item in System Settings → Wallpaper and apply it as you would any Aerial; macOS links Desktop, Lock Screen and Screen Saver natively. You may quit AerialDrop."
             } catch {
                 try? FileManager.default.removeItem(at: videoDestination)
                 try? FileManager.default.removeItem(at: thumbnailDestination)
@@ -121,48 +120,6 @@ final class AppModel: ObservableObject {
             wallpapers = try manifestStore.importedWallpapers()
         } catch {
             wallpapers = []
-        }
-    }
-
-
-
-    func finishNativeSetup() {
-        Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                let managedIDs = Set(wallpapers.map(\.id))
-                var linkedID: String?
-                var lastError: Error?
-
-                // WallpaperAgent may race one store update while it still holds an older
-                // individual selection in memory. Force-reload and verify the on-disk linked
-                // representation; retry once only when that verification fails.
-                for attempt in 0..<2 {
-                    do {
-                        let candidateID = try selectionStore.linkSelectedManagedWallpaper(managedIDs: managedIDs)
-                        await systemService.reloadPersistedSelection()
-                        try selectionStore.validatePersistedNativeLink(managedID: candidateID)
-                        linkedID = candidateID
-                        break
-                    } catch {
-                        lastError = error
-                        if attempt == 0 {
-                            try? await Task.sleep(nanoseconds: 500_000_000)
-                            continue
-                        }
-                    }
-                }
-
-                guard let linkedID else {
-                    throw lastError ?? AerialDropError.wallpaperStoreChangedDuringOperation
-                }
-
-                let name = wallpapers.first(where: { $0.id == linkedID })?.title ?? linkedID
-                alertMessage = "Native setup completed for \(name). Tahoe retained a linked useAsBoth wallpaper record after WallpaperAgent restarted. Quit AerialDrop and test several lock/unlock cycles."
-            } catch {
-                alertMessage = error.localizedDescription
-            }
         }
     }
 
