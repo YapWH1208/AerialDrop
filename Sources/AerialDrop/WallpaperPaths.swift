@@ -10,22 +10,22 @@ struct WallpaperPaths {
 
     init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
         base = homeDirectory
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Application Support", isDirectory: true)
-            .appendingPathComponent("com.apple.wallpaper", isDirectory: true)
-            .appendingPathComponent("aerials", isDirectory: true)
-        manifestDirectory = base.appendingPathComponent("manifest", isDirectory: true)
-        manifest = manifestDirectory.appendingPathComponent("entries.json", isDirectory: false)
-        videos = base.appendingPathComponent("videos", isDirectory: true)
-        thumbnails = base.appendingPathComponent("thumbnails", isDirectory: true)
-        backups = base.appendingPathComponent("AerialDropBackups", isDirectory: true)
+            .appending(path: "Library", directoryHint: .isDirectory)
+            .appending(path: "Application Support", directoryHint: .isDirectory)
+            .appending(path: "com.apple.wallpaper", directoryHint: .isDirectory)
+            .appending(path: "aerials", directoryHint: .isDirectory)
+        manifestDirectory = base.appending(path: "manifest", directoryHint: .isDirectory)
+        manifest = manifestDirectory.appending(path: "entries.json")
+        videos = base.appending(path: "videos", directoryHint: .isDirectory)
+        thumbnails = base.appending(path: "thumbnails", directoryHint: .isDirectory)
+        backups = base.appending(path: "AerialDropBackups", directoryHint: .isDirectory)
     }
 
     func videoURL(for id: String) -> URL {
-        videos.appendingPathComponent("\(id).mov", isDirectory: false)
+        videos.appending(path: "\(id).mov")
     }
 
     func thumbnailURL(for id: String) -> URL {
-        thumbnails.appendingPathComponent("\(id).png", isDirectory: false)
+        thumbnails.appending(path: "\(id).png")
     }
 }

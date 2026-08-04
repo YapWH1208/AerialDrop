@@ -529,10 +529,9 @@ struct VideoProcessor {
         var boundary = loopSeconds
         while boundary < nativeTargetDuration.seconds - tolerance {
             guard syncPTS.contains(where: { abs($0 - boundary) <= tolerance }) else {
-                throw AerialDropError.exportFailed(String(
-                    format: "The final native MOV has no sync sample at loop boundary %.3f seconds.",
-                    boundary
-                ))
+                throw AerialDropError.exportFailed(
+                    "The final native MOV has no sync sample at loop boundary \(boundary.formatted(.number.precision(.fractionLength(3)))) seconds."
+                )
             }
             boundary += loopSeconds
         }

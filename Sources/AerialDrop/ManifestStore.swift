@@ -208,7 +208,7 @@ struct ManifestStore {
     }
 
     private func customShotID(for id: String) -> String {
-        "CUSTOM_\(id.replacingOccurrences(of: "-", with: "_"))"
+        "CUSTOM_\(id.replacing("-", with: "_"))"
     }
 
     /// Drops AerialDrop-owned assets whose installed files are missing while leaving foreign

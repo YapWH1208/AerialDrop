@@ -123,11 +123,11 @@ enum AerialDropError: LocalizedError {
         case .installedFileMissing(let url):
             return "A required installed file is missing:\n\(url.path)"
         case .nativeVideoTooShort(let seconds):
-            return String(format: "The native Aerial export is only %.3f seconds long; at least 79.5 seconds are required.", seconds)
+            return "The native Aerial export is only \(seconds.formatted(.number.precision(.fractionLength(3)))) seconds long; at least 79.5 seconds are required."
         case .nativeVideoDoesNotStartAtZero(let seconds):
-            return String(format: "The native Aerial export begins at %.6f seconds instead of timestamp zero.", seconds)
+            return "The native Aerial export begins at \(seconds.formatted(.number.precision(.fractionLength(6)))) seconds instead of timestamp zero."
         case .nativeVideoWrongFrameRate(let frameRate):
-            return String(format: "The native Aerial export is %.3f fps instead of 30 fps.", frameRate)
+            return "The native Aerial export is \(frameRate.formatted(.number.precision(.fractionLength(3)))) fps instead of 30 fps."
         case .nativeVideoNotMain10(let bits):
             return "The native Aerial export is only \(bits)-bit. Tahoe custom Aerial playback requires the 10-bit HEVC Main10 media class used by the working Wallper asset."
         case .nativeVideoNotFullRange:
