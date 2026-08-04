@@ -7,6 +7,13 @@ import ImageIO
 import UniformTypeIdentifiers
 import VideoToolbox
 
+private struct WriterPump: @unchecked Sendable {
+    let reader: AVAssetReader
+    let output: AVAssetReaderVideoCompositionOutput
+    let writer: AVAssetWriter
+    let input: AVAssetWriterInput
+}
+
 struct VideoProcessor {
     private let fileManager = FileManager.default
     private let nativeTargetDuration = CMTime(seconds: 80, preferredTimescale: 600)
@@ -147,23 +154,27 @@ struct VideoProcessor {
         transformedRect: CGRect,
         renderSize: CGSize,
         duration: CMTime
-    ) -> AVMutableVideoComposition {
-        let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = CMTime(value: 1, timescale: nativeFrameRate)
-
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
-
-        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+    ) -> AVVideoComposition {
+        var layerConfiguration = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
         let normalizedTransform = preferredTransform.translatedBy(
             x: -transformedRect.minX,
             y: -transformedRect.minY
         )
-        layerInstruction.setTransform(normalizedTransform, at: .zero)
-        instruction.layerInstructions = [layerInstruction]
-        videoComposition.instructions = [instruction]
-        return videoComposition
+        layerConfiguration.setTransform(normalizedTransform, at: .zero)
+
+        var instructionConfiguration = AVVideoCompositionInstruction.Configuration()
+        instructionConfiguration.timeRange = CMTimeRange(start: .zero, duration: duration)
+        instructionConfiguration.layerInstructions = [
+            AVVideoCompositionLayerInstruction(configuration: layerConfiguration)
+        ]
+
+        var configuration = AVVideoComposition.Configuration()
+        configuration.renderSize = renderSize
+        configuration.frameDuration = CMTime(value: 1, timescale: nativeFrameRate)
+        configuration.instructions = [
+            AVVideoCompositionInstruction(configuration: instructionConfiguration)
+        ]
+        return AVVideoComposition(configuration: configuration)
     }
 
     private func encodeMain10FullRange(
@@ -245,6 +256,7 @@ struct VideoProcessor {
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let queue = DispatchQueue(label: "com.yapwh.aerialdrop.main10-writer")
+            let pump = WriterPump(reader: reader, output: output, writer: writer, input: input)
             var completed = false
 
             func finish(_ result: Result<Void, Error>) {
@@ -255,14 +267,14 @@ struct VideoProcessor {
                 }
             }
 
-            input.requestMediaDataWhenReady(on: queue) {
-                while input.isReadyForMoreMediaData, !completed {
-                    if let sample = output.copyNextSampleBuffer() {
-                        guard input.append(sample) else {
-                            reader.cancelReading()
-                            writer.cancelWriting()
+            pump.input.requestMediaDataWhenReady(on: queue) {
+                while pump.input.isReadyForMoreMediaData, !completed {
+                    if let sample = pump.output.copyNextSampleBuffer() {
+                        guard pump.input.append(sample) else {
+                            pump.reader.cancelReading()
+                            pump.writer.cancelWriting()
                             finish(.failure(AerialDropError.exportFailed(
-                                writer.error?.localizedDescription
+                                pump.writer.error?.localizedDescription
                                     ?? "The HEVC Main10 writer rejected a video sample."
                             )))
                             return
@@ -270,28 +282,28 @@ struct VideoProcessor {
                         continue
                     }
 
-                    if reader.status == .failed {
-                        writer.cancelWriting()
+                    if pump.reader.status == .failed {
+                        pump.writer.cancelWriting()
                         finish(.failure(AerialDropError.exportFailed(
-                            reader.error?.localizedDescription ?? "The 10-bit video reader failed."
+                            pump.reader.error?.localizedDescription ?? "The 10-bit video reader failed."
                         )))
                         return
                     }
 
-                    input.markAsFinished()
-                    writer.endSession(atSourceTime: duration)
-                    writer.finishWriting {
-                        switch writer.status {
+                    pump.input.markAsFinished()
+                    pump.writer.endSession(atSourceTime: duration)
+                    pump.writer.finishWriting {
+                        switch pump.writer.status {
                         case .completed:
                             finish(.success(()))
                         case .failed, .cancelled:
                             finish(.failure(AerialDropError.exportFailed(
-                                writer.error?.localizedDescription
+                                pump.writer.error?.localizedDescription
                                     ?? "The HEVC Main10 writer did not finish."
                             )))
                         default:
                             finish(.failure(AerialDropError.exportFailed(
-                                "Unexpected writer status: \(writer.status.rawValue)"
+                                "Unexpected writer status: \(pump.writer.status.rawValue)"
                             )))
                         }
                     }
@@ -361,23 +373,13 @@ struct VideoProcessor {
         exporter.shouldOptimizeForNetworkUse = true
         exporter.timeRange = CMTimeRange(start: .zero, duration: nativeTargetDuration)
 
-        try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Void, Error>) in
-            exporter.exportAsynchronously {
-                switch exporter.status {
-                case .completed:
-                    continuation.resume(returning: ())
-                case .failed, .cancelled:
-                    continuation.resume(throwing: AerialDropError.exportFailed(
-                        exporter.error?.localizedDescription
-                            ?? "The encoded segment could not be repeated into the final MOV."
-                    ))
-                default:
-                    continuation.resume(throwing: AerialDropError.exportFailed(
-                        "Unexpected passthrough exporter status: \(exporter.status.rawValue)"
-                    ))
-                }
-            }
+        do {
+            try await exporter.export(to: destination, as: .mov)
+        } catch {
+            throw AerialDropError.exportFailed(
+                error.localizedDescription
+                    + " The encoded segment could not be repeated into the final MOV."
+            )
         }
     }
 
@@ -470,7 +472,7 @@ struct VideoProcessor {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = CMTime(seconds: 0.05, preferredTimescale: 600)
         do {
-            _ = try generator.copyCGImage(at: .zero, actualTime: nil)
+            _ = try await generator.image(at: .zero)
         } catch {
             throw AerialDropError.thumbnailFailed
         }
@@ -548,7 +550,7 @@ struct VideoProcessor {
 
         let image: CGImage
         do {
-            image = try generator.copyCGImage(at: .zero, actualTime: nil)
+            image = try await generator.image(at: .zero).image
         } catch {
             throw AerialDropError.thumbnailFailed
         }
