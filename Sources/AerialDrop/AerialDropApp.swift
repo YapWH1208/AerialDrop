@@ -12,7 +12,7 @@ struct AerialDropApp: App {
         }
         .defaultSize(width: 1120, height: 720)
         .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unified)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .commands {
             CommandMenu("Maintenance") {
                 Button("Validate Current Catalogue") {
