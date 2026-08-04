@@ -87,6 +87,11 @@ struct ContentView: View {
                 model.alertMessage = error.localizedDescription
             }
         }
+        .background {
+            Button("Choose Video") { model.showingFileImporter = true }
+                .keyboardShortcut("o", modifiers: .command)
+                .hidden()
+        }
     }
 
     // MARK: - Toolbar
