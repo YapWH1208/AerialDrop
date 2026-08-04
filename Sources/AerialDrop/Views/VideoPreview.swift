@@ -25,7 +25,7 @@ struct VideoPreview: View {
             if let duration, let fileSize {
                 HStack(spacing: 6) {
                     Label(timeString(duration), systemImage: "clock")
-                    Label(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file), systemImage: "internaldrive")
+                    Label(fileSize.formatted(.byteCount(style: .file)), systemImage: "internaldrive")
                 }
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 9)
@@ -39,6 +39,7 @@ struct VideoPreview: View {
         }
     }
 
+    @MainActor
     private func load() async {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
@@ -63,7 +64,6 @@ struct VideoPreview: View {
     }
 
     private func timeString(_ seconds: Double) -> String {
-        let total = Int(seconds.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
+        Duration.seconds(seconds).formatted(.time(pattern: .minuteSecond))
     }
 }
