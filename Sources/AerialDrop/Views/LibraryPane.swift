@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LibraryPane: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var selectedID: String?
     @Namespace private var glass
 

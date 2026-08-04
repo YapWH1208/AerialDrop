@@ -13,10 +13,11 @@ struct SectionHeader: View {
 }
 
 struct ImportPane: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var hoveringDropZone = false
 
     var body: some View {
+        @Bindable var model = model
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 SectionHeader(title: "Import a Video", systemImage: "square.and.arrow.down")
