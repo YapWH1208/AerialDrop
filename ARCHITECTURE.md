@@ -7,15 +7,16 @@ Build an 80-second video-only composition
     ↓ repeat or trim source; normalize timeline to zero
 AVAssetReader: 10-bit full-range YUV
     ↓
-AVAssetWriter: HEVC Main10, 30 fps, Rec.709 MOV
+AVAssetWriter: HEVC Main10, 30 fps, Rec.709 MOV, temporal sub-layers (base 15 fps)
     ↓ validate duration / codec / bit depth / range / first PTS / frame-zero decode
+    ↓ validate a sync sample at every loop boundary
 Generate HEIF preview at timestamp zero
     ↓
 Register video, preview and UUID metadata in entries.json
-    ↓ user selects the item in System Settings
-Finish Native Setup
-    ↓ copy the selected AerialDrop Desktop choice to Idle in Store/Index.plist
+    ↓
 Restart WallpaperAgent and WallpaperAerialsExtension
+    ↓ user selects the item in System Settings
+Tahoe writes the native `linked` record binding Desktop, Lock Screen and Screen Saver
     ↓
 macOS native pipeline
 Screen saver → Lock Screen → native slowdown → static desktop

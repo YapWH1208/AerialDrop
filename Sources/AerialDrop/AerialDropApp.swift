@@ -8,29 +8,13 @@ struct AerialDropApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 960, minHeight: 680)
+                .frame(minWidth: 980, minHeight: 640)
         }
+        .defaultSize(width: 1120, height: 720)
         .windowResizability(.contentMinSize)
+        .windowToolbarStyle(.unified)
         .commands {
-            CommandMenu("Native Setup") {
-                Button("Finish Native Setup") {
-                    model.finishNativeSetup()
-                }
-                .keyboardShortcut("f", modifiers: [.command, .option])
-                .disabled(model.wallpapers.isEmpty || model.isWorking)
-
-                Button("Restore Latest Selection Backup") {
-                    model.restoreLatestSelectionBackup()
-                }
-                .disabled(model.isWorking)
-            }
-
             CommandMenu("Maintenance") {
-                Button("Repair Catalogue Registration") {
-                    model.repairCatalogueRegistration()
-                }
-                .keyboardShortcut("r", modifiers: [.command, .option])
-
                 Button("Validate Current Catalogue") {
                     model.validateCatalogue()
                 }

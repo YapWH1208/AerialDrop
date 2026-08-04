@@ -9,18 +9,6 @@ struct SystemWallpaperService {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
     }
 
-    /// Reloads Index.plist after a native-link update.
-    ///
-    /// A normal SIGTERM allows WallpaperAgent to flush its stale in-memory `individual`
-    /// selection while terminating, which overwrites the linked plist AerialDrop just wrote.
-    /// SIGKILL prevents that stale flush. launchd restarts WallpaperAgent, which then reads the
-    /// atomically written `linked` state from disk.
-    func reloadPersistedSelection() async {
-        await terminateProcess(named: "WallpaperAerialsExtension", signal: "-9")
-        await terminateProcess(named: "WallpaperAgent", signal: "-9")
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
-    }
-
     private func terminateProcess(named name: String, signal: String?) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let process = Process()
