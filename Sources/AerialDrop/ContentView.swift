@@ -5,8 +5,9 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @State private var removeAllConfirmation = false
+    @State private var hoveringDropZone = false
 
-    private let wallpaperColumns = [GridItem(.adaptive(minimum: 200, maximum: 280), spacing: 14)]
+    private let wallpaperColumns = [GridItem(.adaptive(minimum: 200, maximum: 280), spacing: 16)]
 
     var body: some View {
         HSplitView {
@@ -16,6 +17,8 @@ struct ContentView: View {
                 .frame(minWidth: 470)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 10) {
@@ -48,6 +51,7 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .buttonStyle(.glass)
                 .help("Reload catalogue")
                 .disabled(model.isWorking)
             }
@@ -102,6 +106,7 @@ struct ContentView: View {
             Image(systemName: "ellipsis.circle")
         }
         .menuStyle(.button)
+        .buttonStyle(.glass)
         .labelStyle(.iconOnly)
         .help("Maintenance")
     }
@@ -110,7 +115,7 @@ struct ContentView: View {
 
     private var importerPane: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 sectionHeader("Import a Video", systemImage: "square.and.arrow.down")
 
                 dropZone
@@ -125,13 +130,19 @@ struct ContentView: View {
 
                 if model.isWorking {
                     progressCard
+                        .transition(.scale(scale: 0.97).combined(with: .opacity))
                 }
 
                 Button {
                     model.importSelectedVideo()
                 } label: {
-                    Label("Import into Aerials", systemImage: "square.and.arrow.down")
-                        .frame(maxWidth: .infinity)
+                    Label {
+                        Text("Import into Aerials")
+                    } icon: {
+                        Image(systemName: "square.and.arrow.down")
+                            .symbolEffect(.pulse, options: .repeating, isActive: model.isWorking)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
@@ -139,31 +150,45 @@ struct ContentView: View {
 
                 whatHappensCard
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 8)
 
                 Text("After importing, select the new item in System Settings → Wallpaper; macOS applies it to Desktop, Lock Screen and Screen Saver natively. You may quit AerialDrop after setup; macOS handles playback natively.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(22)
+            .padding(24)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .background(importPaneBackground)
+        .scrollIndicators(.hidden)
     }
 
     private var importPaneBackground: some View {
-        LinearGradient(
-            colors: [Color(nsColor: .windowBackgroundColor), Color(nsColor: .windowBackgroundColor).opacity(0.4)],
-            startPoint: .top,
-            endPoint: .bottom
+        MeshGradient(
+            width: 3,
+            height: 3,
+            points: [
+                SIMD2(0.00, 0.00), SIMD2(0.50, 0.02), SIMD2(1.00, 0.00),
+                SIMD2(0.02, 0.50), SIMD2(0.50, 0.50), SIMD2(0.98, 0.50),
+                SIMD2(0.00, 1.00), SIMD2(0.50, 0.98), SIMD2(1.00, 1.00)
+            ],
+            colors: [
+                Color(red: 0.22, green: 0.24, blue: 0.48), Color(red: 0.10, green: 0.55, blue: 0.55), Color(red: 0.22, green: 0.24, blue: 0.48),
+                Color(red: 0.12, green: 0.30, blue: 0.55), Color(red: 0.42, green: 0.30, blue: 0.62), Color(red: 0.12, green: 0.30, blue: 0.55),
+                Color(red: 0.22, green: 0.24, blue: 0.48), Color(red: 0.06, green: 0.46, blue: 0.52), Color(red: 0.22, green: 0.24, blue: 0.48)
+            ],
+            smoothsColors: true
         )
+        .opacity(0.4)
+        .allowsHitTesting(false)
     }
 
     private var dropZone: some View {
         Button {
             model.showingFileImporter = true
         } label: {
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 if let url = model.selectedVideo {
                     Image(systemName: "film.fill")
                         .font(.system(size: 42, weight: .medium))
@@ -177,9 +202,12 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     Image(systemName: "film.stack")
-                        .font(.system(size: 40, weight: .medium))
+                        .font(.system(size: 30, weight: .medium))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.tint)
+                        .padding(18)
+                        .glassEffect(.regular, in: Circle())
+                        .symbolEffect(.pulse, isActive: hoveringDropZone)
                     Text("Choose or drop a video")
                         .font(.headline)
                     Text("MP4 or MOV · The source file is not modified")
@@ -187,16 +215,19 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 240)
-            .padding(12)
-            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+            .frame(maxWidth: .infinity, minHeight: 260)
+            .padding(16)
+            .glassEffect(.regular.tint(.accentColor.opacity(0.22)), in: .rect(cornerRadius: 24))
             .overlay {
-                RoundedRectangle(cornerRadius: 18)
+                RoundedRectangle(cornerRadius: 24)
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [7]))
-                    .foregroundStyle(.quaternary)
+                    .foregroundStyle(hoveringDropZone ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.quaternary))
             }
+            .scaleEffect(hoveringDropZone ? 1.012 : 1)
         }
         .buttonStyle(.plain)
+        .onHover { hoveringDropZone = $0 }
+        .animation(.spring(duration: 0.35, bounce: 0.25), value: hoveringDropZone)
         .dropDestination(for: URL.self) { urls, _ in
             guard let first = urls.first else { return false }
             model.chooseVideo(first)
@@ -205,68 +236,103 @@ struct ContentView: View {
     }
 
     private var progressCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                Image(systemName: model.stage.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .symbolEffect(.pulse, options: .repeating, isActive: model.stage != .finished)
+                    .foregroundStyle(.tint)
+                Text(model.stage.label)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             ProgressView(value: model.stage.progress)
-            Text(model.stage.label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .tint(.accentColor)
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
     }
 
     private var whatHappensCard: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("What happens")
                 .font(.callout.weight(.semibold))
-            Label("Builds an 80-second, 30 fps HEVC Main10 stream with native temporal sub-layers", systemImage: "film")
-            Label("Normalizes timestamp zero and creates a Tahoe-compatible HEIF preview", systemImage: "photo")
-            Label("Backs up entries.json and preserves other apps’ entries", systemImage: "doc.badge.gearshape")
-            Label("Adds a complete Tahoe Aerial catalogue entry", systemImage: "rectangle.stack")
+            ForEach(whatHappensRows) { row in
+                HStack(spacing: 10) {
+                    Image(systemName: row.icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.tint)
+                        .frame(width: 26, height: 26)
+                        .background(.tint.opacity(0.14), in: Circle())
+                    Text(row.text)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
-        .font(.callout)
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
+
+    private struct WhatHappensRow: Identifiable {
+        let id = UUID()
+        let icon: String
+        let text: String
+    }
+
+    private let whatHappensRows: [WhatHappensRow] = [
+        WhatHappensRow(icon: "film", text: "Builds an 80-second, 30 fps HEVC Main10 stream with native temporal sub-layers"),
+        WhatHappensRow(icon: "photo", text: "Normalizes timestamp zero and creates a Tahoe-compatible HEIF preview"),
+        WhatHappensRow(icon: "doc.badge.gearshape", text: "Backs up entries.json and preserves other apps’ entries"),
+        WhatHappensRow(icon: "rectangle.stack", text: "Adds a complete Tahoe Aerial catalogue entry")
+    ]
 
     // MARK: - Library
 
     private var libraryPane: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 10) {
                     sectionHeader("Imported Wallpapers", systemImage: "photo.stack")
                     Text("\(model.wallpapers.count)")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
                     Spacer()
                 }
 
                 if model.wallpapers.isEmpty {
-                    ContentUnavailableView(
-                        "No AerialDrop Wallpapers",
-                        systemImage: "rectangle.stack.badge.plus",
-                        description: Text("Imported videos will appear here and under the AerialDrop section in System Settings.")
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 380)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                    emptyLibrary
                 } else {
-                    LazyVGrid(columns: wallpaperColumns, spacing: 14) {
+                    LazyVGrid(columns: wallpaperColumns, spacing: 16) {
                         ForEach(model.wallpapers) { wallpaper in
                             WallpaperCard(wallpaper: wallpaper) {
                                 model.remove(wallpaper)
                             }
                         }
                     }
+                    .animation(.spring(duration: 0.35, bounce: 0.2), value: model.wallpapers)
                 }
             }
-            .padding(22)
+            .padding(24)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .scrollIndicators(.hidden)
+    }
+
+    private var emptyLibrary: some View {
+        ContentUnavailableView {
+            Label("No AerialDrop Wallpapers", systemImage: "rectangle.stack.badge.plus")
+        } description: {
+            Text("Imported videos will appear here and under the AerialDrop section in System Settings.")
+        }
+        .frame(maxWidth: .infinity, minHeight: 380)
+        .glassEffect(.regular.tint(.accentColor.opacity(0.12)), in: .rect(cornerRadius: 22))
     }
 
     private func sectionHeader(_ title: String, systemImage: String) -> some View {
@@ -317,6 +383,7 @@ private struct WallpaperCard: View {
                 Button(role: .destructive, action: remove) {
                     Image(systemName: "trash.fill")
                         .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.red)
                         .padding(7)
                         .background(.regularMaterial, in: Circle())
                 }
@@ -326,8 +393,9 @@ private struct WallpaperCard: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
+        .scaleEffect(hovering ? 1.02 : 1)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(.spring(duration: 0.3, bounce: 0.2), value: hovering)
     }
 
     private var thumbnail: some View {
@@ -336,6 +404,7 @@ private struct WallpaperCard: View {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFill()
+                    .scaleEffect(hovering ? 1.05 : 1)
             } else {
                 Rectangle().fill(.quaternary.opacity(0.6))
                 Image(systemName: "film")

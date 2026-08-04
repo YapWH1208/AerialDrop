@@ -50,6 +50,19 @@ enum ImportStage: Equatable {
         case .finished: return 1
         }
     }
+
+    var icon: String {
+        switch self {
+        case .idle: return "square.and.arrow.down"
+        case .validating: return "checkmark.seal"
+        case .preparingFolders: return "folder"
+        case .processingVideo: return "film"
+        case .generatingThumbnail: return "photo"
+        case .updatingManifest: return "rectangle.stack.badge.plus"
+        case .refreshingSystem: return "arrow.triangle.2.circlepath"
+        case .finished: return "checkmark.circle.fill"
+        }
+    }
 }
 
 enum AerialDropError: LocalizedError {
