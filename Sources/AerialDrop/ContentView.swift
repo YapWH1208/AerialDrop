@@ -22,18 +22,18 @@ struct ContentView: View {
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                HStack(spacing: 10) {
+                HStack(spacing: 16) {
                     Image(systemName: "sparkles.tv")
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 26, weight: .semibold))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.tint)
                     Text("AerialDrop")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 28, weight: .bold))
                     Text("v\(AppVersion.shortVersion)")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
                         .background(.quaternary, in: Capsule())
                 }
             }

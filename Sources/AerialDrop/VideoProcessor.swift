@@ -129,12 +129,11 @@ struct VideoProcessor: Sendable {
 
         let naturalSize = try await sourceTrack.load(.naturalSize)
         let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
-        let renderSize = evenSize(
-            CGSize(
-                width: max(2, abs(transformedRect.width)),
-                height: max(2, abs(transformedRect.height))
-            )
+        let sourceSize = CGSize(
+            width: max(2, abs(transformedRect.width)),
+            height: max(2, abs(transformedRect.height))
         )
+        let renderSize = evenSize(target16by9Size(from: sourceSize))
 
         let videoComposition = makeVideoComposition(
             track: segmentTrack,
@@ -174,11 +173,22 @@ struct VideoProcessor: Sendable {
         duration: CMTime
     ) -> AVVideoComposition {
         var layerConfiguration = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
-        let normalizedTransform = preferredTransform.translatedBy(
-            x: -transformedRect.minX,
-            y: -transformedRect.minY
+        let sourceSize = CGSize(
+            width: max(2, abs(transformedRect.width)),
+            height: max(2, abs(transformedRect.height))
         )
-        layerConfiguration.setTransform(normalizedTransform, at: .zero)
+        let scale = max(
+            renderSize.width / sourceSize.width,
+            renderSize.height / sourceSize.height
+        )
+        let offsetX = (renderSize.width - sourceSize.width * scale) / 2
+        let offsetY = (renderSize.height - sourceSize.height * scale) / 2
+
+        let cropTransform = preferredTransform
+            .translatedBy(x: -transformedRect.minX, y: -transformedRect.minY)
+            .scaledBy(x: scale, y: scale)
+            .translatedBy(x: offsetX, y: offsetY)
+        layerConfiguration.setTransform(cropTransform, at: .zero)
 
         var instructionConfiguration = AVVideoCompositionInstruction.Configuration()
         instructionConfiguration.timeRange = CMTimeRange(start: .zero, duration: duration)
@@ -583,6 +593,19 @@ struct VideoProcessor: Sendable {
 
         try? FileManager.default.removeItem(at: destination)
         try (data as Data).write(to: destination, options: .atomic)
+    }
+
+    /// Fits a source into a 16:9 frame capped at 4K, never upscaling. Sources that
+    /// already fit (16:9, ≤ 3840×2160) pass through unchanged. The crop-to-fill
+    /// scale and centering are applied by the video-composition layer transform.
+    private func target16by9Size(from sourceSize: CGSize) -> CGSize {
+        if sourceSize.width / sourceSize.height >= 16.0 / 9.0 {
+            let height = min(sourceSize.height, 2160)
+            return CGSize(width: height * (16.0 / 9.0), height: height)
+        } else {
+            let width = min(sourceSize.width, 3840)
+            return CGSize(width: width, height: width * (9.0 / 16.0))
+        }
     }
 
     private func evenSize(_ size: CGSize) -> CGSize {

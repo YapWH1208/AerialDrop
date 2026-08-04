@@ -33,7 +33,6 @@ struct LibraryPane: View {
                                 isSelected: selectedID == wallpaper.id,
                                 namespace: glass,
                                 remove: { model.remove(wallpaper) },
-                                openSettings: { model.openWallpaperSettings() },
                                 onSelect: {
                                     guard !model.isWorking else { return }
                                     selectedID = selectedID == wallpaper.id ? nil : wallpaper.id

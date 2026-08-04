@@ -30,9 +30,7 @@ final class AppModel {
 
     func chooseVideo(_ url: URL) {
         selectedVideo = url
-        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            title = url.deletingPathExtension().lastPathComponent
-        }
+        title = url.deletingPathExtension().lastPathComponent
     }
 
     func importSelectedVideo() {
