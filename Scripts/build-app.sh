@@ -26,6 +26,12 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILD_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 
+if [[ -f "$PWD/Assets/AppIcon.icns" ]]; then
+    cp "$PWD/Assets/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+else
+    echo "Warning: Assets/AppIcon.icns not found; run Scripts/make-icon.swift first" >&2
+fi
+
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,6 +41,8 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <string>AerialDrop</string>
     <key>CFBundleExecutable</key>
     <string>AerialDrop</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.yapwh.aerialdrop</string>
     <key>CFBundleInfoDictionaryVersion</key>
