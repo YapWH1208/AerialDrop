@@ -35,7 +35,6 @@ struct LibraryPane: View {
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
         .scrollIndicators(.hidden)
     }
 

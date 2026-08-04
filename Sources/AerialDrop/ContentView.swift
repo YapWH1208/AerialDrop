@@ -15,6 +15,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .background(AuroraBackground().ignoresSafeArea())
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .principal) {

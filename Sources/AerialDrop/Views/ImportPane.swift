@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct SectionHeader: View {
@@ -62,32 +61,22 @@ struct ImportPane: View {
             }
             .padding(24)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .background(importPaneBackground)
         .scrollIndicators(.hidden)
     }
 
-    private var importPaneBackground: some View {
-        MeshGradient(
-            width: 3,
-            height: 3,
-            points: [
-                SIMD2(0.00, 0.00), SIMD2(0.50, 0.02), SIMD2(1.00, 0.00),
-                SIMD2(0.02, 0.50), SIMD2(0.50, 0.50), SIMD2(0.98, 0.50),
-                SIMD2(0.00, 1.00), SIMD2(0.50, 0.98), SIMD2(1.00, 1.00)
-            ],
-            colors: [
-                Color(red: 0.22, green: 0.24, blue: 0.48), Color(red: 0.10, green: 0.55, blue: 0.55), Color(red: 0.22, green: 0.24, blue: 0.48),
-                Color(red: 0.12, green: 0.30, blue: 0.55), Color(red: 0.42, green: 0.30, blue: 0.62), Color(red: 0.12, green: 0.30, blue: 0.55),
-                Color(red: 0.22, green: 0.24, blue: 0.48), Color(red: 0.06, green: 0.46, blue: 0.52), Color(red: 0.22, green: 0.24, blue: 0.48)
-            ],
-            smoothsColors: true
-        )
-        .opacity(0.4)
-        .allowsHitTesting(false)
+    private var dropZone: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.16))
+                .frame(width: 360, height: 360)
+                .blur(radius: 80)
+                .allowsHitTesting(false)
+            dropZoneButton
+        }
+        .frame(maxWidth: .infinity)
     }
 
-    private var dropZone: some View {
+    private var dropZoneButton: some View {
         Button {
             model.showingFileImporter = true
         } label: {
