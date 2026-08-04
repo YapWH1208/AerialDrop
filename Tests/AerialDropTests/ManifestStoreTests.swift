@@ -70,6 +70,39 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(canonical(restored), canonical(original))
     }
 
+    func testRenameUpdatesTitleAndPreservesForeignData() throws {
+        let id = "BBBBBBBB-CCCC-4DDD-8EEE-FFFFFFFF1234"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Old Name")
+
+        try store.renameWallpaper(id: id, title: "New Name")
+
+        let result = try json(at: paths.manifest)
+        let assets = try XCTUnwrap(result["assets"] as? [[String: Any]])
+        let asset = try XCTUnwrap(assets.first(where: { ($0["id"] as? String) == id }))
+        XCTAssertEqual(asset["localizedNameKey"] as? String, "New Name")
+        XCTAssertEqual(asset["accessibilityLabel"] as? String, "New Name")
+
+        let foreignAsset = try XCTUnwrap(
+            assets.first { !(($0["categories"] as? [String]) ?? []).contains(ManifestStore.categoryID) }
+        )
+        XCTAssertEqual(foreignAsset["id"] as? String, "EC42DAD0-E8D4-4408-9CA3-3B4767783453")
+
+        let wallpapers = try store.importedWallpapers()
+        XCTAssertEqual(wallpapers.first { $0.id == id }?.title, "New Name")
+    }
+
+    func testRenameUnknownWallpaperThrows() throws {
+        XCTAssertThrowsError(
+            try store.renameWallpaper(id: "ZZZZZZZZ-ZZZZ-4ZZZ-8ZZZ-ZZZZZZZZZZZZ", title: "Ghost")
+        ) { error in
+            guard case AerialDropError.wallpaperNotFound = error else {
+                return XCTFail("Expected wallpaperNotFound, got \(error)")
+            }
+        }
+    }
+
     private func fixtureData() throws -> Data {
         let fixture: [String: Any] = [
             "version": 1,

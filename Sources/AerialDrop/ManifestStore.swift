@@ -98,6 +98,29 @@ struct ManifestStore {
         }
     }
 
+    func renameWallpaper(id: String, title: String) throws {
+        try requireManifest()
+
+        try mutateManifest(operation: "rename") { root in
+            guard var assets = root["assets"] as? [[String: Any]] else {
+                throw AerialDropError.malformedManifest("missing top-level assets array")
+            }
+            guard let index = assets.firstIndex(where: { ($0["id"] as? String) == id }),
+                  ((assets[index]["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
+                throw AerialDropError.wallpaperNotFound
+            }
+
+            var asset = assets[index]
+            asset["localizedNameKey"] = title
+            asset["accessibilityLabel"] = title
+            assets[index] = asset
+
+            let normalized = normalizeManagedAssets(assets)
+            root["assets"] = normalized
+            root["initialAssetCount"] = normalized.count
+        }
+    }
+
     func removeWallpaper(id: String) throws {
         try requireManifest()
 

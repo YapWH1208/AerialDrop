@@ -49,4 +49,9 @@ struct SystemWallpaperService {
     func openFolder(_ url: URL) {
         NSWorkspace.shared.open(url)
     }
+
+    @MainActor
+    func revealInFinder(_ url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
 }

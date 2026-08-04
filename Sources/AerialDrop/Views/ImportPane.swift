@@ -30,9 +30,15 @@ struct ImportPane: View {
                     TextField("Example: Yoimiya 4K", text: $model.title)
                         .textFieldStyle(.roundedBorder)
                         .controlSize(.large)
+                        .onSubmit {
+                            if model.canImport { model.importSelectedVideo() }
+                        }
                 }
 
-                if model.isWorking {
+                if model.importSucceeded {
+                    successCard
+                        .transition(.scale(scale: 0.97).combined(with: .opacity))
+                } else if model.isWorking {
                     progressCard
                         .transition(.scale(scale: 0.97).combined(with: .opacity))
                 }
@@ -162,18 +168,56 @@ struct ImportPane: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer()
-                Text("\(Int(model.stage.progress * 100))%")
+                Text("\(Int(model.displayProgress * 100))%")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
                     .monospacedDigit()
             }
-            ProgressView(value: model.stage.progress)
+            ProgressView(value: model.displayProgress)
                 .tint(.accentColor)
+            HStack {
+                Spacer()
+                Button("Cancel Import", role: .cancel) {
+                    model.cancelImport()
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .help("Stop the import and keep the current selection")
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+    }
+
+    private var successCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.green)
+                Text("Imported successfully")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+                Button {
+                    model.importSucceeded = false
+                } label: {
+                    Label("Dismiss", systemImage: "xmark.circle.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .labelStyle(.iconOnly)
+                .help("Dismiss")
+            }
+            Text("Select the new item under AerialDrop in System Settings → Wallpaper; macOS applies it to Desktop, Lock Screen and Screen Saver natively.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular.tint(.green.opacity(0.15)), in: .rect(cornerRadius: 18))
     }
 
     private var whatHappensCard: some View {
