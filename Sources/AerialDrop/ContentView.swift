@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var removeAllConfirmation = false
+    @State private var alertPresented = false
+    @State private var alertMessage: String?
 
     var body: some View {
         @Bindable var model = model
@@ -55,13 +57,19 @@ struct ContentView: View {
                 maintenanceMenu
             }
         }
-        .alert("AerialDrop", isPresented: Binding(
-            get: { model.alertMessage != nil },
-            set: { if !$0 { model.alertMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { model.alertMessage = nil }
-        } message: {
-            Text(model.alertMessage ?? "")
+        .alert("AerialDrop", isPresented: $alertPresented) { } message: {
+            Text(alertMessage ?? "")
+        }
+        .onChange(of: model.alertMessage) { _, newValue in
+            if let newValue {
+                alertMessage = newValue
+                alertPresented = true
+            }
+        }
+        .onChange(of: alertPresented) { _, presented in
+            if !presented && model.alertMessage != nil {
+                model.alertMessage = nil
+            }
         }
         .confirmationDialog(
             "Remove every AerialDrop wallpaper?",
