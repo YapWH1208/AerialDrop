@@ -14,7 +14,7 @@ struct VideoPreview: View {
             if let frame {
                 Image(nsImage: frame)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             } else {
                 Rectangle().fill(.quaternary.opacity(0.6))
                 ProgressView()

@@ -6,7 +6,6 @@ struct WallpaperCard: View {
     let isSelected: Bool
     let namespace: Namespace.ID
     let remove: () -> Void
-    let openSettings: () -> Void
     let onSelect: () -> Void
 
     @State private var image: NSImage?
@@ -38,11 +37,6 @@ struct WallpaperCard: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-
-            if isSelected {
-                actionBar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
         }
         .padding(10)
         .glassEffect(.regular.tint(isSelected ? .accentColor.opacity(0.2) : .white.opacity(0.05)), in: .rect(cornerRadius: 16))
@@ -91,25 +85,6 @@ struct WallpaperCard: View {
             }
         }
         .padding(8)
-    }
-
-    private var actionBar: some View {
-        HStack(spacing: 8) {
-            Button(action: openSettings) {
-                Label("Set in System Settings", systemImage: "gearshape")
-            }
-            .buttonStyle(.glassProminent)
-            .controlSize(.small)
-
-            Spacer()
-
-            Button(role: .destructive, action: remove) {
-                Label("Remove", systemImage: "trash")
-            }
-            .buttonStyle(.glass)
-            .controlSize(.small)
-        }
-        .padding(.top, 2)
     }
 
     private var thumbnail: some View {
