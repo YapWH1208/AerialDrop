@@ -3,7 +3,11 @@ import SwiftUI
 
 struct WallpaperCard: View {
     let wallpaper: ManagedWallpaper
+    let isSelected: Bool
+    let namespace: Namespace.ID
     let remove: () -> Void
+    let openSettings: () -> Void
+    let onSelect: () -> Void
 
     @State private var image: NSImage?
     @State private var hovering = false
@@ -28,31 +32,79 @@ struct WallpaperCard: View {
                         .help("Video missing")
                 }
             }
+
+            if isSelected {
+                actionBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .padding(10)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .glassEffect(.regular.tint(isSelected ? .accentColor.opacity(0.2) : .white.opacity(0.05)), in: .rect(cornerRadius: 16))
+        .glassEffectID(isSelected ? wallpaper.id : nil, in: namespace)
+        .glassEffectTransition(.materialize)
         .overlay {
             RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(.separator, lineWidth: 0.5)
+                .strokeBorder(
+                    isSelected ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.separator),
+                    lineWidth: isSelected ? 1.5 : 0.5
+                )
         }
         .overlay(alignment: .topTrailing) {
-            if hovering {
+            topTrailingBadge
+        }
+        .scaleEffect(hovering ? 1.02 : 1)
+        .onTapGesture { onSelect() }
+        .onHover { hovering = $0 }
+        .animation(.spring(duration: 0.3, bounce: 0.2), value: hovering)
+        .animation(.spring(duration: 0.35, bounce: 0.25), value: isSelected)
+    }
+
+    private var topTrailingBadge: some View {
+        Group {
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 15))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
+                    .padding(7)
+                    .glassEffect(.regular.tint(.accentColor.opacity(0.4)), in: Circle())
+                    .glassEffectUnion(id: wallpaper.id, namespace: namespace)
+                    .help("Selected")
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            } else if hovering {
                 Button(role: .destructive, action: remove) {
                     Image(systemName: "trash.fill")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.red)
                         .padding(7)
                         .background(.regularMaterial, in: Circle())
+                        .glassEffectUnion(id: wallpaper.id, namespace: namespace)
                 }
                 .buttonStyle(.plain)
                 .help("Remove this wallpaper")
-                .padding(8)
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
-        .scaleEffect(hovering ? 1.02 : 1)
-        .onHover { hovering = $0 }
-        .animation(.spring(duration: 0.3, bounce: 0.2), value: hovering)
+        .padding(8)
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 8) {
+            Button(action: openSettings) {
+                Label("Set in System Settings", systemImage: "gearshape")
+            }
+            .buttonStyle(.glassProminent)
+            .controlSize(.small)
+
+            Spacer()
+
+            Button(role: .destructive, action: remove) {
+                Label("Remove", systemImage: "trash")
+            }
+            .buttonStyle(.glass)
+            .controlSize(.small)
+        }
+        .padding(.top, 2)
     }
 
     private var thumbnail: some View {
