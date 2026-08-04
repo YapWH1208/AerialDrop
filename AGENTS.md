@@ -4,10 +4,10 @@ macOS Tahoe 26-only Swift Package (SPM executable → SwiftUI app) that imports 
 
 ## Build / test
 
-- Requires the macOS 26 (Tahoe) SDK: `Package.swift` pins `.macOS("26.0")`, and `ContentView` uses Liquid Glass `glassEffect` materials. Building or testing on an older SDK fails.
-- `swift build`, `swift test`, `swift build -c release` are the only commands (no lint/format/typecheck tooling).
-- `Scripts/build-app.sh` produces `dist/AerialDrop.app` (Info.plist + ad-hoc codesign). It **wipes `.build` first**, so it is a full rebuild; CI runs `build → test → release build → build-app.sh` on `macos-26`.
-- Only unit tests exist: `ManifestStoreTests`. There are no video-pipeline tests — real imports must be verified manually on a Tahoe machine per TESTING.md.
+- Requires the macOS 26 (Tahoe) SDK and a Swift 6.2+ toolchain: `Package.swift` pins `.macOS("26.0")` with `swift-tools-version: 6.2` (Swift 6 language mode — new code must satisfy strict concurrency), and `ContentView` uses Liquid Glass `glassEffect` materials. Building or testing on an older SDK fails.
+- `swift build`, `swift test`, `swift build -c release` are the only commands (no lint/format/typecheck tooling). Run a single test with `swift test --filter ManifestStoreTests`.
+- `Scripts/build-app.sh` produces `dist/AerialDrop.app` (Info.plist + ad-hoc codesign; icon from `Assets/AppIcon.icns`, regenerable via `Scripts/make-icon.swift`). It **wipes `.build` first**, so it is a full rebuild; CI runs `build → test → release build → build-app.sh` on `macos-26`.
+- The only test file is `Tests/AerialDropTests/ManifestStoreTests.swift`. There are no video-pipeline tests — real imports must be verified manually on a Tahoe machine per TESTING.md.
 
 ## Hard-won invariants (do not casually change)
 
@@ -18,7 +18,7 @@ macOS Tahoe 26-only Swift Package (SPM executable → SwiftUI app) that imports 
 
 ## Structural notes
 
-- Entry point: `AerialDropApp.swift` → `AppModel` (@MainActor orchestrates import) → `VideoProcessor` (async AVFoundation encode), `ManifestStore` (sync manifest writes), `SystemWallpaperService` (killall + open System Settings).
+- Entry point: `AerialDropApp.swift` → `AppModel` (`@MainActor` `@Observable`; orchestrates import) → `VideoProcessor` (async AVFoundation encode), `ManifestStore` (sync manifest writes), `SystemWallpaperService` (killall + open System Settings).
 - `WallpaperPaths(homeDirectory:)` takes an injectable home. Tests always redirect into a temp dir; never point tests or new code at real user paths.
 - Stable IDs live in `ManifestStore` (`categoryID`/`subcategoryID`, `categoryName = "AerialDrop"`).
 - Errors funnel through the `AerialDropError` enum in Models.swift (localized descriptions surface directly in the UI).
