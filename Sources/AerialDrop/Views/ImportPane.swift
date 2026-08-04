@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SectionHeader: View {
@@ -48,7 +49,9 @@ struct ImportPane: View {
                 }
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
+                .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!model.canImport)
+                .help("Import the selected video (⌘↩)")
 
                 whatHappensCard
 
@@ -62,6 +65,9 @@ struct ImportPane: View {
             .padding(24)
         }
         .scrollIndicators(.hidden)
+        .sensoryFeedback(.success, trigger: model.stage, condition: { old, new in
+            new == .finished && old != .finished
+        })
     }
 
     private var dropZone: some View {
@@ -82,16 +88,25 @@ struct ImportPane: View {
         } label: {
             VStack(spacing: 12) {
                 if let url = model.selectedVideo {
-                    Image(systemName: "film.fill")
-                        .font(.system(size: 42, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    VideoPreview(url: url)
+                        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18)
+                                .strokeBorder(.separator, lineWidth: 0.5)
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            Label("Click to change", systemImage: "square.and.arrow.up")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(.regularMaterial, in: Capsule())
+                                .padding(10)
+                        }
                     Text(url.lastPathComponent)
                         .font(.callout.weight(.medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Text("Click to choose another file")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 } else {
                     Image(systemName: "film.stack")
                         .font(.system(size: 30, weight: .medium))
@@ -99,7 +114,7 @@ struct ImportPane: View {
                         .foregroundStyle(.tint)
                         .padding(18)
                         .glassEffect(.regular, in: Circle())
-                        .symbolEffect(.pulse, isActive: hoveringDropZone)
+                        .symbolEffect(.bounce, value: hoveringDropZone)
                     Text("Choose or drop a video")
                         .font(.headline)
                     Text("MP4 or MOV · The source file is not modified")
@@ -118,7 +133,14 @@ struct ImportPane: View {
             .scaleEffect(hoveringDropZone ? 1.012 : 1)
         }
         .buttonStyle(.plain)
-        .onHover { hoveringDropZone = $0 }
+        .onHover { hovering in
+            hoveringDropZone = hovering
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
         .animation(.spring(duration: 0.35, bounce: 0.25), value: hoveringDropZone)
         .dropDestination(for: URL.self) { urls, _ in
             guard let first = urls.first else { return false }
@@ -138,6 +160,12 @@ struct ImportPane: View {
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                Spacer()
+                Text("\(Int(model.stage.progress * 100))%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                    .monospacedDigit()
             }
             ProgressView(value: model.stage.progress)
                 .tint(.accentColor)
