@@ -3,10 +3,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var removeAllConfirmation = false
 
     var body: some View {
+        @Bindable var model = model
         HSplitView {
             ImportPane()
                 .frame(minWidth: 420, maxWidth: 540)
