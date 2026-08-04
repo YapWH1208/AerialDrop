@@ -14,8 +14,26 @@ private struct WriterPump: @unchecked Sendable {
     let input: AVAssetWriterInput
 }
 
-struct VideoProcessor {
-    private let fileManager = FileManager.default
+/// Serializes the single-shot completion of the writer pump: resumes the
+/// continuation at most once, and only from the writer queue.
+private final class WriterPumpCompletion: @unchecked Sendable {
+    private let queue: DispatchQueue
+    private var finished = false
+
+    init(queue: DispatchQueue) {
+        self.queue = queue
+    }
+
+    func finish(with result: Result<Void, Error>, resuming continuation: CheckedContinuation<Void, Error>) {
+        queue.async {
+            guard !self.finished else { return }
+            self.finished = true
+            continuation.resume(with: result)
+        }
+    }
+}
+
+struct VideoProcessor: Sendable {
     private let nativeTargetDuration = CMTime(seconds: 80, preferredTimescale: 600)
     private let nativeFrameRate: Int32 = 30
     private let targetBitRate = 20_000_000
@@ -52,7 +70,7 @@ struct VideoProcessor {
     /// without re-encoding. The working Wallper asset uses this sample-table shape:
     /// regular 1.9-second closed GOPs plus a fresh sync sample at every loop boundary.
     func makeNativeMOV(from source: URL, destination: URL) async throws {
-        try? fileManager.removeItem(at: destination)
+        try? FileManager.default.removeItem(at: destination)
 
         let sourceAsset = AVURLAsset(url: source)
         let sourceTracks = try await sourceAsset.loadTracks(withMediaType: .video)
@@ -86,7 +104,7 @@ struct VideoProcessor {
         let segmentURL = destination.deletingLastPathComponent().appendingPathComponent(
             ".AerialDrop-\(UUID().uuidString)-segment.mov"
         )
-        defer { try? fileManager.removeItem(at: segmentURL) }
+        defer { try? FileManager.default.removeItem(at: segmentURL) }
 
         let segmentComposition = AVMutableComposition()
         guard let segmentTrack = segmentComposition.addMutableTrack(
@@ -136,7 +154,7 @@ struct VideoProcessor {
         )
 
         if CMTimeCompare(segmentDuration, nativeTargetDuration) >= 0 {
-            try fileManager.moveItem(at: segmentURL, to: destination)
+            try FileManager.default.moveItem(at: segmentURL, to: destination)
         } else {
             try await repeatEncodedSegment(
                 segmentURL: segmentURL,
@@ -257,26 +275,18 @@ struct VideoProcessor {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let queue = DispatchQueue(label: "com.yapwh.aerialdrop.main10-writer")
             let pump = WriterPump(reader: reader, output: output, writer: writer, input: input)
-            var completed = false
-
-            func finish(_ result: Result<Void, Error>) {
-                queue.async {
-                    guard !completed else { return }
-                    completed = true
-                    continuation.resume(with: result)
-                }
-            }
+            let completion = WriterPumpCompletion(queue: queue)
 
             pump.input.requestMediaDataWhenReady(on: queue) {
-                while pump.input.isReadyForMoreMediaData, !completed {
+                while pump.input.isReadyForMoreMediaData {
                     if let sample = pump.output.copyNextSampleBuffer() {
                         guard pump.input.append(sample) else {
                             pump.reader.cancelReading()
                             pump.writer.cancelWriting()
-                            finish(.failure(AerialDropError.exportFailed(
+                            completion.finish(with: .failure(AerialDropError.exportFailed(
                                 pump.writer.error?.localizedDescription
                                     ?? "The HEVC Main10 writer rejected a video sample."
-                            )))
+                            )), resuming: continuation)
                             return
                         }
                         continue
@@ -284,9 +294,9 @@ struct VideoProcessor {
 
                     if pump.reader.status == .failed {
                         pump.writer.cancelWriting()
-                        finish(.failure(AerialDropError.exportFailed(
+                        completion.finish(with: .failure(AerialDropError.exportFailed(
                             pump.reader.error?.localizedDescription ?? "The 10-bit video reader failed."
-                        )))
+                        )), resuming: continuation)
                         return
                     }
 
@@ -295,16 +305,16 @@ struct VideoProcessor {
                     pump.writer.finishWriting {
                         switch pump.writer.status {
                         case .completed:
-                            finish(.success(()))
+                            completion.finish(with: .success(()), resuming: continuation)
                         case .failed, .cancelled:
-                            finish(.failure(AerialDropError.exportFailed(
+                            completion.finish(with: .failure(AerialDropError.exportFailed(
                                 pump.writer.error?.localizedDescription
                                     ?? "The HEVC Main10 writer did not finish."
-                            )))
+                            )), resuming: continuation)
                         default:
-                            finish(.failure(AerialDropError.exportFailed(
+                            completion.finish(with: .failure(AerialDropError.exportFailed(
                                 "Unexpected writer status: \(pump.writer.status.rawValue)"
-                            )))
+                            )), resuming: continuation)
                         }
                     }
                     return
@@ -367,7 +377,7 @@ struct VideoProcessor {
             throw AerialDropError.passthroughUnavailable
         }
 
-        try? fileManager.removeItem(at: destination)
+        try? FileManager.default.removeItem(at: destination)
         exporter.outputURL = destination
         exporter.outputFileType = .mov
         exporter.shouldOptimizeForNetworkUse = true
@@ -410,7 +420,7 @@ struct VideoProcessor {
     }
 
     private func validateInstalledVideo(_ url: URL, loopDuration: CMTime) async throws {
-        guard fileManager.fileExists(atPath: url.path) else {
+        guard FileManager.default.fileExists(atPath: url.path) else {
             throw AerialDropError.installedFileMissing(url)
         }
 
@@ -571,7 +581,7 @@ struct VideoProcessor {
             throw AerialDropError.thumbnailFailed
         }
 
-        try? fileManager.removeItem(at: destination)
+        try? FileManager.default.removeItem(at: destination)
         try (data as Data).write(to: destination, options: .atomic)
     }
 
