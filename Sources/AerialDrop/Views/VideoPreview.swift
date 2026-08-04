@@ -14,7 +14,7 @@ struct VideoPreview: View {
             if let frame {
                 Image(nsImage: frame)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
             } else {
                 Rectangle().fill(.quaternary.opacity(0.6))
                 ProgressView()
@@ -45,7 +45,7 @@ struct VideoPreview: View {
         defer { if access { url.stopAccessingSecurityScopedResource() } }
 
         let asset = AVURLAsset(url: url)
-        if let seconds = try? await asset.load(.duration).seconds, !seconds.isNaN {
+        if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite {
             duration = seconds
         }
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),

@@ -60,17 +60,7 @@ struct WallpaperCard: View {
 
     private var topTrailingBadge: some View {
         Group {
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 15))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.tint)
-                    .padding(7)
-                    .glassEffect(.regular.tint(.accentColor.opacity(0.4)), in: Circle())
-                    .glassEffectUnion(id: wallpaper.id, namespace: namespace)
-                    .help("Selected")
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
-            } else if hovering {
+            if hovering {
                 Button(role: .destructive, action: remove) {
                     Image(systemName: "trash.fill")
                         .font(.system(size: 11, weight: .semibold))
@@ -82,6 +72,16 @@ struct WallpaperCard: View {
                 .buttonStyle(.plain)
                 .help("Remove this wallpaper")
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 15))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
+                    .padding(7)
+                    .glassEffect(.regular.tint(.accentColor.opacity(0.4)), in: Circle())
+                    .glassEffectUnion(id: wallpaper.id, namespace: namespace)
+                    .help("Selected")
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
         }
         .padding(8)

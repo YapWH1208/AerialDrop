@@ -29,8 +29,11 @@ final class AppModel {
     }
 
     func chooseVideo(_ url: URL) {
+        let previousTitle = selectedVideo.map { $0.deletingPathExtension().lastPathComponent }
+        if title.isEmpty || title == previousTitle {
+            title = url.deletingPathExtension().lastPathComponent
+        }
         selectedVideo = url
-        title = url.deletingPathExtension().lastPathComponent
     }
 
     func importSelectedVideo() {
