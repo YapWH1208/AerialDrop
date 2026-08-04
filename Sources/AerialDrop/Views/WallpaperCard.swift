@@ -14,24 +14,30 @@ struct WallpaperCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            thumbnail
+            Button(action: onSelect) {
+                VStack(alignment: .leading, spacing: 9) {
+                    thumbnail
 
-            HStack(spacing: 5) {
-                Text(wallpaper.title)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                if wallpaper.videoExists {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.tint)
-                        .help("Video installed")
-                } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .help("Video missing")
+                    HStack(spacing: 5) {
+                        Text(wallpaper.title)
+                            .font(.callout.weight(.medium))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        if wallpaper.videoExists {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.tint)
+                                .help("Video installed")
+                        } else {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .help("Video missing")
+                        }
+                    }
                 }
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
 
             if isSelected {
                 actionBar
@@ -53,7 +59,6 @@ struct WallpaperCard: View {
             topTrailingBadge
         }
         .scaleEffect(hovering ? 1.02 : 1)
-        .onTapGesture { onSelect() }
         .onHover { hovering = $0 }
         .animation(.spring(duration: 0.3, bounce: 0.2), value: hovering)
         .animation(.spring(duration: 0.35, bounce: 0.25), value: isSelected)
