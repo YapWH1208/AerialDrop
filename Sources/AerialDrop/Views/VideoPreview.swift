@@ -16,13 +16,14 @@ struct VideoPreview: View {
             if let frame {
                 Image(nsImage: frame)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             } else {
                 Rectangle().fill(.quaternary.opacity(0.6))
                 ProgressView()
                     .controlSize(.small)
             }
         }
+        .background(Color.black)
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 6) {
                 if let resolution {
@@ -40,7 +41,7 @@ struct VideoPreview: View {
             .padding(8)
         }
         .overlay {
-            if let cropOffset, let resolution, isWiderThan16By9(resolution) {
+            if let cropOffset, let resolution, isUltrawide(resolution) {
                 cropBands(cropOffset: cropOffset, resolution: resolution)
             }
         }
@@ -74,8 +75,8 @@ struct VideoPreview: View {
     }
 
     /// Dims the parts of the preview box that the chosen crop window cuts away.
-    /// The box already shows the source's centered 16:9 window (scaledToFill),
-    /// so only the *difference* between that and the crop window is darkened.
+    /// The box shows the entire source fitted (scaledToFit), so the bands darken
+    /// everything outside the chosen 16:9 window.
     private func cropBands(cropOffset: Double, resolution: CGSize) -> some View {
         GeometryReader { geo in
             let bands = cropBandFractions(cropOffset: cropOffset, sourceSize: resolution)
