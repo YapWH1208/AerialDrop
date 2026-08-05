@@ -25,6 +25,7 @@ struct ConversionOptions: Sendable, Equatable {
 /// ±excess/2, where excess is the over-wide source width after scaling.
 /// Non-wide sources (no horizontal excess) always return 0.
 func cropPan(cropOffset: Double, sourceSize: CGSize, renderSize: CGSize) -> CGFloat {
+    guard cropOffset.isFinite else { return 0 }
     let scale = max(renderSize.width / sourceSize.width, renderSize.height / sourceSize.height)
     let excess = sourceSize.width * scale - renderSize.width
     guard excess > 0 else { return 0 }
@@ -33,9 +34,10 @@ func cropPan(cropOffset: Double, sourceSize: CGSize, renderSize: CGSize) -> CGFl
 }
 
 /// Effective output height: the user's cap (if any), never above the source
-/// height and never above the existing absolute 4K cap when no cap is set.
+/// height and never above the existing absolute 4K cap when no cap is set,
+/// and never below 2.
 func clampedOutputHeight(_ requested: Int?, sourceHeight: Int) -> Int {
-    min(sourceHeight, requested ?? 2160)
+    max(2, min(sourceHeight, requested ?? 2160))
 }
 
 /// Output bitrate for a quality preset, bucketed by rendered height.
@@ -77,6 +79,7 @@ func nearestCropPreset(_ offset: Double) -> Double {
 /// 16:9 window via scaledToFill) that fall outside the chosen crop window,
 /// in 0...1 box space. Matches the encode-side window from `cropPan`.
 func cropBandFractions(cropOffset: Double, sourceSize: CGSize) -> (left: Double, right: Double) {
+    guard cropOffset.isFinite else { return (0, 0) }
     let aspect = sourceSize.width / sourceSize.height
     guard aspect > 16.0 / 9.0 else { return (0, 0) }
     let f = (16.0 / 9.0) / aspect
