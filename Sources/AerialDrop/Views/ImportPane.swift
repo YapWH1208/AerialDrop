@@ -139,7 +139,7 @@ struct ImportPane: View {
             }
             .scaleEffect(hoveringDropZone ? 1.012 : 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleButtonStyle())
         .onHover { hovering in
             hoveringDropZone = hovering
             if hovering {
