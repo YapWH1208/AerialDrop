@@ -161,7 +161,10 @@ struct ImportPane: View {
                         resolution: model.sourceResolution,
                         cropOffset: isWide ? model.cropOffset : nil
                     )
-                    .frame(maxWidth: 640, maxHeight: 360)
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .frame(maxWidth: 440, maxHeight: 248)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                         .overlay(alignment: .topTrailing) {
                             Label("Click to change", systemImage: "square.and.arrow.up")
