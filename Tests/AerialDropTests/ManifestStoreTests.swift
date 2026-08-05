@@ -174,4 +174,32 @@ final class ManifestStoreTests: XCTestCase {
     private func canonical(_ object: Any) -> Data {
         try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
+
+    func testRenamePreservesResolution() throws {
+        let id = "EEEEEEEE-FFFF-4AAA-8BBB-222222222222"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Before", width: 1920, height: 1080)
+
+        try store.renameWallpaper(id: id, title: "After")
+
+        let wallpapers = try store.importedWallpapers()
+        XCTAssertEqual(wallpapers.first { $0.id == id }?.resolution, CGSize(width: 1920, height: 1080))
+    }
+
+    func testSecondImportPreservesFirstEntryResolution() throws {
+        let firstID = "99999999-AAAA-4BBB-8CCC-333333333333"
+        try Data("video".utf8).write(to: paths.videoURL(for: firstID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: firstID))
+        try store.addWallpaper(id: firstID, title: "First", width: 3440, height: 1440)
+
+        let secondID = "88888888-BBBB-4CCC-8DDD-444444444444"
+        try Data("video".utf8).write(to: paths.videoURL(for: secondID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: secondID))
+        try store.addWallpaper(id: secondID, title: "Second", width: 1920, height: 1080)
+
+        let wallpapers = try store.importedWallpapers()
+        XCTAssertEqual(wallpapers.first { $0.id == firstID }?.resolution, CGSize(width: 3440, height: 1440))
+        XCTAssertEqual(wallpapers.first { $0.id == secondID }?.resolution, CGSize(width: 1920, height: 1080))
+    }
 }
