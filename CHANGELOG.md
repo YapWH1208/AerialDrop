@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.0.0
+
 - The Import preview now shows the entire video fitted (not zoomed), and the crop overlay darkens exactly what the chosen 16:9 window cuts away — left/right for ultrawide sources, top/bottom for portrait and 4:3 sources.
 - Crop controls now appear only for ultrawide sources (21:9 and wider).
 - Output-resolution options now appear only when they actually downscale, so portrait sources no longer list 2160p/1440p choices that would encode identically.
