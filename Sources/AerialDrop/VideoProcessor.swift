@@ -248,11 +248,12 @@ struct VideoProcessor: Sendable {
         segmentTrack.preferredTransform = preferredTransform
 
         let naturalSize = try await sourceTrack.load(.naturalSize)
-        let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let rawSourceSize = VideoGeometry.displaySize(naturalSize: naturalSize, preferredTransform: preferredTransform)
         let sourceSize = CGSize(
-            width: max(2, abs(transformedRect.width)),
-            height: max(2, abs(transformedRect.height))
+            width: max(2, rawSourceSize.width),
+            height: max(2, rawSourceSize.height)
         )
+        let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let maxHeight = clampedOutputHeight(options.outputHeightCap, sourceHeight: Int(sourceSize.height))
         let renderSize = evenSize(target16by9Size(from: sourceSize, maxHeight: maxHeight))
         let pan = cropPan(cropOffset: options.cropOffset, sourceSize: sourceSize, renderSize: renderSize)

@@ -6,6 +6,7 @@
 - Added ultrawide cropping (Left/Center/Right presets plus a fine position slider) with a live crop preview in the Import pane.
 - Shows the source resolution in the Import pane and the encoded resolution on library cards and the preview sheet.
 - Added per-import conversion options: quality (Standard/High/Maximum) and output resolution (downscale to 2160p/1440p/1080p).
+- Fixed the import preview, crop bands, height caps and resolution badge for rotated (portrait) sources, which now match the encoded output.
 
 ## 0.6.1
 

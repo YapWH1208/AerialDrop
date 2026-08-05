@@ -66,10 +66,18 @@ final class AppModel {
                 let asset = AVURLAsset(url: url)
                 if let track = try await asset.loadTracks(withMediaType: .video).first {
                     let naturalSize = try await track.load(.naturalSize)
+                    // Mirror VideoProcessor: apply the track transform so the UI
+                    // (crop bands, height caps, resolution badge) matches the
+                    // encode window for rotated sources.
+                    let preferredTransform = try await track.load(.preferredTransform)
+                    let transformedSize = VideoGeometry.displaySize(
+                        naturalSize: naturalSize,
+                        preferredTransform: preferredTransform
+                    )
                     guard version == selectionVersion else { return }
-                    if naturalSize.width.isFinite, naturalSize.height.isFinite,
-                       naturalSize.width > 0, naturalSize.height > 0 {
-                        sourceResolution = naturalSize
+                    if transformedSize.width.isFinite, transformedSize.height.isFinite,
+                       transformedSize.width > 0, transformedSize.height > 0 {
+                        sourceResolution = transformedSize
                     }
                 }
             } catch {
