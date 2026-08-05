@@ -80,7 +80,7 @@ struct WallpaperCard: View {
                 .help("Video installed")
         } else {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(AerialTheme.warning)
                 .accessibilityLabel("Video missing")
                 .help("Video missing")
         }
