@@ -103,6 +103,30 @@ final class ManifestStoreTests: XCTestCase {
         }
     }
 
+    func testAddWallpaperPersistsResolutionAndDefaultEntriesReadNil() throws {
+        let id = "CCCCCCCC-DDDD-4EEE-8FFF-000000000001"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Resolution Test", width: 3440, height: 1440)
+
+        let result = try json(at: paths.manifest)
+        let assets = try XCTUnwrap(result["assets"] as? [[String: Any]])
+        let asset = try XCTUnwrap(assets.first(where: { ($0["id"] as? String) == id }))
+        XCTAssertEqual(asset["width"] as? Int, 3440)
+        XCTAssertEqual(asset["height"] as? Int, 1440)
+
+        let wallpapers = try store.importedWallpapers()
+        XCTAssertEqual(wallpapers.first { $0.id == id }?.resolution, CGSize(width: 3440, height: 1440))
+
+        // An entry added without width/height (the legacy shape) reads back as nil.
+        let legacyID = "DDDDDDDD-EEEE-4FFF-8AAA-111111111111"
+        try Data("video".utf8).write(to: paths.videoURL(for: legacyID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: legacyID))
+        try store.addWallpaper(id: legacyID, title: "Legacy")
+        let legacyWallpapers = try store.importedWallpapers()
+        XCTAssertNil(legacyWallpapers.first { $0.id == legacyID }?.resolution)
+    }
+
     private func fixtureData() throws -> Data {
         let fixture: [String: Any] = [
             "version": 1,
