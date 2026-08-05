@@ -32,7 +32,7 @@ struct WallpaperCard: View {
                 }
                 .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressScaleButtonStyle(pressedScale: 0.975))
         }
         .padding(10)
         .glassEffect(.regular.tint(isSelected ? .accentColor.opacity(0.2) : .white.opacity(0.05)), in: .rect(cornerRadius: 16))
