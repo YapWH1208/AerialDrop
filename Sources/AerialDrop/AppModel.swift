@@ -63,28 +63,33 @@ final class AppModel {
         Task {
             do {
                 try await videoProcessor.validate(source: url)
-                let asset = AVURLAsset(url: url)
-                if let track = try await asset.loadTracks(withMediaType: .video).first {
-                    let naturalSize = try await track.load(.naturalSize)
-                    // Mirror VideoProcessor: apply the track transform so the UI
-                    // (crop bands, height caps, resolution badge) matches the
-                    // encode window for rotated sources.
-                    let preferredTransform = try await track.load(.preferredTransform)
-                    let transformedSize = VideoGeometry.displaySize(
-                        naturalSize: naturalSize,
-                        preferredTransform: preferredTransform
-                    )
-                    guard version == selectionVersion else { return }
-                    if transformedSize.width.isFinite, transformedSize.height.isFinite,
-                       transformedSize.width > 0, transformedSize.height > 0 {
-                        sourceResolution = transformedSize
-                    }
-                }
             } catch {
                 guard version == selectionVersion else { return }
                 alertMessage = error.localizedDescription
                 selectedVideo = nil
                 title = ""
+                return
+            }
+
+            // Best-effort metadata for the resolution badge, crop bands and
+            // height caps. A failure here must not reject a file that passed
+            // validation — the import pipeline loads the same track metadata
+            // again and surfaces its own errors there.
+            let asset = AVURLAsset(url: url)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
+            guard let naturalSize = try? await track.load(.naturalSize) else { return }
+            guard let preferredTransform = try? await track.load(.preferredTransform) else { return }
+            // Mirror VideoProcessor: apply the track transform so the UI
+            // (crop bands, height caps, resolution badge) matches the
+            // encode window for rotated sources.
+            let transformedSize = VideoGeometry.displaySize(
+                naturalSize: naturalSize,
+                preferredTransform: preferredTransform
+            )
+            guard version == selectionVersion else { return }
+            if transformedSize.width.isFinite, transformedSize.height.isFinite,
+               transformedSize.width > 0, transformedSize.height > 0 {
+                sourceResolution = transformedSize
             }
         }
     }

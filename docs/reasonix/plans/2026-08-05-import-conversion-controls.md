@@ -2,6 +2,8 @@
 
 > **For agentic workers:** implement this plan task-by-task — dispatch a fresh subagent per task with the native `task` tool (recommended for quality), or use the superpowers-executing-plans skill to work through it inline. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: partially superseded.** Tasks 5 and 7 shipped differently, per [docs/superpowers/plans/2026-08-05-preview-fit-crop-gating.md](../../superpowers/plans/2026-08-05-preview-fit-crop-gating.md): the preview is fitted (`.scaledToFit`), not fill; the crop overlay gates on `isUltrawide` (21:9) with full-frame `cropBandFractions(cropOffset:sourceSize:)`; and the preview box cap is 440×248. Task 2's `isWiderThan16By9` was deleted in that later plan — the shipped helper is `isUltrawide`. Tasks 1, 3, 4 and 6 shipped as described here. Read the newer plan before implementing either task.
+
 **Goal:** Add per-import conversion controls to AerialDrop — a capped preview, spatial crop for ultrawide sources, quality/output-resolution options, and resolution display — per `docs/reasonix/specs/2026-08-05-import-conversion-controls-design.md`.
 
 **Architecture:** A new `ConversionOptions` value type (crop offset 0–1, output-height cap, quality) plus pure helper functions flows from `AppModel` state into `VideoProcessor.makeNativeMOV`, which applies a horizontal pan to the existing centered crop-to-fill transform, caps the render height, and picks a bitrate by quality. The encoded size is returned, stored as `width`/`height` in the AerialDrop manifest entry (JSONSerialization round-trip — never Codable), and displayed in the Import pane, library cards, and the detail preview sheet.

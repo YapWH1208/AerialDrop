@@ -128,4 +128,51 @@ final class ConversionOptionsTests: XCTestCase {
         XCTAssertFalse(isUltrawide(CGSize(width: 1920, height: 0)))
         XCTAssertFalse(isUltrawide(CGSize(width: CGFloat.infinity, height: 1080)))
     }
+
+    func testIsNarrowerThan16By9() {
+        XCTAssertTrue(isNarrowerThan16By9(CGSize(width: 1080, height: 1920)))
+        XCTAssertTrue(isNarrowerThan16By9(CGSize(width: 1440, height: 1080))) // 4:3
+        XCTAssertFalse(isNarrowerThan16By9(CGSize(width: 1920, height: 1080)))
+        XCTAssertFalse(isNarrowerThan16By9(CGSize(width: 3440, height: 1440)))
+        XCTAssertFalse(isNarrowerThan16By9(CGSize(width: CGFloat.nan, height: 1080)))
+        XCTAssertFalse(isNarrowerThan16By9(CGSize(width: 1920, height: 0)))
+    }
+
+    func testHasCropWindow() {
+        XCTAssertTrue(hasCropWindow(CGSize(width: 3440, height: 1440))) // ultrawide
+        XCTAssertTrue(hasCropWindow(CGSize(width: 1080, height: 1920))) // portrait
+        XCTAssertTrue(hasCropWindow(CGSize(width: 1440, height: 1080))) // 4:3
+        XCTAssertFalse(hasCropWindow(CGSize(width: 1920, height: 1080))) // exact 16:9
+        XCTAssertFalse(hasCropWindow(CGSize(width: 0, height: 1080)))
+    }
+
+    func testNaturalWindowHeight() {
+        // 16:9 and wide sources: the full source height.
+        XCTAssertEqual(naturalWindowHeight(sourceSize: CGSize(width: 3840, height: 2160)), 2160, accuracy: 0.001)
+        XCTAssertEqual(naturalWindowHeight(sourceSize: CGSize(width: 3440, height: 1440)), 1440, accuracy: 0.001)
+        // Portrait: the vertical-center-crop window (width × 9/16).
+        XCTAssertEqual(naturalWindowHeight(sourceSize: CGSize(width: 2160, height: 3840)), 1215, accuracy: 0.001)
+        // 4:3: 1440 × 9/16 = 810.
+        XCTAssertEqual(naturalWindowHeight(sourceSize: CGSize(width: 1440, height: 1080)), 810, accuracy: 0.001)
+        // Degenerate inputs are hardened.
+        XCTAssertEqual(naturalWindowHeight(sourceSize: CGSize(width: 0, height: 1080)), 0)
+        XCTAssertEqual(naturalWindowHeight(sourceSize: CGSize(width: CGFloat.infinity, height: 1080)), 0)
+    }
+
+    func testVerticalCropBandFractionsDarkenTopAndBottomForNarrowSources() {
+        // 1080×1920 portrait: f = 0.5625/1.7778 = 0.3164; each band (1-f)/2 = 0.342.
+        let portrait = CGSize(width: 1080, height: 1920)
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: portrait).top, 0.3418, accuracy: 0.001)
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: portrait).bottom, 0.3418, accuracy: 0.001)
+        // 1440×1080 (4:3): f = 0.75; each band 0.125.
+        let fourByThree = CGSize(width: 1440, height: 1080)
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: fourByThree).top, 0.125, accuracy: 0.001)
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: fourByThree).bottom, 0.125, accuracy: 0.001)
+        // 16:9 and ultrawide sources: no vertical bands.
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: CGSize(width: 1920, height: 1080)).top, 0)
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: CGSize(width: 3440, height: 1440)).top, 0)
+        // Degenerate inputs are hardened.
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: CGSize(width: 1920, height: 0)).top, 0)
+        XCTAssertEqual(verticalCropBandFractions(sourceSize: CGSize(width: CGFloat.nan, height: 1080)).top, 0)
+    }
 }
