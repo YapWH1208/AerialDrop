@@ -65,4 +65,32 @@ final class ConversionOptionsTests: XCTestCase {
         XCTAssertEqual(nearestCropPreset(0.76), 1)
         XCTAssertEqual(nearestCropPreset(1), 1)
     }
+
+    func testCropBandFractionsMatchEncodeWindow() {
+        // 3440×1440: f = (16/9)/2.3889 = 0.7443
+        let ultrawide = CGSize(width: 3440, height: 1440)
+        // Center preset: box already shows the encode window -> no bands.
+        XCTAssertEqual(cropBandFractions(cropOffset: 0.5, sourceSize: ultrawide).left, 0, accuracy: 0.001)
+        XCTAssertEqual(cropBandFractions(cropOffset: 0.5, sourceSize: ultrawide).right, 0, accuracy: 0.001)
+        // Left preset: encode window [0, 0.744]; box [0.128, 0.872] -> right band 0.172.
+        XCTAssertEqual(cropBandFractions(cropOffset: 0, sourceSize: ultrawide).left, 0, accuracy: 0.001)
+        XCTAssertEqual(cropBandFractions(cropOffset: 0, sourceSize: ultrawide).right, 0.172, accuracy: 0.001)
+        // Right preset: left band 0.172.
+        XCTAssertEqual(cropBandFractions(cropOffset: 1, sourceSize: ultrawide).left, 0.172, accuracy: 0.001)
+        XCTAssertEqual(cropBandFractions(cropOffset: 1, sourceSize: ultrawide).right, 0, accuracy: 0.001)
+        // Quarter offset: window [0.064, 0.808] -> right band (0.872-0.808)/0.744 = 0.086.
+        XCTAssertEqual(cropBandFractions(cropOffset: 0.25, sourceSize: ultrawide).left, 0, accuracy: 0.001)
+        XCTAssertEqual(cropBandFractions(cropOffset: 0.25, sourceSize: ultrawide).right, 0.086, accuracy: 0.001)
+        // Out-of-range offsets clamp like cropPan.
+        XCTAssertEqual(cropBandFractions(cropOffset: -1, sourceSize: ultrawide).right, 0.172, accuracy: 0.001)
+        XCTAssertEqual(cropBandFractions(cropOffset: 2, sourceSize: ultrawide).left, 0.172, accuracy: 0.001)
+        // 32:9: f = 0.5; Left -> right band (0.75-0.5)/0.5 = 0.5 (half the box darkened).
+        let superUltrawide = CGSize(width: 7680, height: 2160)
+        XCTAssertEqual(cropBandFractions(cropOffset: 0, sourceSize: superUltrawide).right, 0.5, accuracy: 0.001)
+        XCTAssertEqual(cropBandFractions(cropOffset: 1, sourceSize: superUltrawide).left, 0.5, accuracy: 0.001)
+        XCTAssertEqual(cropBandFractions(cropOffset: 0.5, sourceSize: superUltrawide).left, 0, accuracy: 0.001)
+        // Non-wide sources: no bands.
+        XCTAssertEqual(cropBandFractions(cropOffset: 0, sourceSize: CGSize(width: 1920, height: 1080)).left, 0)
+        XCTAssertEqual(cropBandFractions(cropOffset: 1, sourceSize: CGSize(width: 1920, height: 1080)).right, 0)
+    }
 }
