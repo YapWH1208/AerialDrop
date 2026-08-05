@@ -18,4 +18,14 @@ enum AerialTheme {
 
     /// Tight negative tracking for large display text.
     static let displayTracking: Double = -0.4
+
+    /// The 4×4 moonlit-indigo ramp behind the app. Deep charcoal-indigo at
+    /// the edges, a soft indigo glow at the center, faint silver-blue —
+    /// one hue family, no clashing accents.
+    static let auroraColors: [Color] = [
+        Color(red: 0.16, green: 0.18, blue: 0.32), Color(red: 0.18, green: 0.22, blue: 0.38), Color(red: 0.17, green: 0.21, blue: 0.37), Color(red: 0.15, green: 0.17, blue: 0.30),
+        Color(red: 0.20, green: 0.24, blue: 0.42), Color(red: 0.28, green: 0.34, blue: 0.58), Color(red: 0.32, green: 0.38, blue: 0.62), Color(red: 0.19, green: 0.23, blue: 0.40),
+        Color(red: 0.18, green: 0.23, blue: 0.40), Color(red: 0.30, green: 0.36, blue: 0.60), Color(red: 0.26, green: 0.32, blue: 0.56), Color(red: 0.17, green: 0.21, blue: 0.38),
+        Color(red: 0.15, green: 0.17, blue: 0.30), Color(red: 0.16, green: 0.18, blue: 0.32), Color(red: 0.15, green: 0.17, blue: 0.30), Color(red: 0.13, green: 0.15, blue: 0.27)
+    ]
 }
