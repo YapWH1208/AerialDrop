@@ -196,7 +196,7 @@ struct ImportPane: View {
             HStack(spacing: 9) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(AerialTheme.success)
                 Text("Imported successfully")
                     .font(.callout.weight(.semibold))
                 Spacer()
@@ -217,7 +217,7 @@ struct ImportPane: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.tint(.green.opacity(0.15)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(AerialTheme.success.opacity(0.15)), in: .rect(cornerRadius: 18))
     }
 
     private var whatHappensCard: some View {
