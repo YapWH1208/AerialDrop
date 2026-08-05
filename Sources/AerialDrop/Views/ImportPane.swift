@@ -25,7 +25,7 @@ struct ImportPane: View {
 
                 dropZone
 
-                if isWide {
+                if isUltrawideSource {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Crop")
                             .font(.callout.weight(.semibold))
@@ -130,9 +130,9 @@ struct ImportPane: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var isWide: Bool {
+    private var isUltrawideSource: Bool {
         guard let resolution = model.sourceResolution else { return false }
-        return isWiderThan16By9(resolution)
+        return isUltrawide(resolution)
     }
 
     /// Segmented-preset binding: snaps the continuous slider position to the
@@ -159,7 +159,7 @@ struct ImportPane: View {
                     VideoPreview(
                         url: url,
                         resolution: model.sourceResolution,
-                        cropOffset: isWide ? model.cropOffset : nil
+                        cropOffset: isUltrawideSource ? model.cropOffset : nil
                     )
                     .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .frame(maxWidth: 440, maxHeight: 248)
