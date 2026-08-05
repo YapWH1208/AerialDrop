@@ -42,11 +42,19 @@ struct ManifestStore {
                 ?? (asset["localizedNameKey"] as? String)
                 ?? id
 
+            let resolution: CGSize? = {
+                if let w = asset["width"] as? Int, let h = asset["height"] as? Int, w > 0, h > 0 {
+                    return CGSize(width: w, height: h)
+                }
+                return nil
+            }()
+
             return ManagedWallpaper(
                 id: id,
                 title: title,
                 videoURL: paths.videoURL(for: id),
-                thumbnailURL: paths.thumbnailURL(for: id)
+                thumbnailURL: paths.thumbnailURL(for: id),
+                resolution: resolution
             )
         }
         .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
@@ -60,7 +68,7 @@ struct ManifestStore {
         try validateCandidate(root, preservingForeignEntriesFrom: root)
     }
 
-    func addWallpaper(id: String, title: String) throws {
+    func addWallpaper(id: String, title: String, width: Int = 0, height: Int = 0) throws {
         try requireManifest()
         try prepareDirectories()
 
@@ -87,7 +95,7 @@ struct ManifestStore {
             let managedCount = assets.filter {
                 (($0["categories"] as? [String]) ?? []).contains(Self.categoryID)
             }.count
-            assets.append(makeAsset(id: id, title: title, preferredOrder: managedCount))
+            assets.append(makeAsset(id: id, title: title, preferredOrder: managedCount, width: width, height: height))
 
             categories.removeAll { ($0["id"] as? String) == Self.categoryID }
             categories.append(makeCategory(representativeAssetID: id))
@@ -190,9 +198,9 @@ struct ManifestStore {
         }
     }
 
-    private func makeAsset(id: String, title: String, preferredOrder: Int) -> [String: Any] {
+    private func makeAsset(id: String, title: String, preferredOrder: Int, width: Int = 0, height: Int = 0) -> [String: Any] {
         let shotID = customShotID(for: id)
-        return [
+        var asset: [String: Any] = [
             "id": id,
             "shotID": shotID,
             "localizedNameKey": title,
@@ -207,6 +215,11 @@ struct ManifestStore {
             "previewImage": paths.thumbnailURL(for: id).absoluteString,
             "url-4K-SDR-240FPS": paths.videoURL(for: id).absoluteString
         ]
+        if width > 0 && height > 0 {
+            asset["width"] = width
+            asset["height"] = height
+        }
+        return asset
     }
 
     private func makeCategory(representativeAssetID id: String) -> [String: Any] {
@@ -263,8 +276,16 @@ struct ManifestStore {
             let assetTitle = (asset["accessibilityLabel"] as? String)
                 ?? (asset["localizedNameKey"] as? String)
                 ?? assetID
+            let assetWidth = (asset["width"] as? Int) ?? 0
+            let assetHeight = (asset["height"] as? Int) ?? 0
             defer { managedOrder += 1 }
-            return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
+            return makeAsset(
+                id: assetID,
+                title: assetTitle,
+                preferredOrder: managedOrder,
+                width: assetWidth,
+                height: assetHeight
+            )
         }
     }
 

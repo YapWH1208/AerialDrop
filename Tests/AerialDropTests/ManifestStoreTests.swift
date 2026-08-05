@@ -103,6 +103,30 @@ final class ManifestStoreTests: XCTestCase {
         }
     }
 
+    func testAddWallpaperPersistsResolutionAndDefaultEntriesReadNil() throws {
+        let id = "CCCCCCCC-DDDD-4EEE-8FFF-000000000001"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Resolution Test", width: 3440, height: 1440)
+
+        let result = try json(at: paths.manifest)
+        let assets = try XCTUnwrap(result["assets"] as? [[String: Any]])
+        let asset = try XCTUnwrap(assets.first(where: { ($0["id"] as? String) == id }))
+        XCTAssertEqual(asset["width"] as? Int, 3440)
+        XCTAssertEqual(asset["height"] as? Int, 1440)
+
+        let wallpapers = try store.importedWallpapers()
+        XCTAssertEqual(wallpapers.first { $0.id == id }?.resolution, CGSize(width: 3440, height: 1440))
+
+        // An entry added without width/height (the legacy shape) reads back as nil.
+        let legacyID = "DDDDDDDD-EEEE-4FFF-8AAA-111111111111"
+        try Data("video".utf8).write(to: paths.videoURL(for: legacyID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: legacyID))
+        try store.addWallpaper(id: legacyID, title: "Legacy")
+        let legacyWallpapers = try store.importedWallpapers()
+        XCTAssertNil(legacyWallpapers.first { $0.id == legacyID }?.resolution)
+    }
+
     private func fixtureData() throws -> Data {
         let fixture: [String: Any] = [
             "version": 1,
@@ -149,5 +173,33 @@ final class ManifestStoreTests: XCTestCase {
 
     private func canonical(_ object: Any) -> Data {
         try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
+    func testRenamePreservesResolution() throws {
+        let id = "EEEEEEEE-FFFF-4AAA-8BBB-222222222222"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Before", width: 1920, height: 1080)
+
+        try store.renameWallpaper(id: id, title: "After")
+
+        let wallpapers = try store.importedWallpapers()
+        XCTAssertEqual(wallpapers.first { $0.id == id }?.resolution, CGSize(width: 1920, height: 1080))
+    }
+
+    func testSecondImportPreservesFirstEntryResolution() throws {
+        let firstID = "99999999-AAAA-4BBB-8CCC-333333333333"
+        try Data("video".utf8).write(to: paths.videoURL(for: firstID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: firstID))
+        try store.addWallpaper(id: firstID, title: "First", width: 3440, height: 1440)
+
+        let secondID = "88888888-BBBB-4CCC-8DDD-444444444444"
+        try Data("video".utf8).write(to: paths.videoURL(for: secondID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: secondID))
+        try store.addWallpaper(id: secondID, title: "Second", width: 1920, height: 1080)
+
+        let wallpapers = try store.importedWallpapers()
+        XCTAssertEqual(wallpapers.first { $0.id == firstID }?.resolution, CGSize(width: 3440, height: 1440))
+        XCTAssertEqual(wallpapers.first { $0.id == secondID }?.resolution, CGSize(width: 1920, height: 1080))
     }
 }
