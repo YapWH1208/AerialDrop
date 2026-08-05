@@ -30,6 +30,7 @@ struct ContentView: View {
                         .foregroundStyle(.tint)
                     Text("AerialDrop")
                         .font(.system(size: 28, weight: .bold))
+                        .tracking(-0.5)
                     Text("v\(AppVersion.shortVersion)")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)

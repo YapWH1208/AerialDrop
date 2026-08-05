@@ -7,7 +7,8 @@ struct SectionHeader: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.title3.weight(.semibold))
+            .font(.title2.weight(.semibold))
+            .tracking(AerialTheme.displayTracking)
             .foregroundStyle(.primary)
     }
 }

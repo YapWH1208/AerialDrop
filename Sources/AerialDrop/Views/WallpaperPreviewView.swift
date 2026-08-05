@@ -18,6 +18,7 @@ struct WallpaperPreviewView: View {
                     .foregroundStyle(.tint)
                 Text(wallpaper.title)
                     .font(.title3.weight(.semibold))
+                    .tracking(-0.3)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
