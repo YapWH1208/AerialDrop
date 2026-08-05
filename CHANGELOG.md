@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Capped the import preview at 640×360 so ultrawide videos fit the window.
+- Added ultrawide cropping (Left/Center/Right presets plus a fine position slider) with a live crop preview in the Import pane.
+- Shows the source resolution in the Import pane and the encoded resolution on library cards and the preview sheet.
+- Added per-import conversion options: quality (Standard/High/Maximum) and output resolution (downscale to 2160p/1440p/1080p).
+
 ## 0.6.1
 
 - Removed the manual **Finish Native Setup** step: on current Tahoe builds System Settings itself writes the native `linked` record when the imported Aerial is applied, so Desktop, Lock Screen and Screen Saver bind without any AerialDrop involvement. Verified on-device (a `Type = linked` record with Tahoe's empty-options payload appeared after selecting in System Settings, with no AerialDrop store backup written).
