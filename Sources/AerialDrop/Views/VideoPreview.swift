@@ -73,20 +73,19 @@ struct VideoPreview: View {
         }
     }
 
-    /// Dims the parts of the frame that the chosen crop window will cut away.
-    /// The visible window is 16:9; `cropOffset` positions it in source space.
+    /// Dims the parts of the preview box that the chosen crop window cuts away.
+    /// The box already shows the source's centered 16:9 window (scaledToFill),
+    /// so only the *difference* between that and the crop window is darkened.
     private func cropBands(cropOffset: Double, resolution: CGSize) -> some View {
         GeometryReader { geo in
-            let visibleFraction = min(1, (resolution.height * 16.0 / 9.0) / resolution.width)
-            let left = max(0, cropOffset * (1 - visibleFraction))
-            let right = max(0, 1 - visibleFraction - left)
+            let bands = cropBandFractions(cropOffset: cropOffset, sourceSize: resolution)
             ZStack(alignment: .leading) {
                 Rectangle()
                     .fill(.black.opacity(0.45))
-                    .frame(width: geo.size.width * left)
+                    .frame(width: geo.size.width * bands.left)
                 Rectangle()
                     .fill(.black.opacity(0.45))
-                    .frame(width: geo.size.width * right)
+                    .frame(width: geo.size.width * bands.right)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }

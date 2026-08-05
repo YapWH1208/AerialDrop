@@ -72,3 +72,21 @@ func nearestCropPreset(_ offset: Double) -> Double {
     if offset > 0.75 { return 1 }
     return 0.5
 }
+
+/// Fractions of the preview box (which already shows the source's centered
+/// 16:9 window via scaledToFill) that fall outside the chosen crop window,
+/// in 0...1 box space. Matches the encode-side window from `cropPan`.
+func cropBandFractions(cropOffset: Double, sourceSize: CGSize) -> (left: Double, right: Double) {
+    let aspect = sourceSize.width / sourceSize.height
+    guard aspect > 16.0 / 9.0 else { return (0, 0) }
+    let f = (16.0 / 9.0) / aspect
+    let c = min(max(cropOffset, 0), 1)
+    let wL = c * (1 - f)
+    let wR = wL + f
+    let bL = (1 - f) / 2
+    let bR = (1 + f) / 2
+    return (
+        left: max(0, (wL - bL) / f),
+        right: max(0, (bR - wR) / f)
+    )
+}
