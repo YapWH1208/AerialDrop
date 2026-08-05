@@ -318,7 +318,7 @@ func nearestCropPreset(_ offset: Double) -> Double {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `swift test --filter ConversionOptionsTests`
-Expected: PASS — 7 tests.
+Expected: PASS — 8 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -821,7 +821,7 @@ Insert at the top of `CHANGELOG.md` (above `## 0.6.1`):
 - [ ] **Step 2: Full verification**
 
 Run: `swift build` then `swift test`
-Expected: full test suite passes (ManifestStoreTests: 6 tests, ConversionOptionsTests: 7 tests).
+Expected: full test suite passes (ManifestStoreTests: 6 tests, ConversionOptionsTests: 8 tests).
 
 Run: `swift build -c release`
 Expected: succeeds.
