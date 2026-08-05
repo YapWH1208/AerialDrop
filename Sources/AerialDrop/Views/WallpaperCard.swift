@@ -105,7 +105,7 @@ struct WallpaperCard: View {
                     Label("Remove", systemImage: "trash.fill")
                         .labelStyle(.iconOnly)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AerialTheme.danger)
                         .padding(7)
                         .background(.regularMaterial, in: Circle())
                         .glassEffectUnion(id: wallpaper.id, namespace: namespace)
