@@ -93,4 +93,17 @@ final class ConversionOptionsTests: XCTestCase {
         XCTAssertEqual(cropBandFractions(cropOffset: 0, sourceSize: CGSize(width: 1920, height: 1080)).left, 0)
         XCTAssertEqual(cropBandFractions(cropOffset: 1, sourceSize: CGSize(width: 1920, height: 1080)).right, 0)
     }
+
+    func testNonFiniteAndDegenerateInputsAreHardened() {
+        let source = CGSize(width: 3440, height: 1440)
+        let render = CGSize(width: 1920, height: 1080)
+        XCTAssertEqual(cropPan(cropOffset: .nan, sourceSize: source, renderSize: render), 0)
+        XCTAssertEqual(cropPan(cropOffset: .infinity, sourceSize: source, renderSize: render), 0)
+        let bands = cropBandFractions(cropOffset: .nan, sourceSize: source)
+        XCTAssertEqual(bands.left, 0)
+        XCTAssertEqual(bands.right, 0)
+        // Degenerate cap is floored at 2 (matching evenSize's minimum render dimension).
+        XCTAssertEqual(clampedOutputHeight(0, sourceHeight: 1080), 2)
+        XCTAssertEqual(clampedOutputHeight(-5, sourceHeight: 1080), 2)
+    }
 }
