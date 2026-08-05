@@ -37,15 +37,8 @@ struct AuroraBackground: View {
             width: Self.gridSize,
             height: Self.gridSize,
             points: points,
-            colors: Self.colors,
+            colors: AerialTheme.auroraColors,
             smoothsColors: true
         )
     }
-
-    private static let colors: [Color] = [
-        Color(red: 0.20, green: 0.22, blue: 0.46), Color(red: 0.22, green: 0.26, blue: 0.52), Color(red: 0.20, green: 0.24, blue: 0.50), Color(red: 0.19, green: 0.21, blue: 0.44),
-        Color(red: 0.24, green: 0.28, blue: 0.56), Color(red: 0.10, green: 0.52, blue: 0.55), Color(red: 0.42, green: 0.32, blue: 0.62), Color(red: 0.22, green: 0.26, blue: 0.52),
-        Color(red: 0.20, green: 0.26, blue: 0.54), Color(red: 0.40, green: 0.30, blue: 0.60), Color(red: 0.08, green: 0.46, blue: 0.54), Color(red: 0.18, green: 0.24, blue: 0.48),
-        Color(red: 0.18, green: 0.20, blue: 0.42), Color(red: 0.20, green: 0.22, blue: 0.46), Color(red: 0.18, green: 0.20, blue: 0.42), Color(red: 0.16, green: 0.18, blue: 0.38)
-    ]
 }
