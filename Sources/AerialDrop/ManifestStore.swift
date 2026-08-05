@@ -276,8 +276,16 @@ struct ManifestStore {
             let assetTitle = (asset["accessibilityLabel"] as? String)
                 ?? (asset["localizedNameKey"] as? String)
                 ?? assetID
+            let assetWidth = (asset["width"] as? Int) ?? 0
+            let assetHeight = (asset["height"] as? Int) ?? 0
             defer { managedOrder += 1 }
-            return makeAsset(id: assetID, title: assetTitle, preferredOrder: managedOrder)
+            return makeAsset(
+                id: assetID,
+                title: assetTitle,
+                preferredOrder: managedOrder,
+                width: assetWidth,
+                height: assetHeight
+            )
         }
     }
 
