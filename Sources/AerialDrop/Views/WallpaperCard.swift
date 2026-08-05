@@ -21,13 +21,20 @@ struct WallpaperCard: View {
                 VStack(alignment: .leading, spacing: 9) {
                     thumbnail
 
-                    HStack(spacing: 5) {
-                        Text(wallpaper.title)
-                            .font(.callout.weight(.medium))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        statusIcon
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 5) {
+                            Text(wallpaper.title)
+                                .font(.callout.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            statusIcon
+                        }
+                        if let resolution = wallpaper.resolution {
+                            Text("\(Int(resolution.width))×\(Int(resolution.height))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .contentShape(.rect)
