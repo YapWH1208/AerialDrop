@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Import preview now shows the entire video fitted (not zoomed), and the crop overlay darkens exactly what the chosen 16:9 window cuts away.
+- Crop controls now appear only for ultrawide sources (21:9 and wider).
 - Capped the import preview at 440×248 so ultrawide videos fit the window.
 - Added ultrawide cropping (Left/Center/Right presets plus a fine position slider) with a live crop preview in the Import pane.
 - Shows the source resolution in the Import pane and the encoded resolution on library cards and the preview sheet.
