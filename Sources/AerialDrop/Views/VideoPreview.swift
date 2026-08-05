@@ -4,6 +4,8 @@ import SwiftUI
 
 struct VideoPreview: View {
     let url: URL
+    var resolution: CGSize? = nil
+    var cropOffset: Double? = nil
 
     @State private var frame: NSImage?
     @State private var duration: Double?
@@ -22,16 +24,24 @@ struct VideoPreview: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if let duration, let fileSize {
-                HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                if let resolution {
+                    Label("\(Int(resolution.width))×\(Int(resolution.height))", systemImage: "rectangle.inset.filled")
+                }
+                if let duration, let fileSize {
                     Label(timeString(duration), systemImage: "clock")
                     Label(fileSize.formatted(.byteCount(style: .file)), systemImage: "internaldrive")
                 }
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(.regularMaterial, in: Capsule())
-                .padding(8)
+            }
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(.regularMaterial, in: Capsule())
+            .padding(8)
+        }
+        .overlay {
+            if let cropOffset, let resolution, isWiderThan16By9(resolution) {
+                cropBands(cropOffset: cropOffset, resolution: resolution)
             }
         }
         .task(id: url) {
@@ -61,6 +71,27 @@ struct VideoPreview: View {
         if let result = try? await generator.image(at: time) {
             frame = NSImage(cgImage: result.image, size: .zero)
         }
+    }
+
+    /// Dims the parts of the frame that the chosen crop window will cut away.
+    /// The visible window is 16:9; `cropOffset` positions it in source space.
+    private func cropBands(cropOffset: Double, resolution: CGSize) -> some View {
+        GeometryReader { geo in
+            let visibleFraction = min(1, (resolution.height * 16.0 / 9.0) / resolution.width)
+            let left = max(0, cropOffset * (1 - visibleFraction))
+            let right = max(0, 1 - visibleFraction - left)
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(.black.opacity(0.45))
+                    .frame(width: geo.size.width * left)
+                Rectangle()
+                    .fill(.black.opacity(0.45))
+                    .frame(width: geo.size.width * right)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func timeString(_ seconds: Double) -> String {

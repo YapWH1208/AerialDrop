@@ -25,6 +25,46 @@ struct ImportPane: View {
 
                 dropZone
 
+                if isWide {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Crop")
+                            .font(.callout.weight(.semibold))
+                        Picker("Position", selection: cropPreset) {
+                            Text("Left").tag(0.0)
+                            Text("Center").tag(0.5)
+                            Text("Right").tag(1.0)
+                        }
+                        .pickerStyle(.segmented)
+                        Slider(value: $model.cropOffset, in: 0...1)
+                            .help("Position of the visible 16:9 window")
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Conversion")
+                        .font(.callout.weight(.semibold))
+                    HStack(spacing: 16) {
+                        Picker("Quality", selection: $model.conversionQuality) {
+                            Text("Standard").tag(ConversionOptions.Quality.standard)
+                            Text("High").tag(ConversionOptions.Quality.high)
+                            Text("Maximum").tag(ConversionOptions.Quality.maximum)
+                        }
+                        Picker("Output resolution", selection: $model.outputHeightCap) {
+                            Text("Original").tag(Int?.none)
+                            ForEach(availableHeightCaps, id: \.self) { cap in
+                                Text("\(cap)p").tag(Int?.some(cap))
+                            }
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular, in: .rect(cornerRadius: 18))
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Wallpaper name")
                         .font(.callout.weight(.medium))
@@ -90,19 +130,39 @@ struct ImportPane: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var isWide: Bool {
+        guard let resolution = model.sourceResolution else { return false }
+        return isWiderThan16By9(resolution)
+    }
+
+    /// Segmented-preset binding: snaps the continuous slider position to the
+    /// nearest preset; picking a preset sets the slider value.
+    private var cropPreset: Binding<Double> {
+        Binding(
+            get: { nearestCropPreset(model.cropOffset) },
+            set: { model.cropOffset = $0 }
+        )
+    }
+
+    /// Downscale-only resolution options, derived from the source height.
+    private var availableHeightCaps: [Int] {
+        guard let sourceHeight = model.sourceResolution?.height else { return [] }
+        return [2160, 1440, 1080].filter { $0 < Int(sourceHeight) }
+    }
+
     private var dropZoneButton: some View {
         Button {
             model.showingFileImporter = true
         } label: {
             VStack(spacing: 12) {
                 if let url = model.selectedVideo {
-                    VideoPreview(url: url)
-                        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 18)
-                                .strokeBorder(.separator, lineWidth: 0.5)
-                        }
+                    VideoPreview(
+                        url: url,
+                        resolution: model.sourceResolution,
+                        cropOffset: isWide ? model.cropOffset : nil
+                    )
+                    .frame(maxWidth: 640, maxHeight: 360)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
                         .overlay(alignment: .topTrailing) {
                             Label("Click to change", systemImage: "square.and.arrow.up")
                                 .font(.caption.weight(.semibold))
