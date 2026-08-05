@@ -43,27 +43,29 @@ struct ImportPane: View {
                     .glassEffect(.regular, in: .rect(cornerRadius: 18))
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Conversion")
-                        .font(.callout.weight(.semibold))
-                    HStack(spacing: 16) {
-                        Picker("Quality", selection: $model.conversionQuality) {
-                            Text("Standard").tag(ConversionOptions.Quality.standard)
-                            Text("High").tag(ConversionOptions.Quality.high)
-                            Text("Maximum").tag(ConversionOptions.Quality.maximum)
-                        }
-                        Picker("Output resolution", selection: $model.outputHeightCap) {
-                            Text("Original").tag(Int?.none)
-                            ForEach(availableHeightCaps, id: \.self) { cap in
-                                Text("\(cap)p").tag(Int?.some(cap))
+                if model.selectedVideo != nil {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Conversion")
+                            .font(.callout.weight(.semibold))
+                        HStack(spacing: 16) {
+                            Picker("Quality", selection: $model.conversionQuality) {
+                                Text("Standard").tag(ConversionOptions.Quality.standard)
+                                Text("High").tag(ConversionOptions.Quality.high)
+                                Text("Maximum").tag(ConversionOptions.Quality.maximum)
                             }
+                            Picker("Output resolution", selection: $model.outputHeightCap) {
+                                Text("Original").tag(Int?.none)
+                                ForEach(availableHeightCaps, id: \.self) { cap in
+                                    Text("\(cap)p").tag(Int?.some(cap))
+                                }
+                            }
+                            Spacer()
                         }
-                        Spacer()
                     }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .glassEffect(.regular, in: .rect(cornerRadius: 18))
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Wallpaper name")
@@ -144,10 +146,12 @@ struct ImportPane: View {
         )
     }
 
-    /// Downscale-only resolution options, derived from the source height.
+    /// Downscale-only resolution options, limited to caps below the natural
+    /// window height — a cap at or above it is a no-op (the pipeline never
+    /// upscales), so it would only offer an identical re-encode.
     private var availableHeightCaps: [Int] {
-        guard let sourceHeight = model.sourceResolution?.height else { return [] }
-        return [2160, 1440, 1080].filter { $0 < Int(sourceHeight) }
+        guard let source = model.sourceResolution else { return [] }
+        return [2160, 1440, 1080].filter { CGFloat($0) < naturalWindowHeight(sourceSize: source) }
     }
 
     private var dropZoneButton: some View {
@@ -159,7 +163,7 @@ struct ImportPane: View {
                     VideoPreview(
                         url: url,
                         resolution: model.sourceResolution,
-                        cropOffset: isUltrawideSource ? model.cropOffset : nil
+                        cropOffset: model.cropOffset
                     )
                     .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .frame(maxWidth: 440, maxHeight: 248)

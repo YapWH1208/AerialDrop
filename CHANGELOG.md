@@ -2,9 +2,11 @@
 
 ## Unreleased
 
-- The Import preview now shows the entire video fitted (not zoomed), and the crop overlay darkens exactly what the chosen 16:9 window cuts away.
+- The Import preview now shows the entire video fitted (not zoomed), and the crop overlay darkens exactly what the chosen 16:9 window cuts away — left/right for ultrawide sources, top/bottom for portrait and 4:3 sources.
 - Crop controls now appear only for ultrawide sources (21:9 and wider).
-- Capped the import preview at 440×248 so ultrawide videos fit the window.
+- Output-resolution options now appear only when they actually downscale, so portrait sources no longer list 2160p/1440p choices that would encode identically.
+- The conversion card appears only after a video is selected.
+- Capped the import preview box at 440×248 so ultrawide videos fit the window.
 - Added ultrawide cropping (Left/Center/Right presets plus a fine position slider) with a live crop preview in the Import pane.
 - Shows the source resolution in the Import pane and the encoded resolution on library cards and the preview sheet.
 - Added per-import conversion options: quality (Standard/High/Maximum) and output resolution (downscale to 2160p/1440p/1080p).
