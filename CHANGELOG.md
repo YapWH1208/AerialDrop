@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Capped the import preview at 640×360 so ultrawide videos fit the window.
+- Capped the import preview at 440×248 so ultrawide videos fit the window.
 - Added ultrawide cropping (Left/Center/Right presets plus a fine position slider) with a live crop preview in the Import pane.
 - Shows the source resolution in the Import pane and the encoded resolution on library cards and the preview sheet.
 - Added per-import conversion options: quality (Standard/High/Maximum) and output resolution (downscale to 2160p/1440p/1080p).
