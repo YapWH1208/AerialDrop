@@ -107,8 +107,25 @@ final class ConversionOptionsTests: XCTestCase {
         let bands = cropBandFractions(cropOffset: .nan, sourceSize: source)
         XCTAssertEqual(bands.left, 0)
         XCTAssertEqual(bands.right, 0)
+        let infiniteBands = cropBandFractions(cropOffset: .infinity, sourceSize: source)
+        XCTAssertEqual(infiniteBands.left, 0)
+        XCTAssertEqual(infiniteBands.right, 0)
+        // Degenerate source dims: non-finite aspect yields no bands.
+        let zeroHeightBands = cropBandFractions(cropOffset: 0.5, sourceSize: CGSize(width: 1920, height: 0))
+        XCTAssertEqual(zeroHeightBands.left, 0)
+        XCTAssertEqual(zeroHeightBands.right, 0)
+        let infiniteWidthBands = cropBandFractions(cropOffset: 0.5, sourceSize: CGSize(width: CGFloat.infinity, height: 1080))
+        XCTAssertEqual(infiniteWidthBands.left, 0)
+        XCTAssertEqual(infiniteWidthBands.right, 0)
         // Degenerate cap is floored at 2 (matching evenSize's minimum render dimension).
         XCTAssertEqual(clampedOutputHeight(0, sourceHeight: 1080), 2)
         XCTAssertEqual(clampedOutputHeight(-5, sourceHeight: 1080), 2)
+    }
+
+    func testIsUltrawideRejectsNonFiniteAndDegenerateInputs() {
+        XCTAssertFalse(isUltrawide(CGSize(width: CGFloat.nan, height: 1080)))
+        XCTAssertFalse(isUltrawide(CGSize(width: 0, height: 1080)))
+        XCTAssertFalse(isUltrawide(CGSize(width: 1920, height: 0)))
+        XCTAssertFalse(isUltrawide(CGSize(width: CGFloat.infinity, height: 1080)))
     }
 }

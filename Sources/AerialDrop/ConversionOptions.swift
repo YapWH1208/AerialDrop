@@ -84,6 +84,7 @@ func nearestCropPreset(_ offset: Double) -> Double {
 func cropBandFractions(cropOffset: Double, sourceSize: CGSize) -> (left: Double, right: Double) {
     guard cropOffset.isFinite else { return (0, 0) }
     let aspect = sourceSize.width / sourceSize.height
+    guard aspect.isFinite else { return (0, 0) }
     guard aspect > 16.0 / 9.0 else { return (0, 0) }
     let f = (16.0 / 9.0) / aspect
     let c = min(max(cropOffset, 0), 1)
