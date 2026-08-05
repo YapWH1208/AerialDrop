@@ -7,7 +7,8 @@ struct SectionHeader: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.title3.weight(.semibold))
+            .font(.title2.weight(.semibold))
+            .tracking(AerialTheme.displayTracking)
             .foregroundStyle(.primary)
     }
 }
@@ -139,7 +140,7 @@ struct ImportPane: View {
             }
             .scaleEffect(hoveringDropZone ? 1.012 : 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleButtonStyle())
         .onHover { hovering in
             hoveringDropZone = hovering
             if hovering {
@@ -196,7 +197,7 @@ struct ImportPane: View {
             HStack(spacing: 9) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(AerialTheme.success)
                 Text("Imported successfully")
                     .font(.callout.weight(.semibold))
                 Spacer()
@@ -217,7 +218,7 @@ struct ImportPane: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.tint(.green.opacity(0.15)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(AerialTheme.success.opacity(0.15)), in: .rect(cornerRadius: 18))
     }
 
     private var whatHappensCard: some View {

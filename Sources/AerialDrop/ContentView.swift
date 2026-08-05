@@ -19,6 +19,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(AuroraBackground().ignoresSafeArea())
+        .tint(AerialTheme.accent)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -29,6 +30,7 @@ struct ContentView: View {
                         .foregroundStyle(.tint)
                     Text("AerialDrop")
                         .font(.system(size: 28, weight: .bold))
+                        .tracking(-0.5)
                     Text("v\(AppVersion.shortVersion)")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)

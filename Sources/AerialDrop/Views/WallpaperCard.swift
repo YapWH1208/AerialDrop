@@ -32,14 +32,14 @@ struct WallpaperCard: View {
                 }
                 .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressScaleButtonStyle(pressedScale: 0.975))
         }
         .padding(10)
-        .glassEffect(.regular.tint(isSelected ? .accentColor.opacity(0.2) : .white.opacity(0.05)), in: .rect(cornerRadius: 16))
+        .glassEffect(.regular.tint(isSelected ? .accentColor.opacity(0.2) : .white.opacity(0.05)), in: .rect(cornerRadius: 18))
         .glassEffectID(isSelected ? wallpaper.id : nil, in: namespace)
         .glassEffectTransition(.materialize)
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 18)
                 .strokeBorder(
                     isSelected ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.separator),
                     lineWidth: isSelected ? 1.5 : 0.5
@@ -80,7 +80,7 @@ struct WallpaperCard: View {
                 .help("Video installed")
         } else {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(AerialTheme.warning)
                 .accessibilityLabel("Video missing")
                 .help("Video missing")
         }
@@ -105,7 +105,7 @@ struct WallpaperCard: View {
                     Label("Remove", systemImage: "trash.fill")
                         .labelStyle(.iconOnly)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AerialTheme.danger)
                         .padding(7)
                         .background(.regularMaterial, in: Circle())
                         .glassEffectUnion(id: wallpaper.id, namespace: namespace)
@@ -144,7 +144,7 @@ struct WallpaperCard: View {
             }
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .task(id: wallpaper.id) {
             guard image == nil else { return }
             image = await Task.detached(priority: .utility) {

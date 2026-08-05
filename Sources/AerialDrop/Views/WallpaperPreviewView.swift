@@ -18,6 +18,7 @@ struct WallpaperPreviewView: View {
                     .foregroundStyle(.tint)
                 Text(wallpaper.title)
                     .font(.title3.weight(.semibold))
+                    .tracking(-0.3)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
@@ -60,6 +61,18 @@ struct WallpaperPreviewView: View {
         if FileManager.default.fileExists(atPath: wallpaper.videoURL.path) {
             LoopPlayerView(url: wallpaper.videoURL)
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .overlay(alignment: .bottom) {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.34), location: 0),
+                            .init(color: .clear, location: 0.55)
+                        ],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                    .frame(height: 76)
+                    .allowsHitTesting(false)
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14)
