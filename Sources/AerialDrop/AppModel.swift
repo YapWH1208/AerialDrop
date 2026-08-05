@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import Observation
 import UniformTypeIdentifiers
@@ -15,6 +16,10 @@ final class AppModel {
     var showingFileImporter = false
     var importProgress: Double = 0
     var importSucceeded = false
+    var cropOffset: Double = 0.5
+    var conversionQuality: ConversionOptions.Quality = .standard
+    var outputHeightCap: Int? = nil
+    var sourceResolution: CGSize?
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
@@ -51,9 +56,19 @@ final class AppModel {
             title = url.deletingPathExtension().lastPathComponent
         }
         selectedVideo = url
+        cropOffset = 0.5
+        conversionQuality = .standard
+        outputHeightCap = nil
+        sourceResolution = nil
         Task {
             do {
                 try await videoProcessor.validate(source: url)
+                let asset = AVURLAsset(url: url)
+                if let track = try await asset.loadTracks(withMediaType: .video).first {
+                    let naturalSize = try await track.load(.naturalSize)
+                    guard version == selectionVersion else { return }
+                    sourceResolution = naturalSize
+                }
             } catch {
                 guard version == selectionVersion else { return }
                 alertMessage = error.localizedDescription
@@ -101,7 +116,15 @@ final class AppModel {
                 try manifestStore.prepareDirectories()
 
                 stage = .processingVideo
-                try await videoProcessor.makeNativeMOV(from: source, destination: videoDestination) { fraction in
+                let encodedSize = try await videoProcessor.makeNativeMOV(
+                    from: source,
+                    destination: videoDestination,
+                    options: ConversionOptions(
+                        cropOffset: cropOffset,
+                        outputHeightCap: outputHeightCap,
+                        quality: conversionQuality
+                    )
+                ) { fraction in
                     Task { @MainActor in
                         self.importProgress = fraction
                     }
@@ -111,7 +134,12 @@ final class AppModel {
                 try await videoProcessor.generateThumbnail(from: videoDestination, destination: thumbnailDestination)
 
                 stage = .updatingManifest
-                try manifestStore.addWallpaper(id: id, title: cleanTitle)
+                try manifestStore.addWallpaper(
+                    id: id,
+                    title: cleanTitle,
+                    width: Int(encodedSize.width),
+                    height: Int(encodedSize.height)
+                )
 
                 stage = .refreshingSystem
                 await systemService.refresh()
