@@ -21,6 +21,11 @@ struct WallpaperPreviewView: View {
                     .tracking(-0.3)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if let resolution = wallpaper.resolution {
+                    Text("\(Int(resolution.width))×\(Int(resolution.height))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.cancelAction)

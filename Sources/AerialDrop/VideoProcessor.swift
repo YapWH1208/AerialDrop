@@ -149,7 +149,6 @@ private final class WriterPump: @unchecked Sendable {
 struct VideoProcessor: Sendable {
     private let nativeTargetDuration = CMTime(seconds: 80, preferredTimescale: 600)
     private let nativeFrameRate: Int32 = 30
-    private let targetBitRate = 20_000_000
     private let nativeKeyFrameIntervalFrames = 57
     private let nativeKeyFrameIntervalDuration = 1.9
 
@@ -187,8 +186,9 @@ struct VideoProcessor: Sendable {
     func makeNativeMOV(
         from source: URL,
         destination: URL,
+        options: ConversionOptions = .init(),
         progress: @escaping @Sendable (Double) -> Void
-    ) async throws {
+    ) async throws -> CGSize {
         try Task.checkCancellation()
         try? FileManager.default.removeItem(at: destination)
 
@@ -248,18 +248,22 @@ struct VideoProcessor: Sendable {
         segmentTrack.preferredTransform = preferredTransform
 
         let naturalSize = try await sourceTrack.load(.naturalSize)
-        let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let rawSourceSize = VideoGeometry.displaySize(naturalSize: naturalSize, preferredTransform: preferredTransform)
         let sourceSize = CGSize(
-            width: max(2, abs(transformedRect.width)),
-            height: max(2, abs(transformedRect.height))
+            width: max(2, rawSourceSize.width),
+            height: max(2, rawSourceSize.height)
         )
-        let renderSize = evenSize(target16by9Size(from: sourceSize))
+        let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
+        let maxHeight = clampedOutputHeight(options.outputHeightCap, sourceHeight: Int(sourceSize.height))
+        let renderSize = evenSize(target16by9Size(from: sourceSize, maxHeight: maxHeight))
+        let pan = cropPan(cropOffset: options.cropOffset, sourceSize: sourceSize, renderSize: renderSize)
 
         let videoComposition = makeVideoComposition(
             track: segmentTrack,
             preferredTransform: preferredTransform,
             transformedRect: transformedRect,
             renderSize: renderSize,
+            pan: pan,
             duration: segmentDuration
         )
 
@@ -269,6 +273,7 @@ struct VideoProcessor: Sendable {
             videoComposition: videoComposition,
             renderSize: renderSize,
             duration: segmentDuration,
+            bitrate: bitrateBps(quality: options.quality, renderHeight: Int(renderSize.height)),
             destination: segmentURL,
             progress: progress
         )
@@ -287,6 +292,7 @@ struct VideoProcessor: Sendable {
 
         try await validateInstalledVideo(destination, loopDuration: segmentDuration)
         try Task.checkCancellation()
+        return renderSize
     }
 
     private func makeVideoComposition(
@@ -294,6 +300,7 @@ struct VideoProcessor: Sendable {
         preferredTransform: CGAffineTransform,
         transformedRect: CGRect,
         renderSize: CGSize,
+        pan: CGFloat,
         duration: CMTime
     ) -> AVVideoComposition {
         var layerConfiguration = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
@@ -305,7 +312,7 @@ struct VideoProcessor: Sendable {
             renderSize.width / sourceSize.width,
             renderSize.height / sourceSize.height
         )
-        let offsetX = (renderSize.width - sourceSize.width * scale) / 2
+        let offsetX = (renderSize.width - sourceSize.width * scale) / 2 - pan
         let offsetY = (renderSize.height - sourceSize.height * scale) / 2
 
         let cropTransform = preferredTransform
@@ -335,6 +342,7 @@ struct VideoProcessor: Sendable {
         videoComposition: AVVideoComposition,
         renderSize: CGSize,
         duration: CMTime,
+        bitrate: Int,
         destination: URL,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
@@ -359,7 +367,7 @@ struct VideoProcessor: Sendable {
 
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
         let compression: [String: Any] = [
-            AVVideoAverageBitRateKey: targetBitRate,
+            AVVideoAverageBitRateKey: bitrate,
             AVVideoExpectedSourceFrameRateKey: Int(nativeFrameRate),
             AVVideoMaxKeyFrameIntervalKey: nativeKeyFrameIntervalFrames,
             AVVideoMaxKeyFrameIntervalDurationKey: nativeKeyFrameIntervalDuration,
@@ -690,15 +698,16 @@ struct VideoProcessor: Sendable {
         try (data as Data).write(to: destination, options: .atomic)
     }
 
-    /// Fits a source into a 16:9 frame capped at 4K, never upscaling. Sources that
-    /// already fit (16:9, ≤ 3840×2160) pass through unchanged. The crop-to-fill
-    /// scale and centering are applied by the video-composition layer transform.
-    private func target16by9Size(from sourceSize: CGSize) -> CGSize {
+    /// Fits a source into a 16:9 frame capped at the given height (default 2160,
+    /// the existing 4K cap), never upscaling. Sources that already fit pass
+    /// through unchanged. The crop-to-fill scale and centering are applied by
+    /// the video-composition layer transform.
+    private func target16by9Size(from sourceSize: CGSize, maxHeight: Int = 2160) -> CGSize {
         if sourceSize.width / sourceSize.height >= 16.0 / 9.0 {
-            let height = min(sourceSize.height, 2160)
+            let height = min(sourceSize.height, CGFloat(maxHeight))
             return CGSize(width: height * (16.0 / 9.0), height: height)
         } else {
-            let width = min(sourceSize.width, 3840)
+            let width = min(sourceSize.width, CGFloat(maxHeight) * (16.0 / 9.0))
             return CGSize(width: width, height: width * (9.0 / 16.0))
         }
     }

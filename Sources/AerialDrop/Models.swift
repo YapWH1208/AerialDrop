@@ -5,6 +5,7 @@ struct ManagedWallpaper: Identifiable, Hashable {
     let title: String
     let videoURL: URL
     let thumbnailURL: URL
+    var resolution: CGSize? = nil
 
     var videoExists: Bool {
         FileManager.default.fileExists(atPath: videoURL.path)
