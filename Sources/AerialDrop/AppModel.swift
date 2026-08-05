@@ -67,7 +67,10 @@ final class AppModel {
                 if let track = try await asset.loadTracks(withMediaType: .video).first {
                     let naturalSize = try await track.load(.naturalSize)
                     guard version == selectionVersion else { return }
-                    sourceResolution = naturalSize
+                    if naturalSize.width.isFinite, naturalSize.height.isFinite,
+                       naturalSize.width > 0, naturalSize.height > 0 {
+                        sourceResolution = naturalSize
+                    }
                 }
             } catch {
                 guard version == selectionVersion else { return }
