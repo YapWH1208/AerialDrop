@@ -65,3 +65,6 @@ fastlane/test_output
 /.agents
 skills-lock.json
 /.opencode
+# Added by code-review-graph
+.code-review-graph/
+opencode.jsonc

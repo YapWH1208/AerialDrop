@@ -4,10 +4,11 @@ macOS Tahoe 26-only Swift Package (SPM executable → SwiftUI app) that imports 
 
 ## Build / test
 
-- Requires the macOS 26 (Tahoe) SDK and a Swift 6.2+ toolchain: `Package.swift` pins `.macOS("26.0")` with `swift-tools-version: 6.2` (Swift 6 language mode — new code must satisfy strict concurrency), and `ContentView` uses Liquid Glass `glassEffect` materials. Building or testing on an older SDK fails.
+- Requires the macOS 26 (Tahoe) SDK and a Swift 6.2+ toolchain: `Package.swift` pins `.macOS("26.0")` with `swift-tools-version: 6.2` (Swift 6 language mode — new code must satisfy strict concurrency), and the SwiftUI UI uses Liquid Glass `glassEffect` materials. Building or testing on an older SDK fails.
 - `swift build`, `swift test`, `swift build -c release` are the only commands (no lint/format/typecheck tooling). Run a single test with `swift test --filter ManifestStoreTests`. The Command Line Tools toolchain has no XCTest — if `swift test` fails to find it, pin `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (CI does exactly this).
 - `Scripts/build-app.sh` produces `dist/AerialDrop.app` (Info.plist + ad-hoc codesign; icon from `Assets/AppIcon.icns`, regenerable via `Scripts/make-icon.swift`, which resolves `Assets/` relative to cwd and must run from the repo root). It **wipes `.build` first**, so it is a full rebuild; CI runs `build → test → release build → build-app.sh` on a self-hosted macOS 26 runner.
-- The only test file is `Tests/AerialDropTests/ManifestStoreTests.swift`. There are no video-pipeline tests — real imports must be verified manually on a Tahoe machine per TESTING.md.
+- Tests are pure-function unit tests only: `ManifestStoreTests.swift`, `ConversionOptionsTests.swift`, `VideoGeometryTests.swift`. Run one with `swift test --filter <TestClass>`. **VideoProcessor has no tests** — real imports must be verified manually on a Tahoe machine per TESTING.md (lock/unlock cycles, `VideoSampleReadingErrors` in the WallpaperAerialsExtension log).
+- `./build-and-open.sh` is the one-shot "wipe `.build` + `dist`, build app, launch new instance" wrapper (it also deletes `dist`, so don't run it while keeping a packaged release around).
 
 ## Hard-won invariants (do not casually change)
 
@@ -18,7 +19,9 @@ macOS Tahoe 26-only Swift Package (SPM executable → SwiftUI app) that imports 
 
 ## Structural notes
 
-- Entry point: `AerialDropApp.swift` → `AppModel` (`@MainActor` `@Observable`; orchestrates import) → `VideoProcessor` (async AVFoundation encode), `ManifestStore` (sync manifest writes), `SystemWallpaperService` (killall + open System Settings).
+- Entry point: `AerialDropApp.swift` → `AppModel` (`@MainActor` `@Observable`; orchestrates import) → `VideoProcessor` (async AVFoundation encode), `ManifestStore` (sync manifest writes), `SystemWallpaperService` (killall + open System Settings). UI lives in `Views/` (`ImportPane` consumes import options; `LibraryPane` drives rename/remove through `ManifestStore` mutations, `LoopPlayerView`/`VideoPreview` are read-only previews).
+- `ContentView` itself only hosts the tab/pane scaffolding — no business logic; the pane structure it instantiates is what matters.
+- Import geometry and per-import options live in pure functions: `VideoGeometry.swift` (display size from preferred transform) and `ConversionOptions.swift` (crop pan/bands, quality→bitrate buckets, output-height clamping — never upscales). These are unit-tested; `VideoProcessor` and `ImportPane` consume them.
 - `WallpaperPaths(homeDirectory:)` takes an injectable home. Tests always redirect into a temp dir; never point tests or new code at real user paths.
 - Stable IDs live in `ManifestStore` (`categoryID`/`subcategoryID`, `categoryName = "AerialDrop"`).
 - Errors funnel through the `AerialDropError` enum in Models.swift (localized descriptions surface directly in the UI).
@@ -26,4 +29,43 @@ macOS Tahoe 26-only Swift Package (SPM executable → SwiftUI app) that imports 
 ## Versioning / release
 
 - Version/build is in **AppVersion.swift** (single source; `Scripts/build-app.sh` parses it for Info.plist — update **both** `shortVersion` and `buildNumber` or the script exits 1).
-- Releasing = add a `## <version>` section to CHANGELOG.md, then push tag `v<version>`. release.yml extracts the changelog section for notes (fails if the section is missing) and zips `dist/AerialDrop.app` as `AerialDrop-<version>-macOS.zip`.
+- Release order matters: in one commit, bump AppVersion.swift **and** add the `## <version>` section to CHANGELOG.md, push it, then push tag `v<version>` pointing at that commit. release.yml's changelog extraction exits 1 if the section is missing, and the Info.plist version comes from AppVersion.swift — tagging a commit without either publishes the wrong version or fails the run (a moved tag is the only recovery). Release zips `dist/AerialDrop.app` as `AerialDrop-<version>-macOS.zip`.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes_tool` or `query_graph_tool` instead of Grep
+- **Understanding impact**: `get_impact_radius_tool` instead of manually tracing imports
+- **Code review**: `detect_changes_tool` + `get_review_context_tool` instead of reading entire files
+- **Finding relationships**: `query_graph_tool` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview_tool` + `list_communities_tool`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+| ------ | ---------- |
+| `detect_changes_tool` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context_tool` | Need source snippets for review — token-efficient |
+| `get_impact_radius_tool` | Understanding blast radius of a change |
+| `get_affected_flows_tool` | Finding which execution paths are impacted |
+| `query_graph_tool` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes_tool` | Finding functions/classes by name or keyword |
+| `get_architecture_overview_tool` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes_tool` for code review.
+3. Use `get_affected_flows_tool` to understand impact.
+4. Use `query_graph_tool` pattern="tests_for" to check coverage.
