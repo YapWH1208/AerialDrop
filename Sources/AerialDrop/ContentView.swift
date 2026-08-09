@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @State private var destination: AppDestination? = .library
+    @State private var preImportDestination: AppDestination?
     @State private var removeAllConfirmation = false
     @State private var alertPresented = false
     @State private var alertMessage: String?
@@ -13,14 +14,14 @@ struct ContentView: View {
         @Bindable var model = model
         NavigationSplitView {
             List(selection: $destination) {
-                ForEach(AppDestination.allCases) { destination in
-                    if destination == .library {
-                        Label(destination.title, systemImage: destination.systemImage)
+                ForEach(AppDestination.allCases) { item in
+                    if item == .library {
+                        Label(item.title, systemImage: item.systemImage)
                             .badge(model.wallpapers.count)
-                            .tag(destination)
+                            .tag(item)
                     } else {
-                        Label(destination.title, systemImage: destination.systemImage)
-                            .tag(destination)
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
                     }
                 }
             }
@@ -87,9 +88,11 @@ struct ContentView: View {
             Task { await model.reload() }
         }
         .onChange(of: model.showingFileImporter) { _, showing in
-            if showing {
-                destination = .importVideo
+            guard showing else { return }
+            if destination != .importVideo {
+                preImportDestination = destination
             }
+            destination = .importVideo
         }
         .confirmationDialog(
             "Remove every AerialDrop wallpaper?",
@@ -108,9 +111,17 @@ struct ContentView: View {
         ) { result in
             switch result {
             case .success(let urls):
+                preImportDestination = nil
                 if let url = urls.first { model.chooseVideo(url) }
             case .failure(let error):
-                model.alertMessage = error.localizedDescription
+                if (error as NSError).code == NSUserCancelledError {
+                    if let preImportDestination {
+                        destination = preImportDestination
+                    }
+                    preImportDestination = nil
+                } else {
+                    model.alertMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -128,7 +139,6 @@ struct ContentView: View {
     }
 
     private func beginImport() {
-        destination = .importVideo
         model.showingFileImporter = true
     }
 
