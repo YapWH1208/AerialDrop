@@ -16,27 +16,49 @@ final class AppModel {
     var showingFileImporter = false
     var importProgress: Double = 0
     var importSucceeded = false
+    var isSelectedVideoValid = false
     var cropOffset: Double = 0.5
     var conversionQuality: ConversionOptions.Quality = .standard
     var outputHeightCap: Int? = nil
     var sourceResolution: CGSize?
+    var activeAerialAssetIDs: Set<String> = []
+    var activationFailure: ManagedWallpaper?
+    var activationFailureMessage: String?
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
     private var importGeneration = 0
 
-    private let paths = WallpaperPaths()
+    private let paths: WallpaperPaths
     private let manifestStore: ManifestStore
     private let videoProcessor = VideoProcessor()
-    private let systemService = SystemWallpaperService()
+    private let systemService: any WallpaperServicing
+    private let automaticActivationEnabled: () -> Bool
 
-    init() {
+    init(
+        paths: WallpaperPaths = WallpaperPaths(),
+        systemService: (any WallpaperServicing)? = nil,
+        automaticallyReload: Bool = true,
+        automaticActivationEnabled: @escaping () -> Bool = {
+            AppPreferences.isSetWallpaperAfterImportEnabled()
+        }
+    ) {
+        self.paths = paths
         manifestStore = ManifestStore(paths: paths)
-        Task { await reload() }
+        self.systemService = systemService ?? SystemWallpaperService(
+            selectionStore: WallpaperSelectionStore(paths: paths)
+        )
+        self.automaticActivationEnabled = automaticActivationEnabled
+        if automaticallyReload {
+            Task { await reload() }
+        }
     }
 
     var canImport: Bool {
-        selectedVideo != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isWorking
+        isSelectedVideoValid
+            && selectedVideo != nil
+            && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !isWorking
     }
 
     /// Maps the real encode fraction into the progress band occupied by the
@@ -60,7 +82,11 @@ final class AppModel {
         conversionQuality = .standard
         outputHeightCap = nil
         sourceResolution = nil
+        isSelectedVideoValid = false
         Task {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+
             do {
                 try await videoProcessor.validate(source: url)
             } catch {
@@ -68,8 +94,12 @@ final class AppModel {
                 alertMessage = error.localizedDescription
                 selectedVideo = nil
                 title = ""
+                isSelectedVideoValid = false
                 return
             }
+
+            guard version == selectionVersion else { return }
+            isSelectedVideoValid = true
 
             // Best-effort metadata for the resolution badge, crop bands and
             // height caps. A failure here must not reject a file that passed
@@ -99,7 +129,7 @@ final class AppModel {
     }
 
     func importSelectedVideo() {
-        guard let source = selectedVideo else { return }
+        guard isSelectedVideoValid, let source = selectedVideo else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
             alertMessage = AerialDropError.invalidTitle.localizedDescription
@@ -113,6 +143,7 @@ final class AppModel {
             isWorking = true
             importProgress = 0
             importSucceeded = false
+            dismissActivationFailure()
             defer { isWorking = false }
 
             let access = source.startAccessingSecurityScopedResource()
@@ -121,6 +152,7 @@ final class AppModel {
             let id = UUID().uuidString.uppercased()
             let videoDestination = paths.videoURL(for: id)
             let thumbnailDestination = paths.thumbnailURL(for: id)
+            var manifestInstalled = false
 
             do {
                 try requireTahoe()
@@ -156,19 +188,28 @@ final class AppModel {
                     width: Int(encodedSize.width),
                     height: Int(encodedSize.height)
                 )
+                manifestInstalled = true
 
-                stage = .refreshingSystem
-                await systemService.refresh()
-                systemService.openWallpaperSettings()
+                await applyPostImportWallpaperSetting(
+                    to: ManagedWallpaper(
+                        id: id,
+                        title: cleanTitle,
+                        videoURL: videoDestination,
+                        thumbnailURL: thumbnailDestination,
+                        resolution: encodedSize
+                    )
+                )
 
                 stage = .finished
                 selectedVideo = nil
                 title = ""
-                await reload()
+                isSelectedVideoValid = false
                 importSucceeded = true
             } catch {
-                try? FileManager.default.removeItem(at: videoDestination)
-                try? FileManager.default.removeItem(at: thumbnailDestination)
+                if !manifestInstalled {
+                    try? FileManager.default.removeItem(at: videoDestination)
+                    try? FileManager.default.removeItem(at: thumbnailDestination)
+                }
                 guard generation == importGeneration else { return }
                 stage = .idle
                 importProgress = 0
@@ -193,29 +234,46 @@ final class AppModel {
 
     func remove(_ wallpaper: ManagedWallpaper) {
         Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try manifestStore.removeWallpaper(id: wallpaper.id)
-                await systemService.refresh()
-                await reload()
-            } catch {
-                alertMessage = error.localizedDescription
+            await removeWallpaper(wallpaper)
+        }
+    }
+
+    func removeWallpaper(_ wallpaper: ManagedWallpaper) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            refreshActiveSelectionForRemoval()
+            guard !activeAerialAssetIDs.contains(wallpaper.id) else {
+                throw AerialDropError.activeWallpaperCannotBeRemoved
             }
+            try manifestStore.removeWallpaper(id: wallpaper.id)
+            await systemService.refresh()
+            await reload()
+        } catch {
+            alertMessage = error.localizedDescription
         }
     }
 
     func removeAll() {
         Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try manifestStore.removeAllManaged()
-                await systemService.refresh()
-                await reload()
-            } catch {
-                alertMessage = error.localizedDescription
+            await removeAllWallpapers()
+        }
+    }
+
+    func removeAllWallpapers() async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            refreshActiveSelectionForRemoval()
+            let managedIDs = Set(try manifestStore.importedWallpapers().map(\.id))
+            guard activeAerialAssetIDs.isDisjoint(with: managedIDs) else {
+                throw AerialDropError.activeWallpaperCannotBeRemoved
             }
+            try manifestStore.removeAllManaged()
+            await systemService.refresh()
+            await reload()
+        } catch {
+            alertMessage = error.localizedDescription
         }
     }
 
@@ -225,6 +283,71 @@ final class AppModel {
         } catch {
             wallpapers = []
         }
+        try? refreshActiveSelection()
+    }
+
+    func setWallpaper(_ wallpaper: ManagedWallpaper) {
+        Task {
+            await activateWallpaper(wallpaper)
+        }
+    }
+
+    /// The awaited counterpart to `setWallpaper`, kept internal for focused
+    /// model tests while UI callers retain the non-blocking action method.
+    func activateWallpaper(_ wallpaper: ManagedWallpaper) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await systemService.activateAerial(assetID: wallpaper.id)
+            dismissActivationFailure()
+            await reload()
+        } catch {
+            recordActivationFailure(for: wallpaper, error: error)
+        }
+    }
+
+    func retryActivation() {
+        guard let wallpaper = activationFailure else { return }
+        dismissActivationFailure()
+        setWallpaper(wallpaper)
+    }
+
+    /// Applies the default-on post-import choice independently of media work,
+    /// making a failed activation recoverable without rolling back installation.
+    func applyPostImportWallpaperSetting(to wallpaper: ManagedWallpaper) async {
+        stage = .refreshingSystem
+        if automaticActivationEnabled() {
+            do {
+                try await systemService.activateAerial(assetID: wallpaper.id)
+                dismissActivationFailure()
+            } catch {
+                recordActivationFailure(for: wallpaper, error: error)
+            }
+        } else {
+            await systemService.refresh()
+        }
+        await reload()
+    }
+
+    private func refreshActiveSelection() throws {
+        activeAerialAssetIDs = try systemService.activeAerialAssetIDs()
+    }
+
+    /// Removal must not be blocked by an unreadable selection store: an
+    /// unreadable store means no selection can be verified, so there is
+    /// nothing to leave dangling. Activation keeps the strict variant above.
+    private func refreshActiveSelectionForRemoval() {
+        activeAerialAssetIDs = (try? systemService.activeAerialAssetIDs()) ?? []
+    }
+
+    func dismissActivationFailure() {
+        activationFailure = nil
+        activationFailureMessage = nil
+    }
+
+    private func recordActivationFailure(for wallpaper: ManagedWallpaper, error: Error) {
+        activationFailure = wallpaper
+        activationFailureMessage = error.localizedDescription
     }
 
     func validateCatalogue() {

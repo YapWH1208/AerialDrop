@@ -14,5 +14,14 @@ struct AerialDropApp: App {
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .windowBackgroundDragBehavior(.enabled)
+
+        Settings {
+            SettingsView()
+        }
+
+        Window("Preview & Adjust", id: "import-preview") {
+            ImportPreviewWindow()
+                .environment(model)
+        }
     }
 }

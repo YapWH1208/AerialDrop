@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+ Captured from AllSpacesAndDisplays after manually selecting an AerialDrop
+ Aerial on macOS Tahoe 26. Personal asset, display, Space, and date values
+ have been replaced with deterministic fixture values.
+-->
+<plist version="1.0">
+<dict>
+    <key>AllSpacesAndDisplays</key>
+    <dict>
+        <key>Linked</key>
+        <dict>
+            <key>Content</key>
+            <dict>
+                <key>Choices</key>
+                <array>
+                    <dict>
+                        <key>Configuration</key>
+                        <data>
+                        YnBsaXN0MDDRAQJXYXNzZXRJRF8QJDAwMDAwMDAwLTAwMDAtMDAwMC0wMDAw
+                        LTAwMDAwMDAwMDAwMQgLEwAAAAAAAAEBAAAAAAAAAAMAAAAAAAAAAAAAAAAA
+                        AAA6
+                        </data>
+                        <key>Files</key>
+                        <array/>
+                        <key>Provider</key>
+                        <string>com.apple.wallpaper.choice.aerials</string>
+                    </dict>
+                </array>
+                <key>EncodedOptionValues</key>
+                <data>
+                YnBsaXN0MDDRAQJWdmFsdWVz0AgLEgAAAAAAAAEBAAAAAAAAAAMAAAAAAAAA
+                AAAAAAAAAAAT
+                </data>
+                <key>Shuffle</key>
+                <string>$null</string>
+            </dict>
+            <key>LastSet</key>
+            <date>2001-01-01T00:00:00Z</date>
+            <key>LastUse</key>
+            <date>2001-01-01T00:00:00Z</date>
+        </dict>
+        <key>Type</key>
+        <string>linked</string>
+    </dict>
+</dict>
+</plist>
