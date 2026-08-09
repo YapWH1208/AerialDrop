@@ -36,3 +36,15 @@ wallpaper-store write, remote push, or pull request has been performed.
   for shared paths/errors. The new untracked store/test files were not indexed
   until commit; final graph review remains required after all implementation.
 - Commit: `1149969` (`feat: add safe wallpaper selection store`).
+
+## Step 3 — Persistent automatic-activation setting
+
+- Added `AppPreferences` with the shared `setWallpaperAfterImport` key and an
+  absent-value default of `true`.
+- Added the standard macOS Settings scene with the accessible “Set as wallpaper
+  after importing” toggle, bound to that exact key.
+- Validation passed:
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter AppPreferencesTests` — 3 tests passed.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`.
+  - `git diff --check` and staged secret scan.
+- Commit: `2850fab` (`feat: add automatic wallpaper activation setting`).
