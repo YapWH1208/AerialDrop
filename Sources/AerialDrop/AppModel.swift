@@ -242,7 +242,7 @@ final class AppModel {
         isWorking = true
         defer { isWorking = false }
         do {
-            try refreshActiveSelection()
+            refreshActiveSelectionForRemoval()
             guard !activeAerialAssetIDs.contains(wallpaper.id) else {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
             }
@@ -264,7 +264,7 @@ final class AppModel {
         isWorking = true
         defer { isWorking = false }
         do {
-            try refreshActiveSelection()
+            refreshActiveSelectionForRemoval()
             let managedIDs = Set(try manifestStore.importedWallpapers().map(\.id))
             guard activeAerialAssetIDs.isDisjoint(with: managedIDs) else {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
@@ -331,6 +331,13 @@ final class AppModel {
 
     private func refreshActiveSelection() throws {
         activeAerialAssetIDs = try systemService.activeAerialAssetIDs()
+    }
+
+    /// Removal must not be blocked by an unreadable selection store: an
+    /// unreadable store means no selection can be verified, so there is
+    /// nothing to leave dangling. Activation keeps the strict variant above.
+    private func refreshActiveSelectionForRemoval() {
+        activeAerialAssetIDs = (try? systemService.activeAerialAssetIDs()) ?? []
     }
 
     func dismissActivationFailure() {

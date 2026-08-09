@@ -134,6 +134,21 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testRemovalProceedsWhenTheSelectionStoreIsUnreadable() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0010")
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        service.selectionReadError = TestError.storeUnreadable
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+
+        await model.removeWallpaper(wallpaper)
+
+        XCTAssertNil(model.alertMessage)
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
     private func makeModel(
         service: FakeWallpaperService,
         home: URL? = nil,
@@ -197,12 +212,17 @@ private final class FakeWallpaperService: WallpaperServicing {
     var refreshCallCount = 0
     var activationError: Error?
 
+    var selectionReadError: Error?
+
     init(activeIDs: Set<String> = []) {
         self.activeIDs = activeIDs
     }
 
     func activeAerialAssetIDs() throws -> Set<String> {
-        activeIDs
+        if let selectionReadError {
+            throw selectionReadError
+        }
+        return activeIDs
     }
 
     func activateAerial(assetID: String) async throws {
@@ -226,8 +246,14 @@ private final class FakeWallpaperService: WallpaperServicing {
 
 private enum TestError: LocalizedError {
     case activationFailed
+    case storeUnreadable
 
     var errorDescription: String? {
-        "The simulated wallpaper activation failed."
+        switch self {
+        case .activationFailed:
+            "The simulated wallpaper activation failed."
+        case .storeUnreadable:
+            "The simulated wallpaper selection store could not be read."
+        }
     }
 }

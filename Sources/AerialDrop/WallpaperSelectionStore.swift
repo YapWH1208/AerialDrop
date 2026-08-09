@@ -36,7 +36,7 @@ struct WallpaperSelectionStore {
     /// existing per-Space selections. Non-Aerial selections are ignored.
     func activeAerialAssetIDs() throws -> Set<String> {
         let root = try root(from: try selectionStoreData())
-        return Set(try targetSelections(in: root).compactMap(aerialAssetID(in:)))
+        return Set(try targetSelections(in: root).flatMap { try aerialAssetIDs(in: $0) })
     }
 
     /// Replaces every linked selection target with the fixture-locked native
@@ -65,7 +65,7 @@ struct WallpaperSelectionStore {
 
         let writtenRoot = try root(from: try selectionStoreData())
         try validatePreservation(from: originalRoot, to: writtenRoot)
-        guard try Set(targetSelections(in: writtenRoot).compactMap(aerialAssetID(in:))) == Set([assetID]) else {
+        guard try Set(targetSelections(in: writtenRoot).flatMap { try aerialAssetIDs(in: $0) }) == Set([assetID]) else {
             throw AerialDropError.wallpaperSelectionVerificationFailed(assetID)
         }
     }
@@ -166,9 +166,12 @@ struct WallpaperSelectionStore {
         ]
     }
 
-    private func aerialAssetID(in selection: [String: Any]) throws -> String? {
+    /// Returns the Aerial asset IDs referenced by a linked selection. A
+    /// shuffle-mode selection legitimately carries several aerial choices, so
+    /// every matching ID is returned rather than treated as malformed.
+    private func aerialAssetIDs(in selection: [String: Any]) throws -> Set<String> {
         guard selection["Type"] as? String == "linked" else {
-            return nil
+            return []
         }
         guard let linked = selection["Linked"] as? [String: Any],
               let content = linked["Content"] as? [String: Any],
@@ -176,23 +179,21 @@ struct WallpaperSelectionStore {
         else {
             throw AerialDropError.malformedWallpaperSelectionStore("linked selection is incomplete")
         }
-        let aerialChoices = choices.filter { ($0["Provider"] as? String) == Self.aerialProvider }
-        guard !aerialChoices.isEmpty else {
-            return nil
+        var assetIDs: Set<String> = []
+        for choice in choices where (choice["Provider"] as? String) == Self.aerialProvider {
+            guard let configuration = choice["Configuration"] as? Data else {
+                throw AerialDropError.malformedWallpaperSelectionStore("native Aerial choice is missing Configuration")
+            }
+            let decodedConfiguration = try root(from: configuration)
+            guard decodedConfiguration.count == 1,
+                  let assetID = decodedConfiguration["assetID"] as? String,
+                  UUID(uuidString: assetID) != nil
+            else {
+                throw AerialDropError.malformedWallpaperSelectionStore("native Aerial Configuration does not contain exactly one UUID assetID")
+            }
+            assetIDs.insert(assetID)
         }
-        guard aerialChoices.count == 1,
-              let configuration = aerialChoices[0]["Configuration"] as? Data
-        else {
-            throw AerialDropError.malformedWallpaperSelectionStore("native Aerial choice is ambiguous or missing Configuration")
-        }
-        let decodedConfiguration = try root(from: configuration)
-        guard decodedConfiguration.count == 1,
-              let assetID = decodedConfiguration["assetID"] as? String,
-              UUID(uuidString: assetID) != nil
-        else {
-            throw AerialDropError.malformedWallpaperSelectionStore("native Aerial Configuration does not contain exactly one UUID assetID")
-        }
-        return assetID
+        return assetIDs
     }
 
     private func validatePreservation(from original: [String: Any], to candidate: [String: Any]) throws {

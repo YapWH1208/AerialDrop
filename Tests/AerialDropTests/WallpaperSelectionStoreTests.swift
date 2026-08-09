@@ -82,6 +82,30 @@ final class WallpaperSelectionStoreTests: XCTestCase {
         XCTAssertEqual(try store.activeAerialAssetIDs(), Set(["00000000-0000-0000-0000-000000000001"]))
     }
 
+    func testActiveAerialAssetIDsReturnEveryChoiceInAShuffleSelection() throws {
+        let fixture = try fixtureRoot()
+        var selection = try XCTUnwrap(fixture["AllSpacesAndDisplays"] as? [String: Any])
+        var linked = try XCTUnwrap(selection["Linked"] as? [String: Any])
+        var content = try XCTUnwrap(linked["Content"] as? [String: Any])
+        var choices = try XCTUnwrap(content["Choices"] as? [[String: Any]])
+        var secondChoice = try XCTUnwrap(choices.first)
+        secondChoice["Configuration"] = try propertyListData(["assetID": targetID])
+        choices.append(secondChoice)
+        content["Choices"] = choices
+        linked["Content"] = content
+        selection["Linked"] = linked
+
+        var root = try propertyListRoot(at: paths.selectionStore)
+        root["AllSpacesAndDisplays"] = selection
+        try propertyListData(root).write(to: paths.selectionStore, options: .atomic)
+
+        let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
+        XCTAssertEqual(
+            try store.activeAerialAssetIDs(),
+            Set(["00000000-0000-0000-0000-000000000001", targetID])
+        )
+    }
+
     func testMissingOrMalformedSelectionStoreFailsClosed() throws {
         try FileManager.default.removeItem(at: paths.selectionStore)
         let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
