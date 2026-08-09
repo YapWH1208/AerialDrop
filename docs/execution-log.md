@@ -75,3 +75,17 @@ wallpaper-store write, remote push, or pull request has been performed.
 - Updated README, architecture, testing instructions, and Import-pane wording
   for automatic/manual activation paths, separate selection-store backups, and
   the Tahoe validation matrix.
+
+## Step 9 — Final automated validation and graph review
+
+- Passed `swift build`, `swift test` (39 tests), `swift build -c release`, and
+  `./Scripts/build-app.sh` with the Xcode developer directory pinned.
+- Final Code Review Graph rebuilt against `main`: 31 intended changed files,
+  172 directly changed nodes, and a 60-node two-hop impact radius. It reported
+  no affected flow records and highlighted AppModel/UI as structurally untested;
+  the focused store, preference, and conversion tests provide automated coverage
+  for the pure and persistence-critical paths.
+- Remaining required evidence is the manual Tahoe matrix in `TESTING.md`:
+  preview lifecycle, enabled/disabled activation, Library actions and removal
+  guard, all Spaces/displays, lock/unlock, reboot persistence, and
+  `WallpaperAerialsExtension` log inspection.

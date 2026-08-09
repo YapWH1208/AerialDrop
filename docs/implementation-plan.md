@@ -339,7 +339,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Steps 1–8.
 - Risks: Private `WallpaperAgent` behavior cannot be fully proven by unit tests.
 - Rollback: Use the original `Index.plist` backup for manual system recovery if validation reveals a schema problem; revert only focused local commits as authorized.
-- Status: [ ]
+- Status: [ ] Automated validation and final graph review completed; the Tahoe manual interaction, multi-Space/display, lock/unlock, reboot, and wallpaper-agent log matrix remains pending.
 
 ## 7. Data and migration plan
 
