@@ -17,17 +17,20 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertNil(model.alertMessage)
     }
 
-    func testActivationFailureKeepsExistingActiveStateAndSurfacesAnError() async {
+    func testActivationFailureKeepsExistingActiveStateAndOffersRecovery() async {
         let service = FakeWallpaperService(activeIDs: ["CURRENT-AERIAL"])
         service.activationError = TestError.activationFailed
         let model = makeModel(service: service)
+        let wallpaper = makeWallpaper(id: "C0D3X-0002")
         await model.reload()
 
-        await model.activateWallpaper(makeWallpaper(id: "C0D3X-0002"))
+        await model.activateWallpaper(wallpaper)
 
         XCTAssertEqual(service.activatedAssetIDs, ["C0D3X-0002"])
         XCTAssertEqual(model.activeAerialAssetIDs, Set(["CURRENT-AERIAL"]))
-        XCTAssertEqual(model.alertMessage, TestError.activationFailed.localizedDescription)
+        XCTAssertEqual(model.activationFailure, wallpaper)
+        XCTAssertEqual(model.activationFailureMessage, TestError.activationFailed.localizedDescription)
+        XCTAssertNil(model.alertMessage)
         XCTAssertFalse(model.isWorking)
     }
 
@@ -40,14 +43,127 @@ final class AppModelWallpaperTests: XCTestCase {
         await model.activateWallpaper(wallpaper)
 
         XCTAssertNil(model.activationFailure)
+        XCTAssertNil(model.activationFailureMessage)
         XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
     }
 
-    private func makeModel(service: FakeWallpaperService) -> AppModel {
-        AppModel(
-            paths: WallpaperPaths(homeDirectory: URL(fileURLWithPath: "/tmp/AerialDropAppModelTests")),
+    func testEnabledPostImportSettingActivatesTheNewAerial() async {
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, automaticActivationEnabled: { true })
+        let wallpaper = makeWallpaper(id: "C0D3X-0004")
+
+        await model.applyPostImportWallpaperSetting(to: wallpaper)
+
+        XCTAssertEqual(service.activatedAssetIDs, [wallpaper.id])
+        XCTAssertEqual(service.refreshCallCount, 0)
+        XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
+    }
+
+    func testDisabledPostImportSettingRefreshesWithoutChangingWallpaper() async {
+        let service = FakeWallpaperService(activeIDs: ["CURRENT-AERIAL"])
+        let model = makeModel(service: service, automaticActivationEnabled: { false })
+
+        await model.applyPostImportWallpaperSetting(to: makeWallpaper(id: "C0D3X-0005"))
+
+        XCTAssertTrue(service.activatedAssetIDs.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertEqual(model.activeAerialAssetIDs, Set(["CURRENT-AERIAL"]))
+    }
+
+    func testFailedPostImportActivationKeepsTheInstalledWallpaperRecoverable() async {
+        let service = FakeWallpaperService(activeIDs: ["CURRENT-AERIAL"])
+        service.activationError = TestError.activationFailed
+        let model = makeModel(service: service, automaticActivationEnabled: { true })
+        let wallpaper = makeWallpaper(id: "C0D3X-0009")
+
+        await model.applyPostImportWallpaperSetting(to: wallpaper)
+
+        XCTAssertEqual(service.activatedAssetIDs, [wallpaper.id])
+        XCTAssertEqual(model.activeAerialAssetIDs, Set(["CURRENT-AERIAL"]))
+        XCTAssertEqual(model.activationFailure, wallpaper)
+        XCTAssertEqual(model.activationFailureMessage, TestError.activationFailed.localizedDescription)
+    }
+
+    func testActiveWallpaperCannotBeRemoved() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0006")
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        let model = makeModel(service: service)
+
+        await model.removeWallpaper(wallpaper)
+
+        XCTAssertEqual(model.alertMessage, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRemoveAllBlocksOnlyActiveManagedWallpapers() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0007")
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+
+        await model.removeAllWallpapers()
+
+        XCTAssertEqual(model.alertMessage, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRemoveAllDoesNotTreatAnAppleAerialAsManaged() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0008")
+        let service = FakeWallpaperService(activeIDs: ["APPLE-AERIAL"])
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+
+        await model.removeAllWallpapers()
+
+        XCTAssertNil(model.alertMessage)
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    private func makeModel(
+        service: FakeWallpaperService,
+        home: URL? = nil,
+        automaticActivationEnabled: @escaping () -> Bool = { true }
+    ) -> AppModel {
+        let temporaryHome = home ?? makeTemporaryHome()
+        return AppModel(
+            paths: WallpaperPaths(homeDirectory: temporaryHome),
             systemService: service,
-            automaticallyReload: false
+            automaticallyReload: false,
+            automaticActivationEnabled: automaticActivationEnabled
+        )
+    }
+
+    private func makeTemporaryHome() -> URL {
+        let temporaryHome = FileManager.default.temporaryDirectory
+            .appending(path: "AerialDropAppModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try! FileManager.default.createDirectory(at: temporaryHome, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: temporaryHome)
+        }
+        return temporaryHome
+    }
+
+    private func installManagedWallpaper(_ wallpaper: ManagedWallpaper, in home: URL) throws {
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        try store.prepareDirectories()
+        let manifest: [String: Any] = [
+            "version": 1,
+            "initialAssetCount": 0,
+            "assets": [],
+            "categories": []
+        ]
+        try JSONSerialization.data(withJSONObject: manifest).write(to: paths.manifest, options: .atomic)
+        try Data("video".utf8).write(to: paths.videoURL(for: wallpaper.id))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: wallpaper.id))
+        try store.addWallpaper(
+            id: wallpaper.id,
+            title: wallpaper.title,
+            width: Int(wallpaper.resolution?.width ?? 0),
+            height: Int(wallpaper.resolution?.height ?? 0)
         )
     }
 
@@ -66,6 +182,7 @@ final class AppModelWallpaperTests: XCTestCase {
 private final class FakeWallpaperService: WallpaperServicing {
     var activeIDs: Set<String>
     var activatedAssetIDs: [String] = []
+    var refreshCallCount = 0
     var activationError: Error?
 
     init(activeIDs: Set<String> = []) {
@@ -84,7 +201,9 @@ private final class FakeWallpaperService: WallpaperServicing {
         activeIDs = [assetID]
     }
 
-    func refresh() async { }
+    func refresh() async {
+        refreshCallCount += 1
+    }
 
     func openWallpaperSettings() { }
 

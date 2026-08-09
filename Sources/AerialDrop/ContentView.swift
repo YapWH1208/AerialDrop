@@ -64,17 +64,19 @@ struct ContentView: View {
             Text(alertMessage ?? "")
         }
         .alert(
-            "Wallpaper Was Imported",
+            "Couldn’t Set Wallpaper",
             isPresented: Binding(
                 get: { model.activationFailure != nil },
-                set: { if !$0 { model.activationFailure = nil } }
+                set: { if !$0 { model.dismissActivationFailure() } }
             )
         ) {
             Button("Try Again") { model.retryActivation() }
             Button("Open Wallpaper Settings") { model.openWallpaperSettings() }
-            Button("Not Now", role: .cancel) { model.activationFailure = nil }
+            Button("Not Now", role: .cancel) { model.dismissActivationFailure() }
         } message: {
-            Text("AerialDrop kept the imported video and catalogue entry, but could not apply it as wallpaper. You can retry or choose it in System Settings.")
+            let failureMessage = model.activationFailureMessage
+                ?? "You can retry or choose it in System Settings."
+            Text("AerialDrop kept its imported video and catalogue entry, but could not apply it as wallpaper. \(failureMessage)")
         }
         .onChange(of: model.alertMessage) { _, newValue in
             if let newValue {
