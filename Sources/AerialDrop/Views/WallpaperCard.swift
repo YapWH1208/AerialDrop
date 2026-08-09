@@ -18,6 +18,13 @@ struct WallpaperCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var image: NSImage?
     @State private var hovering = false
+    @FocusState private var selectFocused: Bool
+    @FocusState private var previewFocused: Bool
+    @FocusState private var moreFocused: Bool
+
+    private var showsHoverControls: Bool {
+        hovering || selectFocused || previewFocused || moreFocused
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -25,11 +32,13 @@ struct WallpaperCard: View {
                 cardContent
             }
             .buttonStyle(.plain)
+            .focusable()
+            .focused($selectFocused)
             .simultaneousGesture(
                 TapGesture(count: 2).onEnded(onDoubleClick)
             )
 
-            if hovering {
+            if showsHoverControls {
                 hoverControls
                     .padding(14)
                     .transition(.opacity)
@@ -143,6 +152,7 @@ struct WallpaperCard: View {
                 Button("Preview", systemImage: "play.fill", action: onPreview)
                     .buttonStyle(.glass)
                     .controlSize(.small)
+                    .focused($previewFocused)
                     .help("Preview wallpaper")
 
                 Menu {
@@ -154,6 +164,7 @@ struct WallpaperCard: View {
                 .buttonStyle(.glass)
                 .controlSize(.small)
                 .labelStyle(.iconOnly)
+                .focused($moreFocused)
                 .help("More actions")
             }
         }
