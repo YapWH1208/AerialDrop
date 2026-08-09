@@ -240,7 +240,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Step 4.
 - Risks: Security-scope imbalance, player observers/loopers leaking, duplicate windows, crop overlay not matching aspect-fit content bounds.
 - Rollback: Revert the window/player/view commit; compact Import controls remain functional.
-- Status: [x] Completed in `16106ca` with a reusable Window scene, native looping player, shared crop mask, and synchronized controls.
+- Status: [x] Completed in `16106ca` and `ead40d0` with a reusable Window scene, native looping player, shared crop mask, synchronized controls, and a validation gate that exposes preview controls only for accepted source videos.
 
 ### Step 6 — Integrate activation, active state, and failure recovery
 

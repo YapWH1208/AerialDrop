@@ -78,7 +78,7 @@ wallpaper-store write, remote push, or pull request has been performed.
 
 ## Step 9 — Final automated validation and graph review
 
-- Passed `swift build`, `swift test` (48 tests), `swift build -c release`, and
+- Passed `swift build`, `swift test` (49 tests), `swift build -c release`, and
   `./Scripts/build-app.sh` with the Xcode developer directory pinned. The
   final package is `dist/AerialDrop.app`.
 - Final Code Review Graph rebuilt against `main`: 32 intended changed files,
@@ -138,3 +138,19 @@ wallpaper-store write, remote push, or pull request has been performed.
   exact remaining Tahoe checklist: preview lifecycle, enabled/disabled import,
   Library activation and recovery, external state refresh, managed-only
   deletion guards, Spaces/displays, lock/unlock, relaunch/reboot, and logs.
+
+## Step 9 follow-up — Validated-source editor gate
+
+- Preview & Adjust and the conversion controls now remain hidden until the
+  selected URL passes `VideoProcessor` validation. The import command also
+  defensively rejects an unvalidated selection, and successful imports clear
+  the validated state with the selected URL.
+- Validation and source metadata loading now hold a balanced security-scoped
+  access lifetime, matching the existing playback and import paths.
+- Validation passed:
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter AppModelWallpaperTests` — 10 tests passed.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test` — 49 tests passed.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release`.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./Scripts/build-app.sh`.
+- Commit: `ead40d0` (`fix: gate import controls on validation`).
