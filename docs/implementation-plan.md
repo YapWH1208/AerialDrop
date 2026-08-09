@@ -240,7 +240,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Step 4.
 - Risks: Security-scope imbalance, player observers/loopers leaking, duplicate windows, crop overlay not matching aspect-fit content bounds.
 - Rollback: Revert the window/player/view commit; compact Import controls remain functional.
-- Status: [ ]
+- Status: [x] Completed in `16106ca` with a reusable Window scene, native looping player, shared crop mask, and synchronized controls.
 
 ### Step 6 — Integrate activation, active state, and failure recovery
 
@@ -270,7 +270,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Steps 2 and 3.
 - Risks: Main-actor protocol isolation, accidental cleanup of an installed asset, stale active state, and process restart races.
 - Rollback: Revert integration commit; the safe store and preference remain unused, and original refresh/Settings flow can be restored.
-- Status: [ ]
+- Status: [x] Completed in `21f242f` and `2493dce`; activation is separate from installation, active selection is re-read before removals, and failures offer retry/Settings recovery.
 
 ### Step 7 — Add Library activation UI and Active badges
 
@@ -295,7 +295,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Step 6.
 - Risks: Badge meaning conflated with installed checkmark or actions callable during another mutation.
 - Rollback: Revert Library UI commit; automatic activation remains available.
-- Status: [ ]
+- Status: [x] Completed in `cafacf3` with card/preview activation actions and separate accessible Active status.
 
 ### Step 8 — Update user and maintainer documentation
 
@@ -319,7 +319,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Steps 5–7.
 - Risks: Documentation promising behavior not verified manually.
 - Rollback: Revert documentation commit without touching production behavior.
-- Status: [ ]
+- Status: [x] Completed with the current documentation commit.
 
 ### Step 9 — Final validation and graph review
 
