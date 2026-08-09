@@ -67,4 +67,5 @@ skills-lock.json
 /.opencode
 # Added by code-review-graph
 .code-review-graph/
+.codex/spec-to-pr/
 opencode.jsonc
