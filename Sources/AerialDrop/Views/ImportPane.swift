@@ -15,6 +15,7 @@ struct SectionHeader: View {
 
 struct ImportPane: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var hoveringDropZone = false
 
     var body: some View {
@@ -65,6 +66,12 @@ struct ImportPane: View {
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .glassEffect(.regular, in: .rect(cornerRadius: 18))
+
+                    Button("Preview & Adjust", systemImage: "rectangle.on.rectangle") {
+                        openWindow(id: "import-preview")
+                    }
+                    .buttonStyle(.glass)
+                    .help("Open the dedicated video preview editor")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {

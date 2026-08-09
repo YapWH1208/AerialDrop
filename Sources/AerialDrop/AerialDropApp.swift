@@ -18,5 +18,10 @@ struct AerialDropApp: App {
         Settings {
             SettingsView()
         }
+
+        Window("Preview & Adjust", id: "import-preview") {
+            ImportPreviewWindow()
+                .environment(model)
+        }
     }
 }
