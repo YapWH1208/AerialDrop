@@ -21,6 +21,7 @@ final class AppModel {
     var outputHeightCap: Int? = nil
     var sourceResolution: CGSize?
     var activeAerialAssetIDs: Set<String> = []
+    var activationFailure: ManagedWallpaper?
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
@@ -170,7 +171,13 @@ final class AppModel {
                         title = ""
                         await reload()
                         importSucceeded = true
-                        alertMessage = "The video was imported, but AerialDrop could not apply it as wallpaper. \(error.localizedDescription)"
+                        activationFailure = ManagedWallpaper(
+                            id: id,
+                            title: cleanTitle,
+                            videoURL: videoDestination,
+                            thumbnailURL: thumbnailDestination,
+                            resolution: encodedSize
+                        )
                         return
                     }
                 } else {
@@ -265,6 +272,10 @@ final class AppModel {
                 alertMessage = error.localizedDescription
             }
         }
+    }
+
+    func retryActivation() {
+        if let activationFailure { setWallpaper(activationFailure) }
     }
 
     private func refreshActiveSelection() throws {
