@@ -78,11 +78,11 @@ wallpaper-store write, remote push, or pull request has been performed.
 
 ## Step 9 — Final automated validation and graph review
 
-- Passed `swift build`, `swift test` (42 tests), `swift build -c release`, and
+- Passed `swift build`, `swift test` (48 tests), `swift build -c release`, and
   `./Scripts/build-app.sh` with the Xcode developer directory pinned. The
   final package is `dist/AerialDrop.app`.
 - Final Code Review Graph rebuilt against `main`: 32 intended changed files,
-  99 changed functions/classes, a 0.60 risk score, and no affected flow
+  112 changed functions/classes, a 0.60 risk score, and no affected flow
   records. Its static test mapping still flags the AppModel, import, removal,
   UI, and player paths; the added model seam gives direct coverage to manual
   activation and retry state, while native import/removal/UI/player behavior is
@@ -107,3 +107,24 @@ wallpaper-store write, remote push, or pull request has been performed.
 - Commit: `b163252` (`test: cover wallpaper activation model`). Automatic
   post-import selection and removal behavior still require the Tahoe import
   matrix because the real import pipeline owns native video processing.
+
+## Step 9 follow-up — Completion-audit safeguards
+
+- The requirement audit found and fixed two behavior gaps before manual
+  validation: failures from Library activation now offer the same Retry and
+  System Settings recovery as post-import failures, and Remove All consults
+  current manifest IDs so an unrelated Apple Aerial does not block cleanup
+  while a stale Library cache cannot bypass the managed-item guard.
+- Extracted the post-import activation decision behind an injected default-on
+  preference reader. Focused model coverage now verifies enabled/disabled
+  behavior, failures after installation, recovery state, temporary-home
+  isolation, active single removal, and managed-vs-Apple remove-all behavior.
+- Validation passed:
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter AppModelWallpaperTests` — 9 tests passed.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test` — 48 tests passed.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release`.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./Scripts/build-app.sh`.
+- Commit: `f29d7ec` (`fix: recover failed wallpaper activation`). The live
+  Tahoe matrix remains required; this change did not write the real selection
+  store or activate a live wallpaper.

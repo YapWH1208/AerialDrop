@@ -270,7 +270,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Steps 2 and 3.
 - Risks: Main-actor protocol isolation, accidental cleanup of an installed asset, stale active state, and process restart races.
 - Rollback: Revert integration commit; the safe store and preference remain unused, and original refresh/Settings flow can be restored.
-- Status: [x] Completed in `21f242f`, `2493dce`, and `b163252`; activation is separate from installation, active selection is re-read before removals and on app activation, failures offer retry/Settings recovery, and focused model tests cover manual activation and retry state. Tahoe import/removal behavior remains a required manual gate.
+- Status: [x] Completed in `21f242f`, `2493dce`, `b163252`, and `f29d7ec`; activation is separate from installation, all activation failures offer retry/Settings recovery, active selection is re-read before removals and on app activation, and Remove All reads the current managed manifest IDs before guarding deletion. Focused model tests cover preference branches, recovery, and removal state; Tahoe import/removal behavior remains a required manual gate.
 
 ### Step 7 — Add Library activation UI and Active badges
 
