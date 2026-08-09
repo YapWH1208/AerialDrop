@@ -47,6 +47,7 @@ struct LibraryPane: View {
                             WallpaperCard(
                                 wallpaper: wallpaper,
                                 isSelected: selectedID == wallpaper.id,
+                                isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
                                 namespace: glass,
                                 onSelect: {
                                     guard !model.isWorking else { return }
@@ -54,6 +55,7 @@ struct LibraryPane: View {
                                 },
                                 onDoubleClick: { openPreview(wallpaper) },
                                 onPreview: { openPreview(wallpaper) },
+                                onSetWallpaper: { model.setWallpaper(wallpaper) },
                                 onRename: { beginRename(wallpaper) },
                                 onReveal: { model.revealInFinder(wallpaper) },
                                 onRemove: { requestRemoval(wallpaper) }
@@ -87,6 +89,8 @@ struct LibraryPane: View {
         .sheet(item: $previewWallpaper) { wallpaper in
             WallpaperPreviewView(
                 wallpaper: wallpaper,
+                isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                onSetWallpaper: { model.setWallpaper(wallpaper) },
                 onRename: {
                     previewWallpaper = nil
                     DispatchQueue.main.async { beginRename(wallpaper) }
