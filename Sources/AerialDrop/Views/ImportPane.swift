@@ -1,332 +1,377 @@
-import AppKit
 import SwiftUI
-
-struct SectionHeader: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        Label(title, systemImage: systemImage)
-            .font(.title2.weight(.semibold))
-            .tracking(AerialTheme.displayTracking)
-            .foregroundStyle(.primary)
-    }
-}
 
 struct ImportPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
-    @State private var hoveringDropZone = false
 
     var body: some View {
         @Bindable var model = model
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                SectionHeader(title: "Import a Video", systemImage: "square.and.arrow.down")
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Source Video")
+                        .font(.headline)
 
-                dropZone
-
-                if isUltrawideSource {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Crop")
-                            .font(.callout.weight(.semibold))
-                        Picker("Position", selection: cropPreset) {
-                            Text("Left").tag(0.0)
-                            Text("Center").tag(0.5)
-                            Text("Right").tag(1.0)
-                        }
-                        .pickerStyle(.segmented)
-                        Slider(value: $model.cropOffset, in: 0...1)
-                            .help("Position of the visible 16:9 window")
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                    ImportSourceView(
+                        url: model.selectedVideo,
+                        resolution: model.sourceResolution,
+                        cropOffset: model.cropOffset,
+                        isValid: model.isSelectedVideoValid,
+                        onChoose: { model.showingFileImporter = true },
+                        onDrop: { model.chooseVideo($0) },
+                        onPreview: { openWindow(id: "import-preview") }
+                    )
                 }
 
                 if model.isSelectedVideoValid {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Conversion")
-                            .font(.callout.weight(.semibold))
-                        HStack(spacing: 16) {
-                            Picker("Quality", selection: $model.conversionQuality) {
-                                Text("Standard").tag(ConversionOptions.Quality.standard)
-                                Text("High").tag(ConversionOptions.Quality.high)
-                                Text("Maximum").tag(ConversionOptions.Quality.maximum)
+                    ImportSettingsView(
+                        title: $model.title,
+                        quality: $model.conversionQuality,
+                        outputHeightCap: $model.outputHeightCap,
+                        cropOffset: $model.cropOffset,
+                        sourceResolution: model.sourceResolution,
+                        onSubmit: {
+                            if model.canImport {
+                                model.importSelectedVideo()
                             }
-                            Picker("Output resolution", selection: $model.outputHeightCap) {
-                                Text("Original").tag(Int?.none)
-                                ForEach(availableHeightCaps, id: \.self) { cap in
-                                    Text("\(cap)p").tag(Int?.some(cap))
-                                }
-                            }
-                            Spacer()
                         }
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
-
-                    Button("Preview & Adjust", systemImage: "rectangle.on.rectangle") {
-                        openWindow(id: "import-preview")
-                    }
-                    .buttonStyle(.glass)
-                    .help("Open the dedicated video preview editor")
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Wallpaper name")
-                        .font(.callout.weight(.medium))
-                    TextField("Example: Yoimiya 4K", text: $model.title)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                        .onSubmit {
-                            if model.canImport { model.importSelectedVideo() }
-                        }
+                    )
                 }
 
                 if model.importSucceeded {
-                    successCard
-                        .transition(.scale(scale: 0.97).combined(with: .opacity))
+                    ImportSuccessView(
+                        onOpenSettings: { model.openWallpaperSettings() },
+                        onDismiss: { model.importSucceeded = false }
+                    )
                 } else if model.isWorking {
-                    progressCard
-                        .transition(.scale(scale: 0.97).combined(with: .opacity))
+                    ImportProgressView(
+                        stage: model.stage,
+                        progress: model.displayProgress,
+                        onCancel: { model.cancelImport() }
+                    )
                 }
 
-                Button {
-                    model.importSelectedVideo()
-                } label: {
-                    Label {
-                        Text("Import into Aerials")
-                    } icon: {
-                        Image(systemName: "square.and.arrow.down")
-                            .symbolEffect(.pulse, options: .repeating, isActive: model.isWorking)
+                ImportDetailsView()
+
+                HStack {
+                    Text("Automatic activation can be changed in Settings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button("Import Wallpaper", systemImage: "square.and.arrow.down") {
+                        model.importSelectedVideo()
                     }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!model.canImport)
+                    .help("Import the selected video (⌘↩)")
                 }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!model.canImport)
-                .help("Import the selected video (⌘↩)")
-
-                whatHappensCard
-
-                Spacer(minLength: 8)
-
-                Text("By default, AerialDrop applies the imported Aerial everywhere. Change this in Settings if you prefer to select it manually later.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(24)
+            .frame(maxWidth: 760)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity)
         }
-        .scrollIndicators(.hidden)
         .sensoryFeedback(.success, trigger: model.stage, condition: { old, new in
             new == .finished && old != .finished
         })
     }
+}
 
-    private var dropZone: some View {
-        ZStack {
-            Circle()
-                .fill(Color.accentColor.opacity(0.16))
-                .frame(width: 360, height: 360)
-                .blur(radius: 80)
-                .allowsHitTesting(false)
-            dropZoneButton
+private struct ImportSourceView: View {
+    let url: URL?
+    let resolution: CGSize?
+    let cropOffset: Double
+    let isValid: Bool
+    let onChoose: () -> Void
+    let onDrop: (URL) -> Void
+    let onPreview: () -> Void
+
+    @State private var hovering = false
+    @State private var dropTargeted = false
+
+    var body: some View {
+        Group {
+            if let url {
+                selectedSource(url)
+            } else {
+                emptySource
+            }
         }
-        .frame(maxWidth: .infinity)
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let first = urls.first else { return false }
+            onDrop(first)
+            return true
+        } isTargeted: { targeted in
+            dropTargeted = targeted
+        }
+    }
+
+    private var emptySource: some View {
+        Button(action: onChoose) {
+            VStack(spacing: 10) {
+                Image(systemName: "film.stack")
+                    .font(.title)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
+
+                Text("Choose or drop a video")
+                    .font(.headline)
+
+                Text("MP4 or MOV · Your source file is never modified")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 180)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(dropTargeted || hovering ? Color.accentColor.opacity(0.07) : Color(nsColor: .controlBackgroundColor))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    dropTargeted || hovering ? Color.accentColor : Color(nsColor: .separatorColor),
+                    style: StrokeStyle(lineWidth: dropTargeted ? 2 : 1, dash: [6])
+                )
+        }
+        .onHover { hovering = $0 }
+        .accessibilityHint("Opens a file chooser for an MP4 or MOV video")
+    }
+
+    private func selectedSource(_ url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VideoPreview(
+                url: url,
+                resolution: resolution,
+                cropOffset: cropOffset
+            )
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.separator, lineWidth: 0.5)
+            }
+
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(url.lastPathComponent)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if isValid {
+                        Label("Ready to configure", systemImage: "checkmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Validating video…")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                if isValid {
+                    Button("Preview & Adjust", systemImage: "rectangle.on.rectangle", action: onPreview)
+                        .help("Open the dedicated video preview editor")
+                }
+
+                Button("Replace…", systemImage: "arrow.triangle.2.circlepath", action: onChoose)
+            }
+        }
+    }
+}
+
+private struct ImportSettingsView: View {
+    @Binding var title: String
+    @Binding var quality: ConversionOptions.Quality
+    @Binding var outputHeightCap: Int?
+    @Binding var cropOffset: Double
+
+    let sourceResolution: CGSize?
+    let onSubmit: () -> Void
+
+    var body: some View {
+        GroupBox("Wallpaper Details") {
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
+                GridRow {
+                    settingLabel("Name")
+                    TextField("Wallpaper name", text: $title)
+                        .onSubmit(onSubmit)
+                }
+
+                GridRow {
+                    settingLabel("Quality")
+                    Picker("Quality", selection: $quality) {
+                        Text("Standard").tag(ConversionOptions.Quality.standard)
+                        Text("High").tag(ConversionOptions.Quality.high)
+                        Text("Maximum").tag(ConversionOptions.Quality.maximum)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                GridRow {
+                    settingLabel("Resolution")
+                    Picker("Output resolution", selection: $outputHeightCap) {
+                        Text("Original").tag(Int?.none)
+                        ForEach(availableHeightCaps, id: \.self) { cap in
+                            Text("\(cap)p").tag(Int?.some(cap))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 240, alignment: .leading)
+                }
+
+                if isUltrawideSource {
+                    GridRow(alignment: .top) {
+                        settingLabel("Crop")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Picker("Crop position", selection: cropPreset) {
+                                Text("Left").tag(0.0)
+                                Text("Center").tag(0.5)
+                                Text("Right").tag(1.0)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+
+                            Slider(value: $cropOffset, in: 0...1)
+                                .accessibilityLabel("Crop position")
+                                .help("Position of the visible 16:9 window")
+                        }
+                    }
+                }
+            }
+            .padding(8)
+        }
     }
 
     private var isUltrawideSource: Bool {
-        guard let resolution = model.sourceResolution else { return false }
-        return isUltrawide(resolution)
+        guard let sourceResolution else { return false }
+        return isUltrawide(sourceResolution)
     }
 
-    /// Segmented-preset binding: snaps the continuous slider position to the
-    /// nearest preset; picking a preset sets the slider value.
     private var cropPreset: Binding<Double> {
         Binding(
-            get: { nearestCropPreset(model.cropOffset) },
-            set: { model.cropOffset = $0 }
+            get: { nearestCropPreset(cropOffset) },
+            set: { cropOffset = $0 }
         )
     }
 
-    /// Downscale-only resolution options, limited to caps below the natural
-    /// window height — a cap at or above it is a no-op (the pipeline never
-    /// upscales), so it would only offer an identical re-encode.
     private var availableHeightCaps: [Int] {
-        guard let source = model.sourceResolution else { return [] }
-        return [2160, 1440, 1080].filter { CGFloat($0) < naturalWindowHeight(sourceSize: source) }
+        guard let sourceResolution else { return [] }
+        return [2160, 1440, 1080].filter {
+            CGFloat($0) < naturalWindowHeight(sourceSize: sourceResolution)
+        }
     }
 
-    private var dropZoneButton: some View {
-        Button {
-            model.showingFileImporter = true
-        } label: {
-            VStack(spacing: 12) {
-                if let url = model.selectedVideo {
-                    VideoPreview(
-                        url: url,
-                        resolution: model.sourceResolution,
-                        cropOffset: model.cropOffset
-                    )
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    .frame(maxWidth: 440, maxHeight: 248)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .overlay(alignment: .topTrailing) {
-                            Label("Click to change", systemImage: "square.and.arrow.up")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(.regularMaterial, in: Capsule())
-                                .padding(10)
-                        }
-                    Text(url.lastPathComponent)
-                        .font(.callout.weight(.medium))
+    private func settingLabel(_ title: String) -> some View {
+        Text(title)
+            .foregroundStyle(.secondary)
+            .frame(width: 82, alignment: .trailing)
+            .gridColumnAlignment(.trailing)
+    }
+}
+
+private struct ImportProgressView: View {
+    let stage: ImportStage
+    let progress: Double
+    let onCancel: () -> Void
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 8) {
+                    Label(stage.label, systemImage: stage.icon)
                         .lineLimit(1)
-                        .truncationMode(.middle)
-                } else {
-                    Image(systemName: "film.stack")
-                        .font(.system(size: 30, weight: .medium))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.tint)
-                        .padding(18)
-                        .glassEffect(.regular, in: Circle())
-                        .symbolEffect(.bounce, value: hoveringDropZone)
-                    Text("Choose or drop a video")
-                        .font(.headline)
-                    Text("MP4 or MOV · The source file is not modified")
+
+                    Spacer()
+
+                    Text("\(Int(progress * 100))%")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+
+                ProgressView(value: progress)
+
+                HStack {
+                    Text("AerialDrop keeps the source video unchanged.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button("Cancel", role: .cancel, action: onCancel)
+                        .controlSize(.small)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 260)
-            .padding(16)
-            .glassEffect(.regular.tint(.accentColor.opacity(0.22)), in: .rect(cornerRadius: 24))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [7]))
-                    .foregroundStyle(hoveringDropZone ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.quaternary))
-            }
-            .scaleEffect(hoveringDropZone ? 1.012 : 1)
-        }
-        .buttonStyle(PressScaleButtonStyle())
-        .onHover { hovering in
-            hoveringDropZone = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
-        .animation(.spring(duration: 0.35, bounce: 0.25), value: hoveringDropZone)
-        .dropDestination(for: URL.self) { urls, _ in
-            guard let first = urls.first else { return false }
-            model.chooseVideo(first)
-            return true
+            .padding(4)
         }
     }
+}
 
-    private var progressCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 9) {
-                Image(systemName: model.stage.icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .symbolEffect(.pulse, options: .repeating, isActive: model.stage != .finished)
-                    .foregroundStyle(.tint)
-                Text(model.stage.label)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer()
-                Text("\(Int(model.displayProgress * 100))%")
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-                    .monospacedDigit()
-            }
-            ProgressView(value: model.displayProgress)
-                .tint(.accentColor)
-            HStack {
-                Spacer()
-                Button("Cancel Import", role: .cancel) {
-                    model.cancelImport()
-                }
-                .buttonStyle(.glass)
-                .controlSize(.small)
-                .help("Stop the import and keep the current selection")
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
-    }
+private struct ImportSuccessView: View {
+    let onOpenSettings: () -> Void
+    let onDismiss: () -> Void
 
-    private var successCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 9) {
+    var body: some View {
+        GroupBox {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AerialTheme.success)
-                Text("Imported successfully")
-                    .font(.callout.weight(.semibold))
-                Spacer()
-                Button {
-                    model.importSucceeded = false
-                } label: {
-                    Label("Dismiss", systemImage: "xmark.circle.fill")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .labelStyle(.iconOnly)
-                .help("Dismiss")
-            }
-            Text("The imported Aerial is ready to play natively. If automatic activation is disabled in Settings, select it later from the Library or System Settings.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.tint(AerialTheme.success.opacity(0.15)), in: .rect(cornerRadius: 18))
-    }
+                    .font(.title3)
+                    .foregroundStyle(.green)
+                    .accessibilityHidden(true)
 
-    private var whatHappensCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("What happens")
-                .font(.callout.weight(.semibold))
-            ForEach(whatHappensRows) { row in
-                HStack(spacing: 10) {
-                    Image(systemName: row.icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.tint)
-                        .frame(width: 26, height: 26)
-                        .background(.tint.opacity(0.14), in: Circle())
-                    Text(row.text)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Imported successfully")
+                        .font(.headline)
+                    Text("The wallpaper has been added to the native Aerial catalogue.")
                         .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(.secondary)
                 }
+
+                Spacer()
+
+                Button("Open Wallpaper Settings", systemImage: "gearshape", action: onOpenSettings)
+
+                Button("Dismiss", systemImage: "xmark", action: onDismiss)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.plain)
+                    .help("Dismiss")
             }
+            .padding(4)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .accessibilityElement(children: .contain)
     }
+}
 
-    private struct WhatHappensRow: Identifiable {
-        let id = UUID()
-        let icon: String
-        let text: String
+private struct ImportDetailsView: View {
+    @State private var expanded = false
+
+    var body: some View {
+        DisclosureGroup("How AerialDrop installs this wallpaper", isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Builds an 80-second, 30 fps HEVC Main10 stream", systemImage: "film")
+                Label("Creates a Tahoe-compatible HEIF preview", systemImage: "photo")
+                Label("Backs up entries.json and preserves foreign entries", systemImage: "doc.badge.gearshape")
+                Label("Adds the result to the native Aerial catalogue", systemImage: "rectangle.stack")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(.top, 8)
+        }
+        .font(.callout)
     }
-
-    private let whatHappensRows: [WhatHappensRow] = [
-        WhatHappensRow(icon: "film", text: "Builds an 80-second, 30 fps HEVC Main10 stream with native temporal sub-layers"),
-        WhatHappensRow(icon: "photo", text: "Normalizes timestamp zero and creates a Tahoe-compatible HEIF preview"),
-        WhatHappensRow(icon: "doc.badge.gearshape", text: "Backs up entries.json and preserves other apps’ entries"),
-        WhatHappensRow(icon: "rectangle.stack", text: "Adds a complete Tahoe Aerial catalogue entry")
-    ]
 }
