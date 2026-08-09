@@ -4,6 +4,7 @@ import SwiftUI
 struct WallpaperPreviewView: View {
     let wallpaper: ManagedWallpaper
     let isActive: Bool
+    let isWorking: Bool
     let onSetWallpaper: () -> Void
     let onRename: () -> Void
     let onRemove: () -> Void
@@ -61,13 +62,14 @@ struct WallpaperPreviewView: View {
                     Label("Set as Wallpaper", systemImage: "desktopcomputer")
                 }
                 .buttonStyle(.glassProminent)
-                .disabled(isActive)
+                .disabled(isActive || isWorking)
                 Spacer()
                 Button(role: .destructive) {
                     onRemove()
                 } label: {
                     Label("Remove…", systemImage: "trash")
                 }
+                .disabled(isWorking)
             }
         }
         .padding(20)

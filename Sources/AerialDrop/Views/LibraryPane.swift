@@ -48,6 +48,7 @@ struct LibraryPane: View {
                                 wallpaper: wallpaper,
                                 isSelected: selectedID == wallpaper.id,
                                 isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                                isWorking: model.isWorking,
                                 namespace: glass,
                                 onSelect: {
                                     guard !model.isWorking else { return }
@@ -90,6 +91,7 @@ struct LibraryPane: View {
             WallpaperPreviewView(
                 wallpaper: wallpaper,
                 isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                isWorking: model.isWorking,
                 onSetWallpaper: { model.setWallpaper(wallpaper) },
                 onRename: {
                     previewWallpaper = nil

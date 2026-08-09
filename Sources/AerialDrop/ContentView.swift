@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var removeAllConfirmation = false
     @State private var alertPresented = false
     @State private var alertMessage: String?
@@ -85,6 +86,10 @@ struct ContentView: View {
             if !presented && model.alertMessage != nil {
                 model.alertMessage = nil
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await model.reload() }
         }
         .confirmationDialog(
             "Remove every AerialDrop wallpaper?",
