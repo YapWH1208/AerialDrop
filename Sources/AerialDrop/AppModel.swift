@@ -16,6 +16,7 @@ final class AppModel {
     var showingFileImporter = false
     var importProgress: Double = 0
     var importSucceeded = false
+    var isSelectedVideoValid = false
     var cropOffset: Double = 0.5
     var conversionQuality: ConversionOptions.Quality = .standard
     var outputHeightCap: Int? = nil
@@ -54,7 +55,10 @@ final class AppModel {
     }
 
     var canImport: Bool {
-        selectedVideo != nil && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isWorking
+        isSelectedVideoValid
+            && selectedVideo != nil
+            && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !isWorking
     }
 
     /// Maps the real encode fraction into the progress band occupied by the
@@ -78,7 +82,11 @@ final class AppModel {
         conversionQuality = .standard
         outputHeightCap = nil
         sourceResolution = nil
+        isSelectedVideoValid = false
         Task {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+
             do {
                 try await videoProcessor.validate(source: url)
             } catch {
@@ -86,8 +94,12 @@ final class AppModel {
                 alertMessage = error.localizedDescription
                 selectedVideo = nil
                 title = ""
+                isSelectedVideoValid = false
                 return
             }
+
+            guard version == selectionVersion else { return }
+            isSelectedVideoValid = true
 
             // Best-effort metadata for the resolution badge, crop bands and
             // height caps. A failure here must not reject a file that passed
@@ -117,7 +129,7 @@ final class AppModel {
     }
 
     func importSelectedVideo() {
-        guard let source = selectedVideo else { return }
+        guard isSelectedVideoValid, let source = selectedVideo else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
             alertMessage = AerialDropError.invalidTitle.localizedDescription
@@ -191,6 +203,7 @@ final class AppModel {
                 stage = .finished
                 selectedVideo = nil
                 title = ""
+                isSelectedVideoValid = false
                 importSucceeded = true
             } catch {
                 if !manifestInstalled {

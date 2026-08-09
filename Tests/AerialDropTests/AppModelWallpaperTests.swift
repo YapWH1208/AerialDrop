@@ -4,6 +4,18 @@ import XCTest
 
 @MainActor
 final class AppModelWallpaperTests: XCTestCase {
+    func testImportRequiresAValidatedSelectedVideo() {
+        let model = makeModel(service: FakeWallpaperService())
+        model.selectedVideo = URL(fileURLWithPath: "/tmp/source.mov")
+        model.title = "Source"
+
+        XCTAssertFalse(model.canImport)
+
+        model.isSelectedVideoValid = true
+
+        XCTAssertTrue(model.canImport)
+    }
+
     func testManualActivationRefreshesTheActiveAerialID() async {
         let service = FakeWallpaperService()
         let model = makeModel(service: service)

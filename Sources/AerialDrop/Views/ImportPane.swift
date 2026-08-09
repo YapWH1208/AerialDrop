@@ -44,7 +44,7 @@ struct ImportPane: View {
                     .glassEffect(.regular, in: .rect(cornerRadius: 18))
                 }
 
-                if model.selectedVideo != nil {
+                if model.isSelectedVideoValid {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Conversion")
                             .font(.callout.weight(.semibold))
