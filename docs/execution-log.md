@@ -48,3 +48,15 @@ wallpaper-store write, remote push, or pull request has been performed.
   - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`.
   - `git diff --check` and staged secret scan.
 - Commit: `2850fab` (`feat: add automatic wallpaper activation setting`).
+
+## Step 4 — Shared encoded-output calculations
+
+- Moved the encoder's exact capped 16:9/even-dimension calculation into the
+  pure `encodedOutputSize` helper and changed `VideoProcessor` to consume it.
+- Added coverage for ultrawide, capped, portrait, 4K-capped, and invalid source
+  dimensions. The encoding presets and media contract were not changed.
+- Validation passed:
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter ConversionOptionsTests` — 17 tests passed.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`.
+  - `git diff --check` and staged secret scan.
+- Commit: `ec69220` (`refactor: share encoded output calculations`).
