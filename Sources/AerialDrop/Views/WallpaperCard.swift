@@ -4,10 +4,12 @@ import SwiftUI
 struct WallpaperCard: View {
     let wallpaper: ManagedWallpaper
     let isSelected: Bool
+    let isActive: Bool
     let namespace: Namespace.ID
     let onSelect: () -> Void
     let onDoubleClick: () -> Void
     let onPreview: () -> Void
+    let onSetWallpaper: () -> Void
     let onRename: () -> Void
     let onReveal: () -> Void
     let onRemove: () -> Void
@@ -34,6 +36,12 @@ struct WallpaperCard: View {
                             Text("\(Int(resolution.width))×\(Int(resolution.height))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                        }
+                        if isActive {
+                            Label("Active", systemImage: "checkmark.seal.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tint)
+                                .accessibilityLabel("Active wallpaper")
                         }
                     }
                 }
@@ -69,6 +77,8 @@ struct WallpaperCard: View {
         )
         .contextMenu {
             Button("Preview") { onPreview() }
+            Button("Set as Wallpaper") { onSetWallpaper() }
+                .disabled(isActive)
             Button("Rename…") { onRename() }
             Button("Reveal in Finder") { onReveal() }
             Divider()

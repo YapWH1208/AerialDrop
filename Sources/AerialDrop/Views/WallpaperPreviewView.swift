@@ -3,6 +3,8 @@ import SwiftUI
 
 struct WallpaperPreviewView: View {
     let wallpaper: ManagedWallpaper
+    let isActive: Bool
+    let onSetWallpaper: () -> Void
     let onRename: () -> Void
     let onRemove: () -> Void
     let onReveal: () -> Void
@@ -27,6 +29,11 @@ struct WallpaperPreviewView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if isActive {
+                    Label("Active", systemImage: "checkmark.seal.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.tint)
+                }
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
@@ -48,6 +55,13 @@ struct WallpaperPreviewView: View {
                 } label: {
                     Label("Rename…", systemImage: "pencil")
                 }
+                Button {
+                    onSetWallpaper()
+                } label: {
+                    Label("Set as Wallpaper", systemImage: "desktopcomputer")
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(isActive)
                 Spacer()
                 Button(role: .destructive) {
                     onRemove()
