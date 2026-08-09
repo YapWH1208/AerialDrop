@@ -14,8 +14,14 @@ struct ContentView: View {
         NavigationSplitView {
             List(selection: $destination) {
                 ForEach(AppDestination.allCases) { destination in
-                    Label(destination.title, systemImage: destination.systemImage)
-                        .tag(destination)
+                    if destination == .library {
+                        Label(destination.title, systemImage: destination.systemImage)
+                            .badge(model.wallpapers.count)
+                            .tag(destination)
+                    } else {
+                        Label(destination.title, systemImage: destination.systemImage)
+                            .tag(destination)
+                    }
                 }
             }
             .listStyle(.sidebar)
@@ -113,7 +119,7 @@ struct ContentView: View {
     private var destinationView: some View {
         switch destination ?? .library {
         case .library:
-            LibraryPane()
+            LibraryPane(onImport: beginImport)
                 .navigationTitle("Library")
         case .importVideo:
             ImportPane()

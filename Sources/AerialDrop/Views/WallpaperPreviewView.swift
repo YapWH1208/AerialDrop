@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct WallpaperPreviewView: View {
@@ -13,68 +12,42 @@ struct WallpaperPreviewView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles.tv")
-                    .font(.system(size: 18, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.tint)
-                Text(wallpaper.title)
-                    .font(.title3.weight(.semibold))
-                    .tracking(-0.3)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let resolution = wallpaper.resolution {
-                    Text("\(Int(resolution.width))×\(Int(resolution.height))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if isActive {
-                    Label("Active", systemImage: "checkmark.seal.fill")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.tint)
-                }
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-            }
-
+        VStack(alignment: .leading, spacing: 16) {
+            header
             playerArea
-
-            Text("80-second looping preview — this is how macOS plays it as a wallpaper.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 10) {
-                Button {
-                    onReveal()
-                } label: {
-                    Label("Reveal in Finder", systemImage: "folder")
-                }
-                Button {
-                    onRename()
-                } label: {
-                    Label("Rename…", systemImage: "pencil")
-                }
-                Button {
-                    onSetWallpaper()
-                } label: {
-                    Label("Set as Wallpaper", systemImage: "desktopcomputer")
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(isActive || isWorking)
-                Spacer()
-                Button(role: .destructive) {
-                    onRemove()
-                } label: {
-                    Label("Remove…", systemImage: "trash")
-                }
-                .disabled(isWorking)
-            }
+            actionRow
         }
         .padding(20)
-        .frame(width: 720, height: 560)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 640, idealWidth: 780, minHeight: 460, idealHeight: 580)
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(wallpaper.title)
+                    .font(.title3)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if let resolution = wallpaper.resolution {
+                    Text("\(Int(resolution.width)) × \(Int(resolution.height)) · 80-second loop")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+
+            Spacer()
+
+            if isActive {
+                Label("Active", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(.tint)
+                    .accessibilityLabel("Active wallpaper")
+            }
+
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
     }
 
     @ViewBuilder
@@ -82,21 +55,10 @@ struct WallpaperPreviewView: View {
         if FileManager.default.fileExists(atPath: wallpaper.videoURL.path) {
             LoopPlayerView(url: wallpaper.videoURL)
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.34), location: 0),
-                            .init(color: .clear, location: 0.55)
-                        ],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                    .frame(height: 76)
-                    .allowsHitTesting(false)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(.separator, lineWidth: 0.5)
                 }
                 .accessibilityLabel("Looping preview of \(wallpaper.title)")
@@ -106,7 +68,22 @@ struct WallpaperPreviewView: View {
             } description: {
                 Text("The installed video file could not be found on disk.")
             }
-            .frame(maxWidth: .infinity, minHeight: 220)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 10) {
+            Button("Reveal in Finder", systemImage: "folder", action: onReveal)
+            Button("Rename…", systemImage: "pencil", action: onRename)
+            Button("Remove…", systemImage: "trash", role: .destructive, action: onRemove)
+                .disabled(isWorking)
+
+            Spacer()
+
+            Button("Set as Wallpaper", systemImage: "desktopcomputer", action: onSetWallpaper)
+                .buttonStyle(.borderedProminent)
+                .disabled(isActive || isWorking)
         }
     }
 }
