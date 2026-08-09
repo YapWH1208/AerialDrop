@@ -2,7 +2,7 @@
 
 ## 1. Document control
 
-- Status: Draft; design approved, written specification pending user review
+- Status: Approved
 - Version: 1.0
 - Owner: AerialDrop
 - Last updated: 2026-08-09
@@ -204,7 +204,7 @@ AerialDrop's Import pane provides only a still-frame crop preview, so conversion
 
 ## 21. Open questions
 
-No product decisions are open. Production selection-store implementation is gated on capturing the accepted Tahoe ground-truth fixture.
+No product decisions are open. Production selection-store implementation is gated on capturing the accepted Tahoe ground-truth fixture; the current selection was still `com.apple.NeptuneOneExtension` when planning began.
 
 ## 22. Acceptance criteria index
 

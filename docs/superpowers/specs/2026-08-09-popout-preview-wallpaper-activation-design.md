@@ -1,6 +1,6 @@
 # Pop-out Preview and In-App Wallpaper Activation Design
 
-**Status:** Design approved; written specification pending user review
+**Status:** Approved
 
 **Date:** 2026-08-09
 
