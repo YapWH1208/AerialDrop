@@ -90,6 +90,11 @@ enum AerialDropError: LocalizedError {
     case main10EncodingUnavailable
     case manifestChangedDuringOperation
     case foreignManifestDataChanged(String)
+    case missingWallpaperSelectionStore(URL)
+    case malformedWallpaperSelectionStore(String)
+    case wallpaperSelectionStoreChangedDuringOperation
+    case foreignWallpaperSelectionDataChanged(String)
+    case wallpaperSelectionVerificationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -139,6 +144,16 @@ enum AerialDropError: LocalizedError {
             return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close Wallper and System Settings, then try again."
         case .foreignManifestDataChanged(let description):
             return "AerialDrop refused to write because the change would alter \(description)."
+        case .missingWallpaperSelectionStore(let url):
+            return "The Tahoe wallpaper selection store was not found at:\n\(url.path)\n\nOpen System Settings → Wallpaper once, then try again."
+        case .malformedWallpaperSelectionStore(let reason):
+            return "The Tahoe wallpaper selection store is not in the expected format: \(reason)"
+        case .wallpaperSelectionStoreChangedDuringOperation:
+            return "The wallpaper selection changed while AerialDrop was working. Nothing else was overwritten. Close System Settings and try again."
+        case .foreignWallpaperSelectionDataChanged(let description):
+            return "AerialDrop refused to write because the change would alter \(description)."
+        case .wallpaperSelectionVerificationFailed(let expectedID):
+            return "AerialDrop wrote the wallpaper selection, but macOS did not confirm the expected Aerial (\(expectedID)). Your backup was kept and no automatic restore was attempted."
         }
     }
 }

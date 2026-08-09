@@ -17,7 +17,8 @@ let package = Package(
         .testTarget(
             name: "AerialDropTests",
             dependencies: ["AerialDrop"],
-            path: "Tests/AerialDropTests"
+            path: "Tests/AerialDropTests",
+            resources: [.copy("Fixtures")]
         )
     ]
 )
