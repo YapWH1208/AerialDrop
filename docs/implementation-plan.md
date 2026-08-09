@@ -137,7 +137,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: User-selected AerialDrop wallpaper on Tahoe 26.
 - Risks: Capturing unrelated personal wallpaper state or accepting a non-Aerial provider.
 - Rollback: Remove only the sanitized fixture commit; never alter the live store during capture.
-- Status: [ ] Blocked until the current provider changes from `com.apple.NeptuneOneExtension` to the native Aerial provider.
+- Status: [x] Completed in `da8c46c` after confirming the native Aerial provider and committing a sanitized Tahoe fixture.
 
 ### Step 2 — Implement the safe wallpaper selection store
 
@@ -165,7 +165,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: Step 1.
 - Risks: Shallow-copy mutation accidentally changing foreign subtrees; plist equality across Foundation bridge types.
 - Rollback: Revert the store/path/error/test commit; no live store is touched by automated tests.
-- Status: [ ]
+- Status: [x] Completed in `1149969` with temporary-home tests for fixture decoding, preservation, CAS, backup, binary output, and post-write verification.
 
 ### Step 3 — Add the persistent automatic-activation setting
 
