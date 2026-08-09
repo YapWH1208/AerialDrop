@@ -22,6 +22,7 @@ final class AppModel {
     var sourceResolution: CGSize?
     var activeAerialAssetIDs: Set<String> = []
     var activationFailure: ManagedWallpaper?
+    var activationFailureMessage: String?
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
@@ -31,17 +32,22 @@ final class AppModel {
     private let manifestStore: ManifestStore
     private let videoProcessor = VideoProcessor()
     private let systemService: any WallpaperServicing
+    private let automaticActivationEnabled: () -> Bool
 
     init(
         paths: WallpaperPaths = WallpaperPaths(),
         systemService: (any WallpaperServicing)? = nil,
-        automaticallyReload: Bool = true
+        automaticallyReload: Bool = true,
+        automaticActivationEnabled: @escaping () -> Bool = {
+            AppPreferences.isSetWallpaperAfterImportEnabled()
+        }
     ) {
         self.paths = paths
         manifestStore = ManifestStore(paths: paths)
         self.systemService = systemService ?? SystemWallpaperService(
             selectionStore: WallpaperSelectionStore(paths: paths)
         )
+        self.automaticActivationEnabled = automaticActivationEnabled
         if automaticallyReload {
             Task { await reload() }
         }
@@ -125,6 +131,7 @@ final class AppModel {
             isWorking = true
             importProgress = 0
             importSucceeded = false
+            dismissActivationFailure()
             defer { isWorking = false }
 
             let access = source.startAccessingSecurityScopedResource()
@@ -171,33 +178,19 @@ final class AppModel {
                 )
                 manifestInstalled = true
 
-                stage = .refreshingSystem
-                if AppPreferences.isSetWallpaperAfterImportEnabled() {
-                    do {
-                        try await systemService.activateAerial(assetID: id)
-                    } catch {
-                        stage = .finished
-                        selectedVideo = nil
-                        title = ""
-                        await reload()
-                        importSucceeded = true
-                        activationFailure = ManagedWallpaper(
-                            id: id,
-                            title: cleanTitle,
-                            videoURL: videoDestination,
-                            thumbnailURL: thumbnailDestination,
-                            resolution: encodedSize
-                        )
-                        return
-                    }
-                } else {
-                    await systemService.refresh()
-                }
+                await applyPostImportWallpaperSetting(
+                    to: ManagedWallpaper(
+                        id: id,
+                        title: cleanTitle,
+                        videoURL: videoDestination,
+                        thumbnailURL: thumbnailDestination,
+                        resolution: encodedSize
+                    )
+                )
 
                 stage = .finished
                 selectedVideo = nil
                 title = ""
-                await reload()
                 importSucceeded = true
             } catch {
                 if !manifestInstalled {
@@ -228,37 +221,46 @@ final class AppModel {
 
     func remove(_ wallpaper: ManagedWallpaper) {
         Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try refreshActiveSelection()
-                guard !activeAerialAssetIDs.contains(wallpaper.id) else {
-                    throw AerialDropError.activeWallpaperCannotBeRemoved
-                }
-                try manifestStore.removeWallpaper(id: wallpaper.id)
-                await systemService.refresh()
-                await reload()
-            } catch {
-                alertMessage = error.localizedDescription
+            await removeWallpaper(wallpaper)
+        }
+    }
+
+    func removeWallpaper(_ wallpaper: ManagedWallpaper) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try refreshActiveSelection()
+            guard !activeAerialAssetIDs.contains(wallpaper.id) else {
+                throw AerialDropError.activeWallpaperCannotBeRemoved
             }
+            try manifestStore.removeWallpaper(id: wallpaper.id)
+            await systemService.refresh()
+            await reload()
+        } catch {
+            alertMessage = error.localizedDescription
         }
     }
 
     func removeAll() {
         Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try refreshActiveSelection()
-                guard activeAerialAssetIDs.isEmpty else {
-                    throw AerialDropError.activeWallpaperCannotBeRemoved
-                }
-                try manifestStore.removeAllManaged()
-                await systemService.refresh()
-                await reload()
-            } catch {
-                alertMessage = error.localizedDescription
+            await removeAllWallpapers()
+        }
+    }
+
+    func removeAllWallpapers() async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try refreshActiveSelection()
+            let managedIDs = Set(try manifestStore.importedWallpapers().map(\.id))
+            guard activeAerialAssetIDs.isDisjoint(with: managedIDs) else {
+                throw AerialDropError.activeWallpaperCannotBeRemoved
             }
+            try manifestStore.removeAllManaged()
+            await systemService.refresh()
+            await reload()
+        } catch {
+            alertMessage = error.localizedDescription
         }
     }
 
@@ -284,19 +286,48 @@ final class AppModel {
         defer { isWorking = false }
         do {
             try await systemService.activateAerial(assetID: wallpaper.id)
-            activationFailure = nil
+            dismissActivationFailure()
             await reload()
         } catch {
-            alertMessage = error.localizedDescription
+            recordActivationFailure(for: wallpaper, error: error)
         }
     }
 
     func retryActivation() {
-        if let activationFailure { setWallpaper(activationFailure) }
+        guard let wallpaper = activationFailure else { return }
+        dismissActivationFailure()
+        setWallpaper(wallpaper)
+    }
+
+    /// Applies the default-on post-import choice independently of media work,
+    /// making a failed activation recoverable without rolling back installation.
+    func applyPostImportWallpaperSetting(to wallpaper: ManagedWallpaper) async {
+        stage = .refreshingSystem
+        if automaticActivationEnabled() {
+            do {
+                try await systemService.activateAerial(assetID: wallpaper.id)
+                dismissActivationFailure()
+            } catch {
+                recordActivationFailure(for: wallpaper, error: error)
+            }
+        } else {
+            await systemService.refresh()
+        }
+        await reload()
     }
 
     private func refreshActiveSelection() throws {
         activeAerialAssetIDs = try systemService.activeAerialAssetIDs()
+    }
+
+    func dismissActivationFailure() {
+        activationFailure = nil
+        activationFailureMessage = nil
+    }
+
+    private func recordActivationFailure(for wallpaper: ManagedWallpaper, error: Error) {
+        activationFailure = wallpaper
+        activationFailureMessage = error.localizedDescription
     }
 
     func validateCatalogue() {
