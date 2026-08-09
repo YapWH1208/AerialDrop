@@ -188,7 +188,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: None after plan approval; may proceed only under the active implementation goal.
 - Risks: Tests polluting standard defaults or the UI and model using different keys/defaults.
 - Rollback: Revert the preference/settings commit; existing users retain no project-specific preference dependency.
-- Status: [ ]
+- Status: [x] Completed in `2850fab` with isolated UserDefaults coverage for unset/default-on and persisted values.
 
 ### Step 4 — Share exact encoded-output calculations
 
