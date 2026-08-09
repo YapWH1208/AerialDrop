@@ -211,7 +211,7 @@ The existing `build-and-test` job already covers debug build, unit tests, releas
 - Dependencies: None after plan approval.
 - Risks: One-pixel/even-rounding drift changing actual encoding output.
 - Rollback: Revert the helper refactor and tests; verify `VideoProcessor` returns to its original private math.
-- Status: [ ]
+- Status: [x] Completed in `ec69220`; `VideoProcessor` now uses the tested shared output-size helper.
 
 ### Step 5 — Build the synchronized pop-out preview editor
 
