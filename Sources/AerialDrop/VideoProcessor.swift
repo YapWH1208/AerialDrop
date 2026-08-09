@@ -254,8 +254,7 @@ struct VideoProcessor: Sendable {
             height: max(2, rawSourceSize.height)
         )
         let transformedRect = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
-        let maxHeight = clampedOutputHeight(options.outputHeightCap, sourceHeight: Int(sourceSize.height))
-        let renderSize = evenSize(target16by9Size(from: sourceSize, maxHeight: maxHeight))
+        let renderSize = encodedOutputSize(sourceSize: sourceSize, outputHeightCap: options.outputHeightCap)
         let pan = cropPan(cropOffset: options.cropOffset, sourceSize: sourceSize, renderSize: renderSize)
 
         let videoComposition = makeVideoComposition(
@@ -698,24 +697,4 @@ struct VideoProcessor: Sendable {
         try (data as Data).write(to: destination, options: .atomic)
     }
 
-    /// Fits a source into a 16:9 frame capped at the given height (default 2160,
-    /// the existing 4K cap), never upscaling. Sources that already fit pass
-    /// through unchanged. The crop-to-fill scale and centering are applied by
-    /// the video-composition layer transform.
-    private func target16by9Size(from sourceSize: CGSize, maxHeight: Int = 2160) -> CGSize {
-        if sourceSize.width / sourceSize.height >= 16.0 / 9.0 {
-            let height = min(sourceSize.height, CGFloat(maxHeight))
-            return CGSize(width: height * (16.0 / 9.0), height: height)
-        } else {
-            let width = min(sourceSize.width, CGFloat(maxHeight) * (16.0 / 9.0))
-            return CGSize(width: width, height: width * (9.0 / 16.0))
-        }
-    }
-
-    private func evenSize(_ size: CGSize) -> CGSize {
-        CGSize(
-            width: max(2, floor(size.width / 2) * 2),
-            height: max(2, floor(size.height / 2) * 2)
-        )
-    }
 }

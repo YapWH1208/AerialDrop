@@ -49,6 +49,36 @@ final class ConversionOptionsTests: XCTestCase {
         XCTAssertEqual(clampedOutputHeight(2160, sourceHeight: 1080), 1080)
     }
 
+    func testEncodedOutputSizeMatchesTheNative16By9Contract() {
+        XCTAssertEqual(
+            encodedOutputSize(sourceSize: CGSize(width: 3440, height: 1440), outputHeightCap: nil),
+            CGSize(width: 2560, height: 1440)
+        )
+        XCTAssertEqual(
+            encodedOutputSize(sourceSize: CGSize(width: 3440, height: 1440), outputHeightCap: 1080),
+            CGSize(width: 1920, height: 1080)
+        )
+        XCTAssertEqual(
+            encodedOutputSize(sourceSize: CGSize(width: 2160, height: 3840), outputHeightCap: nil),
+            CGSize(width: 2160, height: 1214)
+        )
+        XCTAssertEqual(
+            encodedOutputSize(sourceSize: CGSize(width: 7680, height: 4320), outputHeightCap: nil),
+            CGSize(width: 3840, height: 2160)
+        )
+    }
+
+    func testEncodedOutputSizeHardensInvalidInputToMinimumEvenDimensions() {
+        XCTAssertEqual(
+            encodedOutputSize(sourceSize: CGSize(width: 0, height: 1080), outputHeightCap: nil),
+            CGSize(width: 2, height: 2)
+        )
+        XCTAssertEqual(
+            encodedOutputSize(sourceSize: CGSize(width: CGFloat.infinity, height: 1080), outputHeightCap: nil),
+            CGSize(width: 2, height: 2)
+        )
+    }
+
     func testIsUltrawide() {
         XCTAssertTrue(isUltrawide(CGSize(width: 3440, height: 1440)))
         XCTAssertTrue(isUltrawide(CGSize(width: 2560, height: 1080)))
