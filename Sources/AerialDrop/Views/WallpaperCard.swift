@@ -5,6 +5,7 @@ struct WallpaperCard: View {
     let wallpaper: ManagedWallpaper
     let isSelected: Bool
     let isActive: Bool
+    let isWorking: Bool
     let namespace: Namespace.ID
     let onSelect: () -> Void
     let onDoubleClick: () -> Void
@@ -78,7 +79,7 @@ struct WallpaperCard: View {
         .contextMenu {
             Button("Preview") { onPreview() }
             Button("Set as Wallpaper") { onSetWallpaper() }
-                .disabled(isActive)
+                .disabled(isActive || isWorking)
             Button("Rename…") { onRename() }
             Button("Reveal in Finder") { onReveal() }
             Divider()
@@ -128,6 +129,7 @@ struct WallpaperCard: View {
                         .glassEffectUnion(id: wallpaper.id, namespace: namespace)
                 }
                 .buttonStyle(.plain)
+                .disabled(isWorking)
                 .help("Remove this wallpaper")
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else if isSelected {

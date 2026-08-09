@@ -27,14 +27,24 @@ final class AppModel {
     private var importTask: Task<Void, Never>?
     private var importGeneration = 0
 
-    private let paths = WallpaperPaths()
+    private let paths: WallpaperPaths
     private let manifestStore: ManifestStore
     private let videoProcessor = VideoProcessor()
-    private let systemService = SystemWallpaperService()
+    private let systemService: any WallpaperServicing
 
-    init() {
+    init(
+        paths: WallpaperPaths = WallpaperPaths(),
+        systemService: (any WallpaperServicing)? = nil,
+        automaticallyReload: Bool = true
+    ) {
+        self.paths = paths
         manifestStore = ManifestStore(paths: paths)
-        Task { await reload() }
+        self.systemService = systemService ?? SystemWallpaperService(
+            selectionStore: WallpaperSelectionStore(paths: paths)
+        )
+        if automaticallyReload {
+            Task { await reload() }
+        }
     }
 
     var canImport: Bool {
@@ -263,14 +273,21 @@ final class AppModel {
 
     func setWallpaper(_ wallpaper: ManagedWallpaper) {
         Task {
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                try await systemService.activateAerial(assetID: wallpaper.id)
-                await reload()
-            } catch {
-                alertMessage = error.localizedDescription
-            }
+            await activateWallpaper(wallpaper)
+        }
+    }
+
+    /// The awaited counterpart to `setWallpaper`, kept internal for focused
+    /// model tests while UI callers retain the non-blocking action method.
+    func activateWallpaper(_ wallpaper: ManagedWallpaper) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await systemService.activateAerial(assetID: wallpaper.id)
+            activationFailure = nil
+            await reload()
+        } catch {
+            alertMessage = error.localizedDescription
         }
     }
 

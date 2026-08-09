@@ -2,7 +2,17 @@ import AppKit
 import Foundation
 
 @MainActor
-struct SystemWallpaperService {
+protocol WallpaperServicing {
+    func activeAerialAssetIDs() throws -> Set<String>
+    func activateAerial(assetID: String) async throws
+    func refresh() async
+    func openWallpaperSettings()
+    func openFolder(_ url: URL)
+    func revealInFinder(_ url: URL)
+}
+
+@MainActor
+struct SystemWallpaperService: WallpaperServicing {
     private let selectionStore: WallpaperSelectionStore
 
     init(selectionStore: WallpaperSelectionStore = WallpaperSelectionStore()) {
