@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
+
+- Redesigned the UI around a native macOS Tahoe sidebar and toolbar: Library and Import are sidebar destinations, with Import, Reload and Maintenance actions in the toolbar (⌘O opens the file picker too; cancelling it returns you to the pane you came from).
+- Adopted Liquid Glass materials across the app and removed the custom chrome (aurora background, custom press-scale button style).
+- Redesigned the Library as a searchable card grid: double-click or Preview to inspect, hover for quick actions, a context menu for Set as Wallpaper / Rename / Reveal in Finder / Remove, and Active / Installed status badges. Preview and More actions are also reachable with the keyboard.
+- Redesigned the Import pane around the chosen source video: a choose/drop card with a live preview, staged conversion progress, and a success card with a shortcut to Wallpaper Settings.
+- Added in-app activation: set any imported wallpaper as the active Aerial from the Library or preview sheet, with a retry path (and Wallpaper Settings fallback) if activation fails.
+- Added a Settings toggle to opt out of applying the wallpaper automatically after import.
+- Added a pop-out Preview & Adjust window for tuning crop and conversion before importing.
 
 ## 1.0.0
 
