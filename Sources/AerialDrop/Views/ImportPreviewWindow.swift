@@ -8,22 +8,30 @@ struct ImportPreviewWindow: View {
     var body: some View {
         @Bindable var model = model
         Group {
-            if let url = model.selectedVideo, let sourceSize = model.sourceResolution {
-                VStack(alignment: .leading, spacing: 18) {
-                    ZStack {
-                        LoopingPlayerView(url: url)
-                            .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                        if hasCropWindow(sourceSize) {
-                            CropMask(cropOffset: model.cropOffset, resolution: sourceSize)
+            if let url = model.selectedVideo {
+                if let sourceSize = model.sourceResolution {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ZStack {
+                            LoopingPlayerView(url: url)
+                                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                            if hasCropWindow(sourceSize) {
+                                CropMask(cropOffset: model.cropOffset, resolution: sourceSize)
+                            }
                         }
-                    }
-                    .background(.black, in: RoundedRectangle(cornerRadius: 14))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .background(.black, in: RoundedRectangle(cornerRadius: 14))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
 
-                    previewMetadata(sourceSize: sourceSize)
-                    previewControls(model: $model)
+                        previewMetadata(sourceSize: sourceSize)
+                        previewControls(model: $model)
+                    }
+                    .padding(24)
+                } else {
+                    ContentUnavailableView(
+                        "Preview unavailable",
+                        systemImage: "film.stack",
+                        description: Text("This video's metadata couldn't be read, so the preview and crop controls are hidden. Import still works.")
+                    )
                 }
-                .padding(24)
             } else {
                 ContentUnavailableView("Choose a video first", systemImage: "film.stack", description: Text("Select an MP4 or MOV in the Import pane, then open Preview & Adjust."))
             }
@@ -100,6 +108,7 @@ final class LoopingPlayerNSView: NSView {
     private let playerView = AVPlayerView()
     private var player: AVQueuePlayer?
     private var looper: AVPlayerLooper?
+    private var loadedURL: URL?
     private var scopedURL: URL?
 
     init(url: URL) {
@@ -120,7 +129,7 @@ final class LoopingPlayerNSView: NSView {
     }
 
     func update(url: URL) {
-        guard scopedURL != url else { return }
+        guard loadedURL != url else { return }
         load(url: url)
     }
 
@@ -132,16 +141,19 @@ final class LoopingPlayerNSView: NSView {
         playerView.player = nil
         if let scopedURL { scopedURL.stopAccessingSecurityScopedResource() }
         scopedURL = nil
+        loadedURL = nil
     }
 
     private func load(url: URL) {
         teardown()
+        loadedURL = url
         if url.startAccessingSecurityScopedResource() { scopedURL = url }
         let player = AVQueuePlayer()
         let looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(asset: AVURLAsset(url: url)))
         self.player = player
         self.looper = looper
         playerView.player = player
+        player.isMuted = true
         player.play()
     }
 }
