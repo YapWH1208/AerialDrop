@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct LibraryPane: View {
+    let onImport: () -> Void
+
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedID: String?
     @State private var searchText = ""
-    @Namespace private var glass
-
     @State private var previewWallpaper: ManagedWallpaper?
     @State private var pendingRemoval: ManagedWallpaper?
     @State private var showingRemoveConfirmation = false
@@ -13,7 +14,9 @@ struct LibraryPane: View {
     @State private var renameText = ""
     @State private var showingRenameAlert = false
 
-    private let wallpaperColumns = [GridItem(.adaptive(minimum: 200, maximum: 280), spacing: 16)]
+    private let wallpaperColumns = [
+        GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 20)
+    ]
 
     private var filteredWallpapers: [ManagedWallpaper] {
         guard !searchText.isEmpty else { return model.wallpapers }
@@ -21,54 +24,16 @@ struct LibraryPane: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 10) {
-                    SectionHeader(title: "Imported Wallpapers", systemImage: "photo.stack")
-                    Text("\(model.wallpapers.count)")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
-                        .contentTransition(.numericText())
-                        .animation(.snappy, value: model.wallpapers.count)
-                    Spacer()
-                }
-
-                if model.wallpapers.isEmpty {
-                    emptyLibrary
-                } else if filteredWallpapers.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                        .frame(maxWidth: .infinity, minHeight: 380)
-                } else {
-                    LazyVGrid(columns: wallpaperColumns, spacing: 16) {
-                        ForEach(filteredWallpapers) { wallpaper in
-                            WallpaperCard(
-                                wallpaper: wallpaper,
-                                isSelected: selectedID == wallpaper.id,
-                                isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
-                                isWorking: model.isWorking,
-                                namespace: glass,
-                                onSelect: {
-                                    guard !model.isWorking else { return }
-                                    selectedID = selectedID == wallpaper.id ? nil : wallpaper.id
-                                },
-                                onDoubleClick: { openPreview(wallpaper) },
-                                onPreview: { openPreview(wallpaper) },
-                                onSetWallpaper: { model.setWallpaper(wallpaper) },
-                                onRename: { beginRename(wallpaper) },
-                                onReveal: { model.revealInFinder(wallpaper) },
-                                onRemove: { requestRemoval(wallpaper) }
-                            )
-                        }
-                    }
-                    .animation(.spring(duration: 0.35, bounce: 0.2), value: model.wallpapers)
-                }
+        Group {
+            if model.wallpapers.isEmpty {
+                emptyLibrary
+            } else if filteredWallpapers.isEmpty {
+                ContentUnavailableView.search(text: searchText)
+            } else {
+                wallpaperGrid
             }
-            .padding(24)
         }
-        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
         .confirmationDialog(
             removeDialogTitle,
@@ -103,6 +68,44 @@ struct LibraryPane: View {
                 },
                 onReveal: { model.revealInFinder(wallpaper) }
             )
+        }
+    }
+
+    private var wallpaperGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: wallpaperColumns, spacing: 20) {
+                ForEach(filteredWallpapers) { wallpaper in
+                    WallpaperCard(
+                        wallpaper: wallpaper,
+                        isSelected: selectedID == wallpaper.id,
+                        isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                        isWorking: model.isWorking,
+                        onSelect: {
+                            guard !model.isWorking else { return }
+                            selectedID = selectedID == wallpaper.id ? nil : wallpaper.id
+                        },
+                        onDoubleClick: { openPreview(wallpaper) },
+                        onPreview: { openPreview(wallpaper) },
+                        onSetWallpaper: { model.setWallpaper(wallpaper) },
+                        onRename: { beginRename(wallpaper) },
+                        onReveal: { model.revealInFinder(wallpaper) },
+                        onRemove: { requestRemoval(wallpaper) }
+                    )
+                }
+            }
+            .padding(24)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.wallpapers)
+        }
+    }
+
+    private var emptyLibrary: some View {
+        ContentUnavailableView {
+            Label("No AerialDrop Wallpapers", systemImage: "rectangle.stack.badge.plus")
+        } description: {
+            Text("Import a video to add it to the native Aerial catalogue.")
+        } actions: {
+            Button("Import Wallpaper", systemImage: "plus", action: onImport)
+                .buttonStyle(.borderedProminent)
         }
     }
 
@@ -141,16 +144,5 @@ struct LibraryPane: View {
             model.rename(target, to: renameText)
         }
         renameTarget = nil
-    }
-
-    private var emptyLibrary: some View {
-        ContentUnavailableView {
-            Label("No AerialDrop Wallpapers", systemImage: "rectangle.stack.badge.plus")
-                .symbolEffect(.bounce, options: .repeat(1))
-        } description: {
-            Text("Imported videos will appear here and under the AerialDrop section in System Settings.")
-        }
-        .frame(maxWidth: .infinity, minHeight: 380)
-        .glassEffect(.regular.tint(.accentColor.opacity(0.12)), in: .rect(cornerRadius: 22))
     }
 }

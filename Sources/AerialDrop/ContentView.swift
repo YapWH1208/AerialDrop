@@ -1,62 +1,56 @@
-import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var destination: AppDestination? = .library
+    @State private var preImportDestination: AppDestination?
     @State private var removeAllConfirmation = false
     @State private var alertPresented = false
     @State private var alertMessage: String?
 
     var body: some View {
         @Bindable var model = model
-        HSplitView {
-            ImportPane()
-                .frame(minWidth: 420, maxWidth: 540)
-            LibraryPane()
-                .frame(minWidth: 470)
+        NavigationSplitView {
+            List(selection: $destination) {
+                ForEach(AppDestination.allCases) { item in
+                    if item == .library {
+                        Label(item.title, systemImage: item.systemImage)
+                            .badge(model.wallpapers.count)
+                            .tag(item)
+                    } else {
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("AerialDrop")
+            .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 240)
+        } detail: {
+            destinationView
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .background(AuroraBackground().ignoresSafeArea())
         .tint(AerialTheme.accent)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 16) {
-                    Image(systemName: "sparkles.tv")
-                        .font(.system(size: 26, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.tint)
-                    Text("AerialDrop")
-                        .font(.system(size: 28, weight: .bold))
-                        .tracking(-0.5)
-                    Text("v\(AppVersion.shortVersion)")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 5)
-                        .background(.quaternary, in: Capsule())
-                }
-            }
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    model.openWallpaperSettings()
-                } label: {
-                    Label("Wallpaper Settings", systemImage: "gearshape")
+                Button("Import Wallpaper", systemImage: "plus") {
+                    beginImport()
                 }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+                .help("Choose an MP4 or MOV to import")
             }
-            ToolbarItem(placement: .primaryAction) {
+
+            ToolbarItemGroup(placement: .secondaryAction) {
                 Button("Reload Catalogue", systemImage: "arrow.clockwise") {
                     Task { await model.reload() }
                 }
-                .buttonStyle(.glass)
                 .disabled(model.isWorking)
-            }
-            ToolbarItem(placement: .primaryAction) {
+
+                Button("Wallpaper Settings", systemImage: "gearshape") {
+                    model.openWallpaperSettings()
+                }
+
                 maintenanceMenu
             }
         }
@@ -93,6 +87,13 @@ struct ContentView: View {
             guard phase == .active else { return }
             Task { await model.reload() }
         }
+        .onChange(of: model.showingFileImporter) { _, showing in
+            guard showing else { return }
+            if destination != .importVideo {
+                preImportDestination = destination
+            }
+            destination = .importVideo
+        }
         .confirmationDialog(
             "Remove every AerialDrop wallpaper?",
             isPresented: $removeAllConfirmation,
@@ -110,19 +111,36 @@ struct ContentView: View {
         ) { result in
             switch result {
             case .success(let urls):
+                preImportDestination = nil
                 if let url = urls.first { model.chooseVideo(url) }
             case .failure(let error):
-                model.alertMessage = error.localizedDescription
+                if (error as NSError).code == NSUserCancelledError {
+                    if let preImportDestination {
+                        destination = preImportDestination
+                    }
+                    preImportDestination = nil
+                } else {
+                    model.alertMessage = error.localizedDescription
+                }
             }
-        }
-        .background {
-            Button("Choose Video") { model.showingFileImporter = true }
-                .keyboardShortcut("o", modifiers: .command)
-                .hidden()
         }
     }
 
-    // MARK: - Toolbar
+    @ViewBuilder
+    private var destinationView: some View {
+        switch destination ?? .library {
+        case .library:
+            LibraryPane(onImport: beginImport)
+                .navigationTitle("Library")
+        case .importVideo:
+            ImportPane()
+                .navigationTitle("Import Wallpaper")
+        }
+    }
+
+    private func beginImport() {
+        model.showingFileImporter = true
+    }
 
     private var maintenanceMenu: some View {
         Menu("Maintenance", systemImage: "ellipsis.circle") {
@@ -134,8 +152,28 @@ struct ContentView: View {
             }
             .disabled(model.wallpapers.isEmpty || model.isWorking)
         }
-        .menuStyle(.button)
-        .buttonStyle(.glass)
         .labelStyle(.iconOnly)
+        .help("Catalogue maintenance")
+    }
+}
+
+private enum AppDestination: String, CaseIterable, Identifiable {
+    case library
+    case importVideo
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .library: "Library"
+        case .importVideo: "Import"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .library: "photo.on.rectangle.angled"
+        case .importVideo: "square.and.arrow.down"
+        }
     }
 }

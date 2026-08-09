@@ -10,7 +10,7 @@ struct ImportPreviewWindow: View {
         Group {
             if let url = model.selectedVideo {
                 if let sourceSize = model.sourceResolution {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
                         ZStack {
                             LoopingPlayerView(url: url)
                                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -18,13 +18,24 @@ struct ImportPreviewWindow: View {
                                 CropMask(cropOffset: model.cropOffset, resolution: sourceSize)
                             }
                         }
-                        .background(.black, in: RoundedRectangle(cornerRadius: 14))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(.separator, lineWidth: 0.5)
+                        }
+                        .layoutPriority(1)
+                        .accessibilityLabel("Looping source video preview")
 
                         previewMetadata(sourceSize: sourceSize)
-                        previewControls(model: $model)
+
+                        GroupBox("Preview Settings") {
+                            previewControls(model: $model)
+                                .padding(6)
+                        }
                     }
-                    .padding(24)
+                    .padding(20)
                 } else {
                     ContentUnavailableView(
                         "Preview unavailable",
@@ -42,43 +53,72 @@ struct ImportPreviewWindow: View {
     private func previewMetadata(sourceSize: CGSize) -> some View {
         let output = encodedOutputSize(sourceSize: sourceSize, outputHeightCap: model.outputHeightCap)
         let bitrate = bitrateBps(quality: model.conversionQuality, renderHeight: Int(output.height))
-        return HStack(spacing: 14) {
+        return HStack(spacing: 16) {
             Label("\(Int(sourceSize.width))×\(Int(sourceSize.height))", systemImage: "video")
             Label("\(Int(output.width))×\(Int(output.height))", systemImage: "rectangle.inset.filled")
             Label(bitrate.formatted(.byteCount(style: .file)) + "/s", systemImage: "speedometer")
+            Spacer()
         }
-        .font(.callout.monospacedDigit())
+        .font(.caption.monospacedDigit())
         .foregroundStyle(.secondary)
     }
 
-    @ViewBuilder
     private func previewControls(model: Bindable<AppModel>) -> some View {
-        if let resolution = self.model.sourceResolution, isUltrawide(resolution) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Crop position").font(.callout.weight(.semibold))
-                Picker("Crop position", selection: Binding(get: { nearestCropPreset(self.model.cropOffset) }, set: { self.model.cropOffset = $0 })) {
-                    Text("Left").tag(0.0)
-                    Text("Center").tag(0.5)
-                    Text("Right").tag(1.0)
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
+            GridRow {
+                settingLabel("Quality")
+                Picker("Quality", selection: model.conversionQuality) {
+                    Text("Standard").tag(ConversionOptions.Quality.standard)
+                    Text("High").tag(ConversionOptions.Quality.high)
+                    Text("Maximum").tag(ConversionOptions.Quality.maximum)
                 }
                 .pickerStyle(.segmented)
-                Slider(value: model.cropOffset, in: 0...1)
-                    .accessibilityLabel("Crop position")
+                .labelsHidden()
             }
-        }
-        HStack {
-            Picker("Quality", selection: model.conversionQuality) {
-                Text("Standard").tag(ConversionOptions.Quality.standard)
-                Text("High").tag(ConversionOptions.Quality.high)
-                Text("Maximum").tag(ConversionOptions.Quality.maximum)
+
+            GridRow {
+                settingLabel("Resolution")
+                Picker("Output resolution", selection: model.outputHeightCap) {
+                    Text("Original").tag(Int?.none)
+                    ForEach(availableHeightCaps, id: \.self) { cap in
+                        Text("\(cap)p").tag(Int?.some(cap))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 240, alignment: .leading)
             }
-            Picker("Output resolution", selection: model.outputHeightCap) {
-                Text("Original").tag(Int?.none)
-                ForEach(availableHeightCaps, id: \.self) { cap in
-                    Text("\(cap)p").tag(Int?.some(cap))
+
+            if let resolution = self.model.sourceResolution, isUltrawide(resolution) {
+                GridRow(alignment: .top) {
+                    settingLabel("Crop")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker(
+                            "Crop position",
+                            selection: Binding(
+                                get: { nearestCropPreset(self.model.cropOffset) },
+                                set: { self.model.cropOffset = $0 }
+                            )
+                        ) {
+                            Text("Left").tag(0.0)
+                            Text("Center").tag(0.5)
+                            Text("Right").tag(1.0)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+
+                        Slider(value: model.cropOffset, in: 0...1)
+                            .accessibilityLabel("Crop position")
+                    }
                 }
             }
         }
+    }
+
+    private func settingLabel(_ title: String) -> some View {
+        Text(title)
+            .foregroundStyle(.secondary)
+            .frame(width: 82, alignment: .trailing)
+            .gridColumnAlignment(.trailing)
     }
 
     private var availableHeightCaps: [Int] {
