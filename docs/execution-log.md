@@ -128,3 +128,13 @@ wallpaper-store write, remote push, or pull request has been performed.
 - Commit: `f29d7ec` (`fix: recover failed wallpaper activation`). The live
   Tahoe matrix remains required; this change did not write the real selection
   store or activate a live wallpaper.
+
+## Step 9 follow-up — Packaged-app launch smoke check
+
+- Launched the freshly packaged `dist/AerialDrop.app` without selecting media,
+  importing, or writing the wallpaper selection store. Its initial Import and
+  Library UI rendered successfully.
+- Updated `TESTING.md` for the current 1.0.0 bundle and expanded it into the
+  exact remaining Tahoe checklist: preview lifecycle, enabled/disabled import,
+  Library activation and recovery, external state refresh, managed-only
+  deletion guards, Spaces/displays, lock/unlock, relaunch/reboot, and logs.
