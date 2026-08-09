@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     @State private var removeAllConfirmation = false
     @State private var alertPresented = false
     @State private var alertMessage: String?
@@ -62,6 +63,21 @@ struct ContentView: View {
         .alert("AerialDrop", isPresented: $alertPresented) { } message: {
             Text(alertMessage ?? "")
         }
+        .alert(
+            "Couldn’t Set Wallpaper",
+            isPresented: Binding(
+                get: { model.activationFailure != nil },
+                set: { if !$0 { model.dismissActivationFailure() } }
+            )
+        ) {
+            Button("Try Again") { model.retryActivation() }
+            Button("Open Wallpaper Settings") { model.openWallpaperSettings() }
+            Button("Not Now", role: .cancel) { model.dismissActivationFailure() }
+        } message: {
+            let failureMessage = model.activationFailureMessage
+                ?? "You can retry or choose it in System Settings."
+            Text("AerialDrop kept its imported video and catalogue entry, but could not apply it as wallpaper. \(failureMessage)")
+        }
         .onChange(of: model.alertMessage) { _, newValue in
             if let newValue {
                 alertMessage = newValue
@@ -72,6 +88,10 @@ struct ContentView: View {
             if !presented && model.alertMessage != nil {
                 model.alertMessage = nil
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await model.reload() }
         }
         .confirmationDialog(
             "Remove every AerialDrop wallpaper?",

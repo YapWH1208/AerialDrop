@@ -42,7 +42,7 @@ struct VideoPreview: View {
         }
         .overlay {
             if let cropOffset, let resolution, hasCropWindow(resolution) {
-                cropBands(cropOffset: cropOffset, resolution: resolution)
+                CropMask(cropOffset: cropOffset, resolution: resolution)
             }
         }
         .task(id: url) {
@@ -72,43 +72,6 @@ struct VideoPreview: View {
         if let result = try? await generator.image(at: time) {
             frame = NSImage(cgImage: result.image, size: .zero)
         }
-    }
-
-    /// Dims the parts of the preview box that the chosen crop window cuts away.
-    /// The box shows the entire source fitted (scaledToFit), so the bands darken
-    /// everything outside the chosen 16:9 window: left/right for ultrawide
-    /// sources, top/bottom for portrait and 4:3 sources.
-    private func cropBands(cropOffset: Double, resolution: CGSize) -> some View {
-        GeometryReader { geo in
-            let horizontal = cropBandFractions(cropOffset: cropOffset, sourceSize: resolution)
-            let vertical = verticalCropBandFractions(sourceSize: resolution)
-            ZStack {
-                if horizontal.left > 0 || horizontal.right > 0 {
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(.black.opacity(0.45))
-                            .frame(width: geo.size.width * horizontal.left)
-                        Rectangle()
-                            .fill(.black.opacity(0.45))
-                            .frame(width: geo.size.width * horizontal.right)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                }
-                if vertical.top > 0 || vertical.bottom > 0 {
-                    ZStack(alignment: .top) {
-                        Rectangle()
-                            .fill(.black.opacity(0.45))
-                            .frame(height: geo.size.height * vertical.top)
-                        Rectangle()
-                            .fill(.black.opacity(0.45))
-                            .frame(height: geo.size.height * vertical.bottom)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    }
-                }
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     private func timeString(_ seconds: Double) -> String {

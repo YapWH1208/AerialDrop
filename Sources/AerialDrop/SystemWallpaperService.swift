@@ -1,7 +1,36 @@
 import AppKit
 import Foundation
 
-struct SystemWallpaperService {
+@MainActor
+protocol WallpaperServicing {
+    func activeAerialAssetIDs() throws -> Set<String>
+    func activateAerial(assetID: String) async throws
+    func refresh() async
+    func openWallpaperSettings()
+    func openFolder(_ url: URL)
+    func revealInFinder(_ url: URL)
+}
+
+@MainActor
+struct SystemWallpaperService: WallpaperServicing {
+    private let selectionStore: WallpaperSelectionStore
+
+    init(selectionStore: WallpaperSelectionStore = WallpaperSelectionStore()) {
+        self.selectionStore = selectionStore
+    }
+
+    func activeAerialAssetIDs() throws -> Set<String> {
+        try selectionStore.activeAerialAssetIDs()
+    }
+
+    func activateAerial(assetID: String) async throws {
+        try selectionStore.apply(assetID: assetID)
+        await refresh()
+        guard try selectionStore.activeAerialAssetIDs() == Set([assetID]) else {
+            throw AerialDropError.wallpaperSelectionVerificationFailed(assetID)
+        }
+    }
+
     /// Reloads the Aerial catalogue after a manifest update.
     func refresh() async {
         await terminateProcess(named: "WallpaperAerialsExtension", signal: nil)
@@ -30,7 +59,6 @@ struct SystemWallpaperService {
         }
     }
 
-    @MainActor
     func openWallpaperSettings() {
         let candidates = [
             "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension",
@@ -45,12 +73,10 @@ struct SystemWallpaperService {
         _ = NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
     }
 
-    @MainActor
     func openFolder(_ url: URL) {
         NSWorkspace.shared.open(url)
     }
 
-    @MainActor
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }

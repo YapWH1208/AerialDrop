@@ -15,6 +15,7 @@ struct SectionHeader: View {
 
 struct ImportPane: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var hoveringDropZone = false
 
     var body: some View {
@@ -43,7 +44,7 @@ struct ImportPane: View {
                     .glassEffect(.regular, in: .rect(cornerRadius: 18))
                 }
 
-                if model.selectedVideo != nil {
+                if model.isSelectedVideoValid {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Conversion")
                             .font(.callout.weight(.semibold))
@@ -65,6 +66,12 @@ struct ImportPane: View {
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .glassEffect(.regular, in: .rect(cornerRadius: 18))
+
+                    Button("Preview & Adjust", systemImage: "rectangle.on.rectangle") {
+                        openWindow(id: "import-preview")
+                    }
+                    .buttonStyle(.glass)
+                    .help("Open the dedicated video preview editor")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -107,7 +114,7 @@ struct ImportPane: View {
 
                 Spacer(minLength: 8)
 
-                Text("After importing, select the new item in System Settings → Wallpaper; macOS applies it to Desktop, Lock Screen and Screen Saver natively. You may quit AerialDrop after setup; macOS handles playback natively.")
+                Text("By default, AerialDrop applies the imported Aerial everywhere. Change this in Settings if you prefer to select it manually later.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -278,7 +285,7 @@ struct ImportPane: View {
                 .labelStyle(.iconOnly)
                 .help("Dismiss")
             }
-            Text("Select the new item under AerialDrop in System Settings → Wallpaper; macOS applies it to Desktop, Lock Screen and Screen Saver natively.")
+            Text("The imported Aerial is ready to play natively. If automatic activation is disabled in Settings, select it later from the Library or System Settings.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

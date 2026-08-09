@@ -40,6 +40,30 @@ func clampedOutputHeight(_ requested: Int?, sourceHeight: Int) -> Int {
     max(2, min(sourceHeight, requested ?? 2160))
 }
 
+/// Exact even-sized 16:9 output frame used by the native HEVC encoder. This
+/// keeps preview metadata and the encoder on the same no-upscale, 4K-capped
+/// contract for wide, portrait, and standard landscape sources.
+func encodedOutputSize(sourceSize: CGSize, outputHeightCap: Int?) -> CGSize {
+    guard sourceSize.width.isFinite, sourceSize.height.isFinite,
+          sourceSize.width > 0, sourceSize.height > 0 else {
+        return CGSize(width: 2, height: 2)
+    }
+
+    let maxHeight = clampedOutputHeight(outputHeightCap, sourceHeight: Int(sourceSize.height))
+    let target: CGSize
+    if sourceSize.width / sourceSize.height >= 16.0 / 9.0 {
+        let height = min(sourceSize.height, CGFloat(maxHeight))
+        target = CGSize(width: height * (16.0 / 9.0), height: height)
+    } else {
+        let width = min(sourceSize.width, CGFloat(maxHeight) * (16.0 / 9.0))
+        target = CGSize(width: width, height: width * (9.0 / 16.0))
+    }
+    return CGSize(
+        width: max(2, floor(target.width / 2) * 2),
+        height: max(2, floor(target.height / 2) * 2)
+    )
+}
+
 /// Output bitrate for a quality preset, bucketed by rendered height.
 /// Buckets: ≥1600 → 2160p row, 1200–1599 → 1440p row, <1200 → 1080p row.
 func bitrateBps(quality: ConversionOptions.Quality, renderHeight: Int) -> Int {
