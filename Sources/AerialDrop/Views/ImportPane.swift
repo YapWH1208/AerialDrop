@@ -114,7 +114,7 @@ struct ImportPane: View {
 
                 Spacer(minLength: 8)
 
-                Text("After importing, select the new item in System Settings → Wallpaper; macOS applies it to Desktop, Lock Screen and Screen Saver natively. You may quit AerialDrop after setup; macOS handles playback natively.")
+                Text("By default, AerialDrop applies the imported Aerial everywhere. Change this in Settings if you prefer to select it manually later.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -285,7 +285,7 @@ struct ImportPane: View {
                 .labelStyle(.iconOnly)
                 .help("Dismiss")
             }
-            Text("Select the new item under AerialDrop in System Settings → Wallpaper; macOS applies it to Desktop, Lock Screen and Screen Saver natively.")
+            Text("The imported Aerial is ready to play natively. If automatic activation is disabled in Settings, select it later from the Library or System Settings.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

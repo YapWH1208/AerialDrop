@@ -60,3 +60,18 @@ wallpaper-store write, remote push, or pull request has been performed.
   - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`.
   - `git diff --check` and staged secret scan.
 - Commit: `ec69220` (`refactor: share encoded output calculations`).
+
+## Steps 5–8 — Preview, activation UI, and documentation
+
+- Added the reusable Preview & Adjust window with AVKit looping playback,
+  security-scoped playback lifetime, native transport controls, shared crop
+  overlay, and synchronized crop/quality/output controls. Commit: `16106ca`.
+- Added native Aerial activation after installation when the default-on setting
+  is enabled; disabled imports only refresh the catalogue. Activation failure
+  retains installed media and catalogue metadata, and offers Retry or Wallpaper
+  Settings recovery. Commits: `21f242f`, `2493dce`.
+- Added Library context and preview-sheet Set as Wallpaper actions plus a
+  separate accessible Active badge. Commit: `cafacf3`.
+- Updated README, architecture, testing instructions, and Import-pane wording
+  for automatic/manual activation paths, separate selection-store backups, and
+  the Tahoe validation matrix.

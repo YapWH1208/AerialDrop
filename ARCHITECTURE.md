@@ -14,12 +14,14 @@ Generate HEIF preview at timestamp zero
     ↓
 Register video, preview and UUID metadata in entries.json
     ↓
+If enabled, safely update Index.plist linked Aerial selection everywhere
+    ↓ backup + compare-before-write + binary atomic write + verification
 Restart WallpaperAgent and WallpaperAerialsExtension
-    ↓ user selects the item in System Settings
-Tahoe writes the native `linked` record binding Desktop, Lock Screen and Screen Saver
     ↓
 macOS native pipeline
 Screen saver → Lock Screen → native slowdown → static desktop
 ```
 
 There is no app-managed desktop player. AerialDrop may be quit after setup.
+
+`ManifestStore` owns `entries.json`; `WallpaperSelectionStore` separately owns the private `Store/Index.plist` linked-selection format. Unknown store data is preserved, selection writes are backed up, and verification failures deliberately do not auto-restore over newer macOS state.
