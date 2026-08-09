@@ -5,15 +5,21 @@ struct AerialDropApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("AerialDrop") {
             ContentView()
                 .environment(model)
-                .frame(minWidth: 980, minHeight: 640)
+                .frame(minWidth: 760, minHeight: 520)
         }
-        .defaultSize(width: 1120, height: 720)
+        .defaultSize(width: 1040, height: 700)
         .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
-        .windowBackgroundDragBehavior(.enabled)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Choose Video…") {
+                    model.showingFileImporter = true
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+        }
 
         Settings {
             SettingsView()
@@ -22,6 +28,10 @@ struct AerialDropApp: App {
         Window("Preview & Adjust", id: "import-preview") {
             ImportPreviewWindow()
                 .environment(model)
+                .frame(minWidth: 640, minHeight: 520)
         }
+        .defaultSize(width: 820, height: 620)
+        .windowResizability(.contentMinSize)
+        .restorationBehavior(.disabled)
     }
 }
