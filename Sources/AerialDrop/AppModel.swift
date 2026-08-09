@@ -20,6 +20,7 @@ final class AppModel {
     var conversionQuality: ConversionOptions.Quality = .standard
     var outputHeightCap: Int? = nil
     var sourceResolution: CGSize?
+    var activeAerialAssetIDs: Set<String> = []
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
@@ -121,6 +122,7 @@ final class AppModel {
             let id = UUID().uuidString.uppercased()
             let videoDestination = paths.videoURL(for: id)
             let thumbnailDestination = paths.thumbnailURL(for: id)
+            var manifestInstalled = false
 
             do {
                 try requireTahoe()
@@ -156,10 +158,24 @@ final class AppModel {
                     width: Int(encodedSize.width),
                     height: Int(encodedSize.height)
                 )
+                manifestInstalled = true
 
                 stage = .refreshingSystem
-                await systemService.refresh()
-                systemService.openWallpaperSettings()
+                if AppPreferences.isSetWallpaperAfterImportEnabled() {
+                    do {
+                        try await systemService.activateAerial(assetID: id)
+                    } catch {
+                        stage = .finished
+                        selectedVideo = nil
+                        title = ""
+                        await reload()
+                        importSucceeded = true
+                        alertMessage = "The video was imported, but AerialDrop could not apply it as wallpaper. \(error.localizedDescription)"
+                        return
+                    }
+                } else {
+                    await systemService.refresh()
+                }
 
                 stage = .finished
                 selectedVideo = nil
@@ -167,8 +183,10 @@ final class AppModel {
                 await reload()
                 importSucceeded = true
             } catch {
-                try? FileManager.default.removeItem(at: videoDestination)
-                try? FileManager.default.removeItem(at: thumbnailDestination)
+                if !manifestInstalled {
+                    try? FileManager.default.removeItem(at: videoDestination)
+                    try? FileManager.default.removeItem(at: thumbnailDestination)
+                }
                 guard generation == importGeneration else { return }
                 stage = .idle
                 importProgress = 0
@@ -196,6 +214,10 @@ final class AppModel {
             isWorking = true
             defer { isWorking = false }
             do {
+                try refreshActiveSelection()
+                guard !activeAerialAssetIDs.contains(wallpaper.id) else {
+                    throw AerialDropError.activeWallpaperCannotBeRemoved
+                }
                 try manifestStore.removeWallpaper(id: wallpaper.id)
                 await systemService.refresh()
                 await reload()
@@ -210,6 +232,10 @@ final class AppModel {
             isWorking = true
             defer { isWorking = false }
             do {
+                try refreshActiveSelection()
+                guard activeAerialAssetIDs.isEmpty else {
+                    throw AerialDropError.activeWallpaperCannotBeRemoved
+                }
                 try manifestStore.removeAllManaged()
                 await systemService.refresh()
                 await reload()
@@ -225,6 +251,24 @@ final class AppModel {
         } catch {
             wallpapers = []
         }
+        try? refreshActiveSelection()
+    }
+
+    func setWallpaper(_ wallpaper: ManagedWallpaper) {
+        Task {
+            isWorking = true
+            defer { isWorking = false }
+            do {
+                try await systemService.activateAerial(assetID: wallpaper.id)
+                await reload()
+            } catch {
+                alertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func refreshActiveSelection() throws {
+        activeAerialAssetIDs = try systemService.activeAerialAssetIDs()
     }
 
     func validateCatalogue() {
