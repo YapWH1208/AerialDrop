@@ -78,14 +78,32 @@ wallpaper-store write, remote push, or pull request has been performed.
 
 ## Step 9 — Final automated validation and graph review
 
-- Passed `swift build`, `swift test` (39 tests), `swift build -c release`, and
-  `./Scripts/build-app.sh` with the Xcode developer directory pinned.
-- Final Code Review Graph rebuilt against `main`: 31 intended changed files,
-  172 directly changed nodes, and a 60-node two-hop impact radius. It reported
-  no affected flow records and highlighted AppModel/UI as structurally untested;
-  the focused store, preference, and conversion tests provide automated coverage
-  for the pure and persistence-critical paths.
+- Passed `swift build`, `swift test` (42 tests), `swift build -c release`, and
+  `./Scripts/build-app.sh` with the Xcode developer directory pinned. The
+  final package is `dist/AerialDrop.app`.
+- Final Code Review Graph rebuilt against `main`: 32 intended changed files,
+  99 changed functions/classes, a 0.60 risk score, and no affected flow
+  records. Its static test mapping still flags the AppModel, import, removal,
+  UI, and player paths; the added model seam gives direct coverage to manual
+  activation and retry state, while native import/removal/UI/player behavior is
+  retained in the Tahoe matrix below.
 - Remaining required evidence is the manual Tahoe matrix in `TESTING.md`:
   preview lifecycle, enabled/disabled activation, Library actions and removal
   guard, all Spaces/displays, lock/unlock, reboot persistence, and
   `WallpaperAerialsExtension` log inspection.
+
+## Step 9 follow-up — AppModel activation coverage
+
+- Added a narrow `WallpaperServicing` seam so `AppModel` can be exercised with
+  an in-memory main-actor service and temporary paths, without reading a live
+  selection store.
+- Added focused coverage for manual activation/active-ID refresh, activation
+  failure state, and clearing a pending retry target after a successful retry.
+- Re-read the active selection when the app becomes active again, and disable
+  conflicting Library set/remove controls while an operation is in progress.
+- Validation passed:
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter AppModelWallpaperTests` — 3 tests passed.
+  - `git diff --check`.
+- Commit: `b163252` (`test: cover wallpaper activation model`). Automatic
+  post-import selection and removal behavior still require the Tahoe import
+  matrix because the real import pipeline owns native video processing.
