@@ -1,4 +1,4 @@
-# Testing AerialDrop 1.0.0
+# Testing AerialDrop 1.1.0
 
 Run this matrix on macOS Tahoe 26 with an existing Apple Aerial catalogue and
 at least one short and one longer MP4/MOV source. Reimport sources with this
