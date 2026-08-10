@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ImportPane: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         @Bindable var model = model
@@ -18,8 +17,7 @@ struct ImportPane: View {
                         cropOffset: model.cropOffset,
                         isValid: model.isSelectedVideoValid,
                         onChoose: { model.showingFileImporter = true },
-                        onDrop: { model.chooseVideo($0) },
-                        onPreview: { openWindow(id: "import-preview") }
+                        onDrop: { model.chooseVideo($0) }
                     )
                 }
 
@@ -87,7 +85,6 @@ private struct ImportSourceView: View {
     let isValid: Bool
     let onChoose: () -> Void
     let onDrop: (URL) -> Void
-    let onPreview: () -> Void
 
     @State private var hovering = false
     @State private var dropTargeted = false
@@ -181,11 +178,6 @@ private struct ImportSourceView: View {
                 }
 
                 Spacer()
-
-                if isValid {
-                    Button("Preview & Adjust", systemImage: "rectangle.on.rectangle", action: onPreview)
-                        .help("Open the dedicated video preview editor")
-                }
 
                 Button("Replace…", systemImage: "arrow.triangle.2.circlepath", action: onChoose)
             }

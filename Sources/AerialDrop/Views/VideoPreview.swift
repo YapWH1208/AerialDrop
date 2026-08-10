@@ -52,6 +52,10 @@ struct VideoPreview: View {
 
     @MainActor
     private func load() async {
+        frame = nil
+        duration = nil
+        fileSize = nil
+
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
 

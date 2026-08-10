@@ -24,14 +24,5 @@ struct AerialDropApp: App {
         Settings {
             SettingsView()
         }
-
-        Window("Preview & Adjust", id: "import-preview") {
-            ImportPreviewWindow()
-                .environment(model)
-                .frame(minWidth: 640, minHeight: 520)
-        }
-        .defaultSize(width: 820, height: 620)
-        .windowResizability(.contentMinSize)
-        .restorationBehavior(.disabled)
     }
 }
