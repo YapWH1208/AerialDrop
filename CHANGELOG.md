@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Removed the pop-out Preview & Adjust window. Preview and conversion tuning now happen inline in the Import pane: a still-frame preview with the live crop mask, plus quality, resolution, and crop controls.
+
 ## 1.1.0
 
 - Redesigned the UI around a native macOS Tahoe sidebar and toolbar: Library and Import are sidebar destinations, with Import, Reload and Maintenance actions in the toolbar (⌘O opens the file picker too; cancelling it returns you to the pane you came from).

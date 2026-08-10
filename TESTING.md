@@ -1,4 +1,4 @@
-# Testing AerialDrop 1.0.0
+# Testing AerialDrop 1.1.0
 
 Run this matrix on macOS Tahoe 26 with an existing Apple Aerial catalogue and
 at least one short and one longer MP4/MOV source. Reimport sources with this
@@ -6,11 +6,11 @@ version before evaluating native playback.
 
 1. Build and open AerialDrop 1.0.0. Confirm the Library loads without opening
    System Settings or changing the current desktop.
-2. Select a valid source and open **Preview & Adjust**. Reopen it to confirm
-   one editor window is reused. Verify autoplay/looping, native play-pause and
-   scrubbing, and a crop mask matching the source type. Change crop, quality,
-   and output resolution; close the window and confirm Import retains each
-   value. Change the source and confirm the preview follows it.
+2. Select a valid source. Confirm the Import pane shows a still-frame preview with
+   a crop mask matching the source type, and that resolution, duration, and file
+   size appear. Change crop, quality, and output resolution; confirm the preview
+   mask and controls stay in sync. Replace the source and confirm the preview
+   follows it.
 3. Leave **Set as wallpaper after importing** enabled (the default), import a
    source, and confirm the new Aerial becomes active across all Spaces and
    displays without System Settings opening. Check that the Library badge marks
