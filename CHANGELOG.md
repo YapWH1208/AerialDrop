@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.1
 
 - Removed the pop-out Preview & Adjust window. Preview and conversion tuning now happen inline in the Import pane: a still-frame preview with the live crop mask, plus quality, resolution, and crop controls.
+- Fixed the inline preview showing a stale frame, duration, and file size when the source video is replaced.
 
 ## 1.1.0
 
