@@ -56,19 +56,11 @@ final class AppModel {
     }
 
     var canImport: Bool {
-        isSelectedVideoValid
+        catalogueState == .ready
+            && isSelectedVideoValid
             && selectedVideo != nil
             && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !isWorking
-    }
-
-    var importSucceeded: Bool {
-        get { importOutcome != nil }
-        set {
-            if !newValue {
-                importOutcome = nil
-            }
-        }
     }
 
     var isImportCancellable: Bool {
@@ -294,6 +286,7 @@ final class AppModel {
     }
 
     func reload() async {
+        catalogueState = .loading
         do {
             try manifestStore.requireManifest()
             wallpapers = try manifestStore.importedWallpapers()

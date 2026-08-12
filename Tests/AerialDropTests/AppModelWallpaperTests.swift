@@ -6,6 +6,7 @@ import XCTest
 final class AppModelWallpaperTests: XCTestCase {
     func testImportRequiresAValidatedSelectedVideo() {
         let model = makeModel(service: FakeWallpaperService())
+        model.catalogueState = .ready
         model.selectedVideo = URL(fileURLWithPath: "/tmp/source.mov")
         model.title = "Source"
 
@@ -14,6 +15,10 @@ final class AppModelWallpaperTests: XCTestCase {
         model.isSelectedVideoValid = true
 
         XCTAssertTrue(model.canImport)
+
+        model.catalogueState = .unavailable("Set up Apple Aerials")
+
+        XCTAssertFalse(model.canImport)
     }
 
     func testReloadReportsMissingCatalogueInsteadOfReadyEmpty() async {

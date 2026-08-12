@@ -18,6 +18,7 @@ struct AerialDropApp: App {
                     model.showingFileImporter = true
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                .disabled(model.isWorking || model.catalogueState != .ready)
             }
         }
 
