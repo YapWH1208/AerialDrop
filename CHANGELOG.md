@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.1.2
+
+- Added catalogue-readiness onboarding: when the native Apple Aerial catalogue isn't set up yet, the Library shows **Open Wallpaper Settings** and **Check Again** instead of an empty grid, and the Import toolbar action (⌘O) is disabled until the catalogue is ready.
+- Modeled import results as an explicit outcome: the completion summary now states whether the wallpaper was activated everywhere, installed without changing the desktop, or installed but activation needs attention.
+- Polished completion feedback: a single VoiceOver announcement moves focus to the summary, retrying activation clears a stale "Activation Needs Attention" card, and completion plays a success haptic only when activation actually succeeded.
+- Restricted import cancellation to the early, reversible stages; once catalogue installation begins, AerialDrop finishes without offering cancellation.
+
+## 1.1.1
 
 - Removed the pop-out Preview & Adjust window. Preview and conversion tuning now happen inline in the Import pane: a still-frame preview with the live crop mask, plus quality, resolution, and crop controls.
+- Fixed the inline preview showing a stale frame, duration, and file size when the source video is replaced.
 
 ## 1.1.0
 
