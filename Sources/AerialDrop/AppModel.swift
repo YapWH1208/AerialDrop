@@ -10,12 +10,13 @@ final class AppModel {
     var selectedVideo: URL?
     var title = ""
     var wallpapers: [ManagedWallpaper] = []
+    var catalogueState: CatalogueState = .loading
     var stage: ImportStage = .idle
     var isWorking = false
     var alertMessage: String?
     var showingFileImporter = false
     var importProgress: Double = 0
-    var importSucceeded = false
+    var importOutcome: ImportOutcome?
     var isSelectedVideoValid = false
     var cropOffset: Double = 0.5
     var conversionQuality: ConversionOptions.Quality = .standard
@@ -61,6 +62,19 @@ final class AppModel {
             && !isWorking
     }
 
+    var importSucceeded: Bool {
+        get { importOutcome != nil }
+        set {
+            if !newValue {
+                importOutcome = nil
+            }
+        }
+    }
+
+    var isImportCancellable: Bool {
+        isWorking && stage.allowsCancellation
+    }
+
     /// Maps the real encode fraction into the progress band occupied by the
     /// video-processing stage; other stages use their fixed milestones.
     var displayProgress: Double {
@@ -78,6 +92,7 @@ final class AppModel {
             title = url.deletingPathExtension().lastPathComponent
         }
         selectedVideo = url
+        importOutcome = nil
         cropOffset = 0.5
         conversionQuality = .standard
         outputHeightCap = nil
@@ -125,6 +140,7 @@ final class AppModel {
     }
 
     func cancelImport() {
+        guard isImportCancellable else { return }
         importTask?.cancel()
     }
 
@@ -142,7 +158,7 @@ final class AppModel {
         importTask = Task {
             isWorking = true
             importProgress = 0
-            importSucceeded = false
+            importOutcome = nil
             dismissActivationFailure()
             defer { isWorking = false }
 
@@ -181,6 +197,7 @@ final class AppModel {
                 stage = .generatingThumbnail
                 try await videoProcessor.generateThumbnail(from: videoDestination, destination: thumbnailDestination)
 
+                try Task.checkCancellation()
                 stage = .updatingManifest
                 try manifestStore.addWallpaper(
                     id: id,
@@ -204,7 +221,6 @@ final class AppModel {
                 selectedVideo = nil
                 title = ""
                 isSelectedVideoValid = false
-                importSucceeded = true
             } catch {
                 if !manifestInstalled {
                     try? FileManager.default.removeItem(at: videoDestination)
@@ -279,9 +295,12 @@ final class AppModel {
 
     func reload() async {
         do {
+            try manifestStore.requireManifest()
             wallpapers = try manifestStore.importedWallpapers()
+            catalogueState = .ready
         } catch {
             wallpapers = []
+            catalogueState = .unavailable(error.localizedDescription)
         }
         try? refreshActiveSelection()
     }
@@ -314,19 +333,29 @@ final class AppModel {
 
     /// Applies the default-on post-import choice independently of media work,
     /// making a failed activation recoverable without rolling back installation.
-    func applyPostImportWallpaperSetting(to wallpaper: ManagedWallpaper) async {
+    @discardableResult
+    func applyPostImportWallpaperSetting(to wallpaper: ManagedWallpaper) async -> ImportActivationResult {
         stage = .refreshingSystem
+        let activationResult: ImportActivationResult
         if automaticActivationEnabled() {
             do {
                 try await systemService.activateAerial(assetID: wallpaper.id)
                 dismissActivationFailure()
+                activationResult = .activatedEverywhere
             } catch {
                 recordActivationFailure(for: wallpaper, error: error)
+                activationResult = .activationFailed
             }
         } else {
             await systemService.refresh()
+            activationResult = .installedOnly
         }
         await reload()
+        importOutcome = ImportOutcome(
+            wallpaper: wallpaper,
+            activationResult: activationResult
+        )
+        return activationResult
     }
 
     private func refreshActiveSelection() throws {
