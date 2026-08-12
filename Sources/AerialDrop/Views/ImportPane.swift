@@ -77,9 +77,10 @@ struct ImportPane: View {
             .padding(.vertical, 24)
             .frame(maxWidth: .infinity)
         }
-        .sensoryFeedback(.success, trigger: model.stage, condition: { old, new in
-            new == .finished && old != .finished
-        })
+        .sensoryFeedback(trigger: model.stage) { old, new in
+            guard new == .finished, old != .finished else { return nil }
+            return importFinishedWithFailure ? .error : .success
+        }
         .onChange(of: model.stage) { oldStage, newStage in
             guard oldStage != newStage,
                   model.isWorking,
@@ -87,10 +88,13 @@ struct ImportPane: View {
             AccessibilityNotification.Announcement(newStage.label).post()
         }
         .onChange(of: model.importOutcome) { _, outcome in
-            guard let outcome else { return }
+            guard outcome != nil else { return }
             accessibilityStatus = .completion
-            AccessibilityNotification.Announcement(outcome.accessibilityAnnouncement).post()
         }
+    }
+
+    private var importFinishedWithFailure: Bool {
+        model.importOutcome?.activationResult == .activationFailed
     }
 
     private func beginAnotherImport() {

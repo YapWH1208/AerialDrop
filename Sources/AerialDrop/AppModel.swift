@@ -312,6 +312,12 @@ final class AppModel {
         do {
             try await systemService.activateAerial(assetID: wallpaper.id)
             dismissActivationFailure()
+            if importOutcome?.wallpaper.id == wallpaper.id {
+                importOutcome = ImportOutcome(
+                    wallpaper: wallpaper,
+                    activationResult: .activatedEverywhere
+                )
+            }
             await reload()
         } catch {
             recordActivationFailure(for: wallpaper, error: error)
