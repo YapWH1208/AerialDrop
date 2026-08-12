@@ -1,7 +1,11 @@
 import SwiftUI
 
 struct ImportPane: View {
+    let onViewLibrary: () -> Void
+
     @Environment(AppModel.self) private var model
+    @AppStorage(AppPreferences.setWallpaperAfterImportKey) private var setWallpaperAfterImport = true
+    @AccessibilityFocusState private var accessibilityStatus: ImportAccessibilityStatus?
 
     var body: some View {
         @Bindable var model = model
@@ -16,6 +20,7 @@ struct ImportPane: View {
                         resolution: model.sourceResolution,
                         cropOffset: model.cropOffset,
                         isValid: model.isSelectedVideoValid,
+                        isDisabled: model.isWorking || model.catalogueState != .ready,
                         onChoose: { model.showingFileImporter = true },
                         onDrop: { model.chooseVideo($0) }
                     )
@@ -27,44 +32,44 @@ struct ImportPane: View {
                         quality: $model.conversionQuality,
                         outputHeightCap: $model.outputHeightCap,
                         cropOffset: $model.cropOffset,
-                        sourceResolution: model.sourceResolution,
-                        onSubmit: {
-                            if model.canImport {
-                                model.importSelectedVideo()
-                            }
-                        }
+                        sourceResolution: model.sourceResolution
                     )
+                    .disabled(model.isWorking || model.catalogueState != .ready)
+
+                    ImportActivationView(isEnabled: $setWallpaperAfterImport)
+                        .disabled(model.isWorking || model.catalogueState != .ready)
                 }
 
-                if model.importSucceeded {
+                if let outcome = model.importOutcome {
                     ImportSuccessView(
-                        onOpenSettings: { model.openWallpaperSettings() },
-                        onDismiss: { model.importSucceeded = false }
+                        outcome: outcome,
+                        onViewLibrary: onViewLibrary,
+                        onImportAnother: beginAnotherImport
                     )
+                    .accessibilityFocused($accessibilityStatus, equals: .completion)
                 } else if model.isWorking {
                     ImportProgressView(
                         stage: model.stage,
                         progress: model.displayProgress,
+                        canCancel: model.isImportCancellable,
                         onCancel: { model.cancelImport() }
                     )
                 }
 
                 ImportDetailsView()
 
-                HStack {
-                    Text("Automatic activation can be changed in Settings.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                if model.importOutcome == nil {
+                    HStack {
+                        Spacer()
 
-                    Spacer()
-
-                    Button("Import Wallpaper", systemImage: "square.and.arrow.down") {
-                        model.importSelectedVideo()
+                        Button("Import Wallpaper", systemImage: "square.and.arrow.down") {
+                            model.importSelectedVideo()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .disabled(!model.canImport)
+                        .help("Import the selected video (⌘↩)")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!model.canImport)
-                    .help("Import the selected video (⌘↩)")
                 }
             }
             .frame(maxWidth: 760)
@@ -72,9 +77,59 @@ struct ImportPane: View {
             .padding(.vertical, 24)
             .frame(maxWidth: .infinity)
         }
-        .sensoryFeedback(.success, trigger: model.stage, condition: { old, new in
-            new == .finished && old != .finished
-        })
+        .sensoryFeedback(trigger: model.stage) { old, new in
+            guard new == .finished, old != .finished else { return nil }
+            return importFinishedWithFailure ? .error : .success
+        }
+        .onChange(of: model.stage) { oldStage, newStage in
+            guard oldStage != newStage,
+                  model.isWorking,
+                  newStage != .finished else { return }
+            AccessibilityNotification.Announcement(newStage.label).post()
+        }
+        .onChange(of: model.importOutcome) { _, outcome in
+            guard outcome != nil else { return }
+            accessibilityStatus = .completion
+        }
+    }
+
+    private var importFinishedWithFailure: Bool {
+        model.importOutcome?.activationResult == .activationFailed
+    }
+
+    private func beginAnotherImport() {
+        model.importOutcome = nil
+        model.showingFileImporter = true
+    }
+}
+
+private enum ImportAccessibilityStatus: Hashable {
+    case completion
+}
+
+private struct ImportActivationView: View {
+    @Binding var isEnabled: Bool
+
+    var body: some View {
+        GroupBox("After Import") {
+            VStack(alignment: .leading, spacing: 5) {
+                Toggle("Set as wallpaper after importing", isOn: $isEnabled)
+
+                Text(description)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(4)
+        }
+    }
+
+    private var description: String {
+        if isEnabled {
+            "The new wallpaper will be applied across all Spaces and displays."
+        } else {
+            "The video will be installed without changing your current wallpaper."
+        }
     }
 }
 
@@ -83,6 +138,7 @@ private struct ImportSourceView: View {
     let resolution: CGSize?
     let cropOffset: Double
     let isValid: Bool
+    let isDisabled: Bool
     let onChoose: () -> Void
     let onDrop: (URL) -> Void
 
@@ -98,7 +154,7 @@ private struct ImportSourceView: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let first = urls.first else { return false }
+            guard !isDisabled, let first = urls.first else { return false }
             onDrop(first)
             return true
         } isTargeted: { targeted in
@@ -125,6 +181,7 @@ private struct ImportSourceView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(dropTargeted || hovering ? Color.accentColor.opacity(0.07) : Color(nsColor: .controlBackgroundColor))
@@ -180,6 +237,7 @@ private struct ImportSourceView: View {
                 Spacer()
 
                 Button("Replace…", systemImage: "arrow.triangle.2.circlepath", action: onChoose)
+                    .disabled(isDisabled)
             }
         }
     }
@@ -192,7 +250,8 @@ private struct ImportSettingsView: View {
     @Binding var cropOffset: Double
 
     let sourceResolution: CGSize?
-    let onSubmit: () -> Void
+
+    @FocusState private var nameIsFocused: Bool
 
     var body: some View {
         GroupBox("Wallpaper Details") {
@@ -200,7 +259,8 @@ private struct ImportSettingsView: View {
                 GridRow {
                     settingLabel("Name")
                     TextField("Wallpaper name", text: $title)
-                        .onSubmit(onSubmit)
+                        .focused($nameIsFocused)
+                        .onSubmit { nameIsFocused = false }
                 }
 
                 GridRow {
@@ -279,6 +339,7 @@ private struct ImportSettingsView: View {
 private struct ImportProgressView: View {
     let stage: ImportStage
     let progress: Double
+    let canCancel: Bool
     let onCancel: () -> Void
 
     var body: some View {
@@ -299,53 +360,98 @@ private struct ImportProgressView: View {
                 ProgressView(value: progress)
 
                 HStack {
-                    Text("AerialDrop keeps the source video unchanged.")
+                    Text(canCancel ? cancellableMessage : finishingMessage)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
                     Spacer()
 
-                    Button("Cancel", role: .cancel, action: onCancel)
-                        .controlSize(.small)
+                    if canCancel {
+                        Button("Cancel", role: .cancel, action: onCancel)
+                            .controlSize(.small)
+                    }
                 }
-            }
-            .padding(4)
-        }
-    }
-}
-
-private struct ImportSuccessView: View {
-    let onOpenSettings: () -> Void
-    let onDismiss: () -> Void
-
-    var body: some View {
-        GroupBox {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.green)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Imported successfully")
-                        .font(.headline)
-                    Text("The wallpaper has been added to the native Aerial catalogue.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Button("Open Wallpaper Settings", systemImage: "gearshape", action: onOpenSettings)
-
-                Button("Dismiss", systemImage: "xmark", action: onDismiss)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.plain)
-                    .help("Dismiss")
             }
             .padding(4)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityLabel("Import progress")
+    }
+
+    private var cancellableMessage: String {
+        "The source video stays unchanged. You can cancel before installation begins."
+    }
+
+    private var finishingMessage: String {
+        "Finishing installation. This step can’t be cancelled."
+    }
+}
+
+private struct ImportSuccessView: View {
+    let outcome: ImportOutcome
+    let onViewLibrary: () -> Void
+    let onImportAnother: () -> Void
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: outcome.activationResult == .activationFailed
+                        ? "exclamationmark.circle.fill"
+                        : "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(outcome.activationResult == .activationFailed ? Color.orange : Color.green)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(outcome.completionTitle)
+                            .font(.headline)
+                        Text(outcome.completionMessage)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack {
+                    Spacer()
+
+                    Button("Import Another", systemImage: "plus", action: onImportAnother)
+                    Button("View in Library", systemImage: "photo.on.rectangle.angled", action: onViewLibrary)
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(4)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(outcome.accessibilityAnnouncement)
+    }
+}
+
+private extension ImportOutcome {
+    var completionTitle: String {
+        switch activationResult {
+        case .activatedEverywhere:
+            "Imported and Set as Wallpaper"
+        case .installedOnly:
+            "Imported Without Changing Wallpaper"
+        case .activationFailed:
+            "Imported; Activation Needs Attention"
+        }
+    }
+
+    var completionMessage: String {
+        switch activationResult {
+        case .activatedEverywhere:
+            "“\(wallpaper.title)” is active across all Spaces and displays."
+        case .installedOnly:
+            "“\(wallpaper.title)” was added to the native Aerial catalogue. Your current wallpaper was not changed."
+        case .activationFailed:
+            "“\(wallpaper.title)” was installed, but could not be applied. You can retry from the recovery alert or Library."
+        }
+    }
+
+    var accessibilityAnnouncement: String {
+        "\(completionTitle). \(completionMessage)"
     }
 }
 

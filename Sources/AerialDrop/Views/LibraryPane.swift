@@ -24,17 +24,8 @@ struct LibraryPane: View {
     }
 
     var body: some View {
-        Group {
-            if model.wallpapers.isEmpty {
-                emptyLibrary
-            } else if filteredWallpapers.isEmpty {
-                ContentUnavailableView.search(text: searchText)
-            } else {
-                wallpaperGrid
-            }
-        }
+        libraryState
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
         .confirmationDialog(
             removeDialogTitle,
             isPresented: $showingRemoveConfirmation,
@@ -68,6 +59,60 @@ struct LibraryPane: View {
                 },
                 onReveal: { model.revealInFinder(wallpaper) }
             )
+        }
+    }
+
+    @ViewBuilder
+    private var libraryState: some View {
+        switch model.catalogueState {
+        case .loading:
+            loadingLibrary
+        case .ready:
+            readyLibrary
+        case .unavailable(let message):
+            unavailableCatalogue(message)
+        }
+    }
+
+    @ViewBuilder
+    private var readyLibrary: some View {
+        if model.wallpapers.isEmpty {
+            emptyLibrary
+        } else {
+            Group {
+                if filteredWallpapers.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    wallpaperGrid
+                }
+            }
+            .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
+        }
+    }
+
+    private var loadingLibrary: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+            Text("Checking the Aerial catalogue…")
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func unavailableCatalogue(_ message: String) -> some View {
+        ContentUnavailableView {
+            Label("Set Up Apple Aerials", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+        } actions: {
+            Button("Open Wallpaper Settings", systemImage: "gearshape") {
+                model.openWallpaperSettings()
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button("Check Again", systemImage: "arrow.clockwise") {
+                Task { await model.reload() }
+            }
         }
     }
 
