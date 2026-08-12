@@ -34,11 +34,12 @@ struct ContentView: View {
         .tint(AerialTheme.accent)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Import Wallpaper", systemImage: "plus") {
+                Button(videoPickerTitle, systemImage: videoPickerIcon) {
                     beginImport()
                 }
                 .buttonStyle(.borderedProminent)
-                .help("Choose an MP4 or MOV to import")
+                .disabled(model.isWorking || model.catalogueState != .ready)
+                .help(videoPickerHelp)
             }
 
             ToolbarItemGroup(placement: .secondaryAction) {
@@ -133,13 +134,30 @@ struct ContentView: View {
             LibraryPane(onImport: beginImport)
                 .navigationTitle("Library")
         case .importVideo:
-            ImportPane()
+            ImportPane(onViewLibrary: { destination = .library })
                 .navigationTitle("Import Wallpaper")
         }
     }
 
     private func beginImport() {
         model.showingFileImporter = true
+    }
+
+    private var videoPickerTitle: String {
+        model.selectedVideo == nil ? "Choose Video…" : "Replace Video…"
+    }
+
+    private var videoPickerIcon: String {
+        model.selectedVideo == nil ? "plus" : "arrow.triangle.2.circlepath"
+    }
+
+    private var videoPickerHelp: String {
+        guard model.catalogueState == .ready else {
+            return "Set up Apple Aerials in Wallpaper Settings before choosing a video"
+        }
+        return model.selectedVideo == nil
+            ? "Choose an MP4 or MOV video"
+            : "Replace the selected source video"
     }
 
     private var maintenanceMenu: some View {
