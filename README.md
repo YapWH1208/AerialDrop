@@ -48,9 +48,11 @@ open -n dist/AerialDrop.app
 
 ## Usage
 
-1. **Import** — choose or drop an MP4/MOV in the Import pane, give the wallpaper a name, and click **Import into Aerials**. The source file is never modified; it is re-encoded into an 80-second, 30 fps HEVC Main10 stream with temporal sub-layers and registered in the Aerial catalogue.
-2. **Apply** — AerialDrop applies the imported item everywhere by default. Turn off **Set as wallpaper after importing** in the app's Settings to keep the current wallpaper, then use **Set as Wallpaper** from Library or System Settings later.
-3. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
+1. **Set up Apple Aerials** — before the first import, open System Settings → Wallpaper and download at least one Apple Aerial wallpaper. If the native catalogue is not ready, AerialDrop shows **Open Wallpaper Settings** and **Check Again** instead of an empty Library.
+2. **Choose and configure** — use **Choose Video…** or drop an MP4/MOV in the Import pane, then review the name, crop, quality, and output resolution. The source file is never modified. **Set as wallpaper after importing** is enabled by default and applies the new wallpaper across all Spaces and displays; turn it off inline to keep the current wallpaper.
+3. **Import** — click **Import Wallpaper** or press Command-Return. A safe early import can be cancelled; once catalogue installation begins, AerialDrop finishes without offering cancellation. The video is re-encoded into an 80-second, 30 fps HEVC Main10 stream with temporal sub-layers and registered in the native catalogue.
+4. **Continue** — the completion summary states whether the wallpaper was activated everywhere or installed without changing the desktop. Choose **View in Library** or **Import Another**.
+5. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
 
 ### Maintenance menu
 

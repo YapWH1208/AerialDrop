@@ -16,6 +16,23 @@ struct ManagedWallpaper: Identifiable, Hashable {
     }
 }
 
+enum CatalogueState: Equatable {
+    case loading
+    case ready
+    case unavailable(String)
+}
+
+enum ImportActivationResult: Equatable {
+    case activatedEverywhere
+    case installedOnly
+    case activationFailed
+}
+
+struct ImportOutcome: Equatable {
+    let wallpaper: ManagedWallpaper
+    let activationResult: ImportActivationResult
+}
+
 enum ImportStage: Equatable {
     case idle
     case validating
@@ -62,6 +79,15 @@ enum ImportStage: Equatable {
         case .updatingManifest: return "rectangle.stack.badge.plus"
         case .refreshingSystem: return "arrow.triangle.2.circlepath"
         case .finished: return "checkmark.circle.fill"
+        }
+    }
+
+    var allowsCancellation: Bool {
+        switch self {
+        case .validating, .preparingFolders, .processingVideo, .generatingThumbnail:
+            return true
+        case .idle, .updatingManifest, .refreshingSystem, .finished:
+            return false
         }
     }
 }

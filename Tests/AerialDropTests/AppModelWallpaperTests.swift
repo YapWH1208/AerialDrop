@@ -6,6 +6,7 @@ import XCTest
 final class AppModelWallpaperTests: XCTestCase {
     func testImportRequiresAValidatedSelectedVideo() {
         let model = makeModel(service: FakeWallpaperService())
+        model.catalogueState = .ready
         model.selectedVideo = URL(fileURLWithPath: "/tmp/source.mov")
         model.title = "Source"
 
@@ -14,6 +15,76 @@ final class AppModelWallpaperTests: XCTestCase {
         model.isSelectedVideoValid = true
 
         XCTAssertTrue(model.canImport)
+
+        model.catalogueState = .unavailable("Set up Apple Aerials")
+
+        XCTAssertFalse(model.canImport)
+    }
+
+    func testReloadReportsMissingCatalogueInsteadOfReadyEmpty() async {
+        let model = makeModel(service: FakeWallpaperService())
+
+        await model.reload()
+
+        guard case .unavailable(let message) = model.catalogueState else {
+            return XCTFail("Expected an unavailable catalogue state")
+        }
+        XCTAssertTrue(message.contains("Aerial manifest was not found"))
+        XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    func testReloadReportsValidEmptyCatalogueAsReady() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+
+        await model.reload()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    func testReloadReportsMalformedCatalogueAsUnavailable() async throws {
+        let home = makeTemporaryHome()
+        let paths = WallpaperPaths(homeDirectory: home)
+        try FileManager.default.createDirectory(
+            at: paths.manifestDirectory,
+            withIntermediateDirectories: true
+        )
+        try Data("not-json".utf8).write(to: paths.manifest)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+
+        await model.reload()
+
+        guard case .unavailable(let message) = model.catalogueState else {
+            return XCTFail("Expected an unavailable catalogue state")
+        }
+        XCTAssertTrue(message.contains("expected format"))
+        XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    func testImportCancellationAvailabilityStopsAtCatalogueCommitBoundary() {
+        let model = makeModel(service: FakeWallpaperService())
+        model.isWorking = true
+
+        for stage in [
+            ImportStage.validating,
+            .preparingFolders,
+            .processingVideo,
+            .generatingThumbnail
+        ] {
+            model.stage = stage
+            XCTAssertTrue(model.isImportCancellable, "Expected \(stage) to be cancellable")
+        }
+
+        for stage in [
+            ImportStage.updatingManifest,
+            .refreshingSystem,
+            .finished
+        ] {
+            model.stage = stage
+            XCTAssertFalse(model.isImportCancellable, "Expected \(stage) to be non-cancellable")
+        }
     }
 
     func testManualActivationRefreshesTheActiveAerialID() async {
@@ -64,8 +135,13 @@ final class AppModelWallpaperTests: XCTestCase {
         let model = makeModel(service: service, automaticActivationEnabled: { true })
         let wallpaper = makeWallpaper(id: "C0D3X-0004")
 
-        await model.applyPostImportWallpaperSetting(to: wallpaper)
+        let result = await model.applyPostImportWallpaperSetting(to: wallpaper)
 
+        XCTAssertEqual(result, .activatedEverywhere)
+        XCTAssertEqual(
+            model.importOutcome,
+            ImportOutcome(wallpaper: wallpaper, activationResult: .activatedEverywhere)
+        )
         XCTAssertEqual(service.activatedAssetIDs, [wallpaper.id])
         XCTAssertEqual(service.refreshCallCount, 0)
         XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
@@ -75,8 +151,14 @@ final class AppModelWallpaperTests: XCTestCase {
         let service = FakeWallpaperService(activeIDs: ["CURRENT-AERIAL"])
         let model = makeModel(service: service, automaticActivationEnabled: { false })
 
-        await model.applyPostImportWallpaperSetting(to: makeWallpaper(id: "C0D3X-0005"))
+        let wallpaper = makeWallpaper(id: "C0D3X-0005")
+        let result = await model.applyPostImportWallpaperSetting(to: wallpaper)
 
+        XCTAssertEqual(result, .installedOnly)
+        XCTAssertEqual(
+            model.importOutcome,
+            ImportOutcome(wallpaper: wallpaper, activationResult: .installedOnly)
+        )
         XCTAssertTrue(service.activatedAssetIDs.isEmpty)
         XCTAssertEqual(service.refreshCallCount, 1)
         XCTAssertEqual(model.activeAerialAssetIDs, Set(["CURRENT-AERIAL"]))
@@ -88,8 +170,13 @@ final class AppModelWallpaperTests: XCTestCase {
         let model = makeModel(service: service, automaticActivationEnabled: { true })
         let wallpaper = makeWallpaper(id: "C0D3X-0009")
 
-        await model.applyPostImportWallpaperSetting(to: wallpaper)
+        let result = await model.applyPostImportWallpaperSetting(to: wallpaper)
 
+        XCTAssertEqual(result, .activationFailed)
+        XCTAssertEqual(
+            model.importOutcome,
+            ImportOutcome(wallpaper: wallpaper, activationResult: .activationFailed)
+        )
         XCTAssertEqual(service.activatedAssetIDs, [wallpaper.id])
         XCTAssertEqual(model.activeAerialAssetIDs, Set(["CURRENT-AERIAL"]))
         XCTAssertEqual(model.activationFailure, wallpaper)
@@ -177,13 +264,7 @@ final class AppModelWallpaperTests: XCTestCase {
         let paths = WallpaperPaths(homeDirectory: home)
         let store = ManifestStore(paths: paths)
         try store.prepareDirectories()
-        let manifest: [String: Any] = [
-            "version": 1,
-            "initialAssetCount": 0,
-            "assets": [],
-            "categories": []
-        ]
-        try JSONSerialization.data(withJSONObject: manifest).write(to: paths.manifest, options: .atomic)
+        try installEmptyManifest(in: home)
         try Data("video".utf8).write(to: paths.videoURL(for: wallpaper.id))
         try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: wallpaper.id))
         try store.addWallpaper(
@@ -192,6 +273,21 @@ final class AppModelWallpaperTests: XCTestCase {
             width: Int(wallpaper.resolution?.width ?? 0),
             height: Int(wallpaper.resolution?.height ?? 0)
         )
+    }
+
+    private func installEmptyManifest(in home: URL) throws {
+        let paths = WallpaperPaths(homeDirectory: home)
+        try FileManager.default.createDirectory(
+            at: paths.manifestDirectory,
+            withIntermediateDirectories: true
+        )
+        let manifest: [String: Any] = [
+            "version": 1,
+            "initialAssetCount": 0,
+            "assets": [],
+            "categories": []
+        ]
+        try JSONSerialization.data(withJSONObject: manifest).write(to: paths.manifest, options: .atomic)
     }
 
     private func makeWallpaper(id: String) -> ManagedWallpaper {
