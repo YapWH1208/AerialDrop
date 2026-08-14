@@ -76,14 +76,26 @@ struct WallpaperPreviewView: View {
         HStack(spacing: 10) {
             Button("Reveal in Finder", systemImage: "folder", action: onReveal)
             Button("Rename…", systemImage: "pencil", action: onRename)
+                .disabled(!actionAvailability.canRename)
+                .help(actionAvailability.renameHelp)
             Button("Remove…", systemImage: "trash", role: .destructive, action: onRemove)
-                .disabled(isWorking)
+                .disabled(!actionAvailability.canRemove)
+                .help(actionAvailability.removeHelp)
 
             Spacer()
 
             Button("Set as Wallpaper", systemImage: "desktopcomputer", action: onSetWallpaper)
                 .buttonStyle(.borderedProminent)
-                .disabled(isActive || isWorking)
+                .disabled(!actionAvailability.canSetAsWallpaper)
+                .help(actionAvailability.setWallpaperHelp)
         }
+    }
+
+    private var actionAvailability: WallpaperActionAvailability {
+        WallpaperActionAvailability(
+            wallpaper: wallpaper,
+            isActive: isActive,
+            isWorking: isWorking
+        )
     }
 }

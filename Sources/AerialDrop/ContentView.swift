@@ -241,10 +241,22 @@ struct ContentView: View {
             Button("Remove All AerialDrop Wallpapers", role: .destructive) {
                 removeAllConfirmation = true
             }
-            .disabled(model.wallpapers.isEmpty || model.isWorking)
+            .disabled(
+                model.wallpapers.isEmpty
+                    || model.isWorking
+                    || model.hasActiveManagedWallpaper
+            )
+            .help(removeAllHelp)
         }
         .labelStyle(.iconOnly)
         .help("Catalogue maintenance")
+    }
+
+    private var removeAllHelp: String {
+        if model.hasActiveManagedWallpaper {
+            return "Choose a different wallpaper before removing all AerialDrop wallpapers"
+        }
+        return "Remove every AerialDrop wallpaper"
     }
 }
 
