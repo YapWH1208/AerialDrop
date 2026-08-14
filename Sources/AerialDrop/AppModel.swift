@@ -325,6 +325,7 @@ final class AppModel {
     }
 
     func reload() async {
+        sweepOrphanedTempSegments()
         catalogueState = .loading
         do {
             try manifestStore.requireManifest()
@@ -335,6 +336,17 @@ final class AppModel {
             catalogueState = .unavailable(error.localizedDescription)
         }
         try? refreshActiveSelection()
+    }
+
+    /// Removes leftover AerialDrop encode temp files (e.g. after the app was
+    /// quit mid-import). Only touches files matching AerialDrop's own temp
+    /// naming, never other apps' catalogue files.
+    private func sweepOrphanedTempSegments() {
+        guard !isWorking else { return }
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: paths.videos.path) else { return }
+        for name in files where name.hasPrefix(".AerialDrop-") && name.hasSuffix(".mov") {
+            try? FileManager.default.removeItem(at: paths.videos.appending(path: name))
+        }
     }
 
     func setWallpaper(_ wallpaper: ManagedWallpaper) {
