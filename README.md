@@ -11,13 +11,14 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 - **Loop-safe passthrough repeats** — sources shorter than 80 seconds are repeated by passthrough export, with the loop duration snapped to whole 30 fps frames so every loop boundary lands on a sync sample.
 - **Automatic backups** — every write to the Aerial catalogue manifest is backed up first, so the last known-good catalogue state always survives at `aerials/AerialDropBackups`.
 - **Inline preview** — the Import pane shows the source with a live 16:9 crop mask, and crop, quality, and output resolution are tuned in place before importing.
+- **Controllable Library preview** — installed wallpapers loop in a native preview sheet with a visible Play/Pause control that respects Reduced Motion.
 - **In-app activation** — imported Aerials are applied across all Spaces and displays by default; Library also provides a manual Set as Wallpaper action and Active status.
 - **Maintenance tools** — validate the catalogue, open the storage folder, or remove all imported wallpapers.
 
 ## Requirements
 
 - macOS Tahoe 26 or later
-- Swift 5.10 or later (Xcode command line tools)
+- Swift 6.2 or later with the macOS 26 SDK (Xcode)
 - Source videos: MP4 or MOV, H.264 or HEVC
 
 ## Installation
@@ -49,9 +50,9 @@ open -n dist/AerialDrop.app
 ## Usage
 
 1. **Set up Apple Aerials** — before the first import, open System Settings → Wallpaper and download at least one Apple Aerial wallpaper. If the native catalogue is not ready, AerialDrop shows **Open Wallpaper Settings** and **Check Again** instead of an empty Library.
-2. **Choose and configure** — use **Choose Video…** or drop an MP4/MOV in the Import pane, then review the name, crop, quality, and output resolution. The source file is never modified. **Set as wallpaper after importing** is enabled by default and applies the new wallpaper across all Spaces and displays; turn it off inline to keep the current wallpaper.
-3. **Import** — click **Import Wallpaper** or press Command-Return. A safe early import can be cancelled; once catalogue installation begins, AerialDrop finishes without offering cancellation. The video is re-encoded into an 80-second, 30 fps HEVC Main10 stream with temporal sub-layers and registered in the native catalogue.
-4. **Continue** — the completion summary states whether the wallpaper was activated everywhere or installed without changing the desktop. Choose **View in Library** or **Import Another**.
+2. **Choose and configure** — use **Choose Video…** or drop an MP4/MOV in the Import pane, then review the name, crop, quality, and output resolution. The source file is never modified. **Set as wallpaper after importing** is enabled by default and applies the new wallpaper across all Spaces and displays; turn it off inline to keep the current wallpaper. If you visit Library while configuring, **Continue Import** returns to the draft without replacing it.
+3. **Import** — use the persistent **Import Wallpaper** toolbar action or press Command-Return. The toolbar keeps progress and safe cancellation visible even when the form is scrolled; press Escape or choose **Cancel Import** before catalogue installation begins. Once installation starts, AerialDrop finishes without offering cancellation. The video is re-encoded into an 80-second, 30 fps HEVC Main10 stream with temporal sub-layers and registered in the native catalogue.
+4. **Continue** — the focused completion summary replaces the configuration form and states whether the wallpaper was activated everywhere or installed without changing the desktop. Choose **View in Library** or **Import Another**.
 5. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
 
 ### Maintenance menu
