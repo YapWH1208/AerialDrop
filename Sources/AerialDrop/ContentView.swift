@@ -33,14 +33,7 @@ struct ContentView: View {
         }
         .tint(AerialTheme.accent)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(videoPickerTitle, systemImage: videoPickerIcon) {
-                    beginImport()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.isWorking || model.catalogueState != .ready)
-                .help(videoPickerHelp)
-            }
+            primaryToolbarContent
 
             ToolbarItemGroup(placement: .secondaryAction) {
                 Button("Reload Catalogue", systemImage: "arrow.clockwise") {
@@ -85,7 +78,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active, !model.isWorking else { return }
             Task { await model.reload() }
         }
         .onChange(of: model.showingFileImporter) { _, showing in
@@ -125,6 +118,8 @@ struct ContentView: View {
                 }
             }
         }
+        .fileDialogMessage("Choose an MP4 or MOV video to turn into a native Aerial wallpaper.")
+        .fileDialogConfirmationLabel("Choose Video")
     }
 
     @ViewBuilder
@@ -143,21 +138,99 @@ struct ContentView: View {
         model.showingFileImporter = true
     }
 
-    private var videoPickerTitle: String {
-        model.selectedVideo == nil ? "Choose Video…" : "Replace Video…"
-    }
+    @ToolbarContentBuilder
+    private var primaryToolbarContent: some ToolbarContent {
+        if isImportInProgress {
+            ToolbarItemGroup(placement: .primaryAction) {
+                ProgressView(value: model.displayProgress)
+                    .frame(width: 84)
+                    .accessibilityLabel(model.stage.label)
+                    .accessibilityValue(importProgressValue)
+                    .help("\(model.stage.label) \(importProgressValue)")
 
-    private var videoPickerIcon: String {
-        model.selectedVideo == nil ? "plus" : "arrow.triangle.2.circlepath"
-    }
+                if model.isImportCancellable {
+                    Button("Cancel Import", systemImage: "xmark") {
+                        model.cancelImport()
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .help("Cancel before catalogue installation begins")
+                }
+            }
+        } else if model.catalogueState == .ready {
+            if destination == .importVideo, model.selectedVideo != nil {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button("Replace Video…", systemImage: "arrow.triangle.2.circlepath") {
+                        beginImport()
+                    }
+                    .disabled(model.isWorking)
+                    .help("Replace the selected source video")
 
-    private var videoPickerHelp: String {
-        guard model.catalogueState == .ready else {
-            return "Set up Apple Aerials in Wallpaper Settings before choosing a video"
+                    Button("Import Wallpaper", systemImage: "square.and.arrow.down") {
+                        model.importSelectedVideo()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!model.canImport)
+                    .help(importActionHelp)
+                }
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(primaryActionTitle, systemImage: primaryActionIcon) {
+                        performPrimaryAction()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.isWorking)
+                    .help(primaryActionHelp)
+                }
+            }
         }
-        return model.selectedVideo == nil
-            ? "Choose an MP4 or MOV video"
-            : "Replace the selected source video"
+    }
+
+    private var isImportInProgress: Bool {
+        model.isWorking && model.stage != .idle && model.stage != .finished
+    }
+
+    private var importProgressValue: String {
+        "\(Int(model.displayProgress * 100)) percent"
+    }
+
+    private var primaryActionTitle: String {
+        if destination == .library, model.selectedVideo != nil {
+            return "Continue Import"
+        }
+        if model.importOutcome != nil {
+            return "Import Another…"
+        }
+        return destination == .library ? "Import Wallpaper…" : "Choose Video…"
+    }
+
+    private var primaryActionIcon: String {
+        destination == .library && model.selectedVideo != nil ? "arrow.right" : "plus"
+    }
+
+    private var primaryActionHelp: String {
+        if destination == .library, model.selectedVideo != nil {
+            return "Continue configuring the selected source video"
+        }
+        return "Choose an MP4 or MOV video"
+    }
+
+    private var importActionHelp: String {
+        if !model.isSelectedVideoValid {
+            return "Wait for video validation to finish"
+        }
+        if model.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Enter a wallpaper name before importing"
+        }
+        return "Import the selected video (⌘↩)"
+    }
+
+    private func performPrimaryAction() {
+        if destination == .library, model.selectedVideo != nil {
+            destination = .importVideo
+        } else {
+            beginImport()
+        }
     }
 
     private var maintenanceMenu: some View {
@@ -168,10 +241,22 @@ struct ContentView: View {
             Button("Remove All AerialDrop Wallpapers", role: .destructive) {
                 removeAllConfirmation = true
             }
-            .disabled(model.wallpapers.isEmpty || model.isWorking)
+            .disabled(
+                model.wallpapers.isEmpty
+                    || model.isWorking
+                    || model.hasActiveManagedWallpaper
+            )
+            .help(removeAllHelp)
         }
         .labelStyle(.iconOnly)
         .help("Catalogue maintenance")
+    }
+
+    private var removeAllHelp: String {
+        if model.hasActiveManagedWallpaper {
+            return "Choose a different wallpaper before removing all AerialDrop wallpapers"
+        }
+        return "Remove every AerialDrop wallpaper"
     }
 }
 
