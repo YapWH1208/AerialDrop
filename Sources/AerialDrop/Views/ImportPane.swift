@@ -293,7 +293,7 @@ private struct ImportSettingsView: View {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
                 GridRow {
                     settingLabel("Name")
-                    TextField("Wallpaper name", text: $title)
+                    TextField("Enter a wallpaper name", text: $title)
                         .focused($nameIsFocused)
                         .onSubmit { nameIsFocused = false }
                 }
