@@ -100,6 +100,30 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertNil(model.alertMessage)
     }
 
+    func testActivationExposesOperationLabelWhileWorking() async throws {
+        let service = FakeWallpaperService()
+        let (enteredStream, enteredContinuation) = AsyncStream<Void>.makeStream()
+        let (releaseStream, releaseContinuation) = AsyncStream<Void>.makeStream()
+        service.enteredContinuation = enteredContinuation
+        service.releaseStream = releaseStream
+        let model = makeModel(service: service)
+        let wallpaper = makeWallpaper(id: "C0D3X-0012")
+
+        let task = Task { await model.activateWallpaper(wallpaper) }
+
+        var iterator = enteredStream.makeAsyncIterator()
+        await iterator.next()
+        XCTAssertEqual(model.operationLabel, "Applying “Test Aerial”…")
+        XCTAssertTrue(model.isWorking)
+
+        releaseContinuation.finish()
+        await task.value
+
+        XCTAssertNil(model.operationLabel)
+        XCTAssertFalse(model.isWorking)
+        XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
+    }
+
     func testActivationFailureKeepsExistingActiveStateAndOffersRecovery() async {
         let service = FakeWallpaperService(activeIDs: ["CURRENT-AERIAL"])
         service.activationError = TestError.activationFailed
@@ -322,6 +346,11 @@ private final class FakeWallpaperService: WallpaperServicing {
 
     var selectionReadError: Error?
 
+    /// Optional test hooks: resumes a continuation as soon as activation starts,
+    /// then blocks until the release stream finishes (see the operation-label test).
+    var enteredContinuation: AsyncStream<Void>.Continuation?
+    var releaseStream: AsyncStream<Void>?
+
     init(activeIDs: Set<String> = []) {
         self.activeIDs = activeIDs
     }
@@ -335,6 +364,10 @@ private final class FakeWallpaperService: WallpaperServicing {
 
     func activateAerial(assetID: String) async throws {
         activatedAssetIDs.append(assetID)
+        enteredContinuation?.yield()
+        if let releaseStream {
+            for await _ in releaseStream { break }
+        }
         if let activationError {
             throw activationError
         }

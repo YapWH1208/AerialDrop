@@ -26,6 +26,11 @@ struct LibraryPane: View {
     var body: some View {
         libraryState
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: model.operationLabel) { _, label in
+            if let label {
+                AccessibilityNotification.Announcement(label).post()
+            }
+        }
         .confirmationDialog(
             removeDialogTitle,
             isPresented: $showingRemoveConfirmation,
@@ -51,6 +56,7 @@ struct LibraryPane: View {
                 wallpaper: wallpaper,
                 isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
                 isWorking: model.isWorking,
+                operationLabel: model.operationLabel,
                 onSetWallpaper: { model.setWallpaper(wallpaper) },
                 onRename: {
                     previewWallpaper = nil
@@ -87,18 +93,39 @@ struct LibraryPane: View {
 
     @ViewBuilder
     private var readyLibrary: some View {
-        if model.wallpapers.isEmpty {
-            emptyLibrary
-        } else {
-            Group {
-                if filteredWallpapers.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                } else {
-                    wallpaperGrid
-                }
+        VStack(spacing: 12) {
+            if let label = model.operationLabel {
+                operationBanner(label)
             }
-            .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
+
+            if model.wallpapers.isEmpty {
+                emptyLibrary
+            } else {
+                Group {
+                    if filteredWallpapers.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                    } else {
+                        wallpaperGrid
+                    }
+                }
+                .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
+            }
         }
+    }
+
+    private func operationBanner(_ label: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(label)
+                .font(.callout)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .combine)
     }
 
     private var wallpaperGrid: some View {

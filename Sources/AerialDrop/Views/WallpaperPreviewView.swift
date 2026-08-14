@@ -4,6 +4,7 @@ struct WallpaperPreviewView: View {
     let wallpaper: ManagedWallpaper
     let isActive: Bool
     let isWorking: Bool
+    let operationLabel: String?
     let onSetWallpaper: () -> Void
     let onRename: () -> Void
     let onRemove: () -> Void
@@ -107,6 +108,17 @@ struct WallpaperPreviewView: View {
 
     private var actionRow: some View {
         HStack(spacing: 10) {
+            if let operationLabel {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(operationLabel)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+
             Button("Reveal in Finder", systemImage: "folder", action: onReveal)
             Button("Rename…", systemImage: "pencil", action: onRename)
                 .disabled(!actionAvailability.canRename)

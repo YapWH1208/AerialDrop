@@ -25,6 +25,10 @@ final class AppModel {
     var activeAerialAssetIDs: Set<String> = []
     var activationFailure: ManagedWallpaper?
     var activationFailureMessage: String?
+    /// Human-readable label of the Library operation currently in progress
+    /// (activation, removal, remove-all, restore), shown as busy feedback.
+    /// Nil while idle or during an import, which has its own progress UI.
+    private(set) var operationLabel: String?
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
@@ -252,7 +256,11 @@ final class AppModel {
 
     func removeWallpaper(_ wallpaper: ManagedWallpaper) async {
         isWorking = true
-        defer { isWorking = false }
+        operationLabel = "Removing “\(wallpaper.title)”…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
         do {
             refreshActiveSelectionForRemoval()
             guard !activeAerialAssetIDs.contains(wallpaper.id) else {
@@ -274,7 +282,11 @@ final class AppModel {
 
     func removeAllWallpapers() async {
         isWorking = true
-        defer { isWorking = false }
+        operationLabel = "Removing all AerialDrop wallpapers…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
         do {
             refreshActiveSelectionForRemoval()
             let managedIDs = Set(try manifestStore.importedWallpapers().map(\.id))
@@ -312,7 +324,11 @@ final class AppModel {
     /// model tests while UI callers retain the non-blocking action method.
     func activateWallpaper(_ wallpaper: ManagedWallpaper) async {
         isWorking = true
-        defer { isWorking = false }
+        operationLabel = "Applying “\(wallpaper.title)”…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
         do {
             try await systemService.activateAerial(assetID: wallpaper.id)
             dismissActivationFailure()
