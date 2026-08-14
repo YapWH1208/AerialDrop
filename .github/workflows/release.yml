@@ -50,3 +50,15 @@ jobs:
           files: dist/AerialDrop-*.zip
           body_path: release-notes.md
           generate_release_notes: false
+
+      - name: Notify Homebrew tap
+        # Requires the TAP_UPDATE_TOKEN secret (fine-grained PAT with Contents: read & write on YapWH1208/homebrew-tap).
+        # Without it, the tap's daily scheduled check picks up the release instead.
+        if: env.TAP_TOKEN != ''
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_UPDATE_TOKEN }}
+        run: |
+          gh api --method POST repos/YapWH1208/homebrew-tap/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $TAP_TOKEN" \
+            -f event_type=release-published
