@@ -33,6 +33,15 @@ The cask tracks new releases automatically, so `brew update && brew upgrade --ca
 
 > **⚠️ Disclaimer — unsigned app:** AerialDrop is **ad-hoc signed and not notarized by Apple**. To make the app open, this cask automatically removes the macOS download quarantine (`com.apple.quarantine`) after install, which disables Apple's malware check for this app — you are trusting the publisher instead of Apple. Only install from the official [YapWH1208/AerialDrop](https://github.com/YapWH1208/AerialDrop) repository, and audit the open-source code if you have concerns. The only way to get Apple's own verification is Developer ID notarization (paid Apple Developer account, $99/year).
 
+### Install script (alternative)
+
+```sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh
+bash install.sh
+```
+
+Downloads the latest release, verifies its sha256 checksum against the release metadata, installs `AerialDrop.app` into /Applications, and clears the download quarantine (same unsigned-app caveat as above). Useful options: `install.sh 1.1.3` (pin a version), `--open` (launch after install), `--force` (replace without asking), `--install-dir <path>`.
+
 ### Prebuilt release
 
 Download `AerialDrop-<version>-macOS.zip` from the [Releases](https://github.com/YapWH1208/AerialDrop/releases) page, unzip, and drag `AerialDrop.app` into your Applications folder. It is ad-hoc signed, so if Gatekeeper complains the first time, right-click → Open once, or clear the download quarantine with `xattr -dr com.apple.quarantine /Applications/AerialDrop.app`.
