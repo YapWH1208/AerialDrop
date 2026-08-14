@@ -1,6 +1,7 @@
 # AerialDrop
 
 [![CI](https://github.com/YapWH1208/AerialDrop/actions/workflows/ci.yml/badge.svg)](https://github.com/YapWH1208/AerialDrop/actions/workflows/ci.yml)
+[![Website](https://img.shields.io/badge/website-yapwh1208.github.io%2FAerialDrop-0a84ff)](https://yapwh1208.github.io/AerialDrop/)
 
 AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) catalogue, so custom videos play as screen savers and lock screen wallpapers using Apple's own playback pipeline — no helper processes, no app-managed player.
 
@@ -93,6 +94,7 @@ Every manifest write is backed up automatically first: backups live under `aeria
 
 ## Documentation
 
+- [Website](https://yapwh1208.github.io/AerialDrop/) — interactive landing page (source: `docs/`, published to GitHub Pages)
 - [ARCHITECTURE.md](ARCHITECTURE.md) — processing pipeline
 - [TESTING.md](TESTING.md) — manual test procedure
 - [CHANGELOG.md](CHANGELOG.md) — release history
