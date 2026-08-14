@@ -34,6 +34,10 @@ struct WallpaperCard: View {
             .buttonStyle(.plain)
             .focusable()
             .focused($selectFocused)
+            .accessibilityLabel(wallpaper.title)
+            .accessibilityValue(cardAccessibilityValue)
+            .accessibilityHint("Select this wallpaper. Use the Preview button to play it.")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
             .simultaneousGesture(
                 TapGesture(count: 2).onEnded(onDoubleClick)
             )
@@ -78,7 +82,7 @@ struct WallpaperCard: View {
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.tint)
-                            .accessibilityLabel("Selected")
+                            .accessibilityHidden(true)
                     }
                 }
 
@@ -118,6 +122,7 @@ struct WallpaperCard: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(.separator, lineWidth: 0.5)
         }
+        .accessibilityHidden(true)
         .task(id: wallpaper.id) {
             guard image == nil else { return }
             image = await Task.detached(priority: .utility) {
@@ -174,13 +179,25 @@ struct WallpaperCard: View {
     private var cardMenu: some View {
         Button("Preview", systemImage: "play") { onPreview() }
         Button("Set as Wallpaper", systemImage: "desktopcomputer") { onSetWallpaper() }
-            .disabled(isActive || isWorking)
+            .disabled(!actionAvailability.canSetAsWallpaper)
+            .help(actionAvailability.setWallpaperHelp)
         Divider()
         Button("Rename…", systemImage: "pencil") { onRename() }
+            .disabled(!actionAvailability.canRename)
+            .help(actionAvailability.renameHelp)
         Button("Reveal in Finder", systemImage: "folder") { onReveal() }
         Divider()
         Button("Remove Wallpaper…", systemImage: "trash", role: .destructive) { onRemove() }
-            .disabled(isWorking)
+            .disabled(!actionAvailability.canRemove)
+            .help(actionAvailability.removeHelp)
+    }
+
+    private var actionAvailability: WallpaperActionAvailability {
+        WallpaperActionAvailability(
+            wallpaper: wallpaper,
+            isActive: isActive,
+            isWorking: isWorking
+        )
     }
 
     private var cardBackground: Color {
@@ -205,5 +222,15 @@ struct WallpaperCard: View {
             return colorSchemeContrast == .increased ? 2 : 1.25
         }
         return 0.5
+    }
+
+    private var cardAccessibilityValue: String {
+        if !wallpaper.videoExists {
+            return "Installed video is missing"
+        }
+        if isActive {
+            return "Active wallpaper"
+        }
+        return "Wallpaper installed"
     }
 }

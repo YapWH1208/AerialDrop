@@ -38,7 +38,10 @@ struct LibraryPane: View {
         }
         .alert("Rename Wallpaper", isPresented: $showingRenameAlert) {
             TextField("Wallpaper name", text: $renameText)
+                .disabled(model.isWorking)
             Button("Rename") { performRename() }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canRename)
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("This updates the name shown in System Settings and AerialDrop.")
@@ -66,11 +69,19 @@ struct LibraryPane: View {
     private var libraryState: some View {
         switch model.catalogueState {
         case .loading:
-            loadingLibrary
+            CatalogueAccessView(
+                state: model.catalogueState,
+                onOpenSettings: model.openWallpaperSettings,
+                onCheckAgain: { Task { await model.reload() } }
+            )
         case .ready:
             readyLibrary
-        case .unavailable(let message):
-            unavailableCatalogue(message)
+        case .unavailable:
+            CatalogueAccessView(
+                state: model.catalogueState,
+                onOpenSettings: model.openWallpaperSettings,
+                onCheckAgain: { Task { await model.reload() } }
+            )
         }
     }
 
@@ -87,32 +98,6 @@ struct LibraryPane: View {
                 }
             }
             .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
-        }
-    }
-
-    private var loadingLibrary: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-            Text("Checking the Aerial catalogue…")
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func unavailableCatalogue(_ message: String) -> some View {
-        ContentUnavailableView {
-            Label("Set Up Apple Aerials", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Open Wallpaper Settings", systemImage: "gearshape") {
-                model.openWallpaperSettings()
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button("Check Again", systemImage: "arrow.clockwise") {
-                Task { await model.reload() }
-            }
         }
     }
 
@@ -159,6 +144,12 @@ struct LibraryPane: View {
             return "Remove “\(name)”?"
         }
         return "Remove this wallpaper?"
+    }
+
+    private var canRename: Bool {
+        guard let renameTarget, !model.isWorking else { return false }
+        let cleanTitle = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !cleanTitle.isEmpty && cleanTitle != renameTarget.title
     }
 
     private func openPreview(_ wallpaper: ManagedWallpaper) {

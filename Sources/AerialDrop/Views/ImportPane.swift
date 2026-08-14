@@ -9,73 +9,21 @@ struct ImportPane: View {
 
     var body: some View {
         @Bindable var model = model
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Source Video")
-                        .font(.headline)
-
-                    ImportSourceView(
-                        url: model.selectedVideo,
-                        resolution: model.sourceResolution,
-                        cropOffset: model.cropOffset,
-                        isValid: model.isSelectedVideoValid,
-                        isDisabled: model.isWorking || model.catalogueState != .ready,
-                        onChoose: { model.showingFileImporter = true },
-                        onDrop: { model.chooseVideo($0) }
+        Group {
+            if model.importOutcome != nil {
+                importWorkflow(model: model)
+            } else {
+                switch model.catalogueState {
+                case .ready:
+                    importWorkflow(model: model)
+                case .loading, .unavailable:
+                    CatalogueAccessView(
+                        state: model.catalogueState,
+                        onOpenSettings: model.openWallpaperSettings,
+                        onCheckAgain: { Task { await model.reload() } }
                     )
-                }
-
-                if model.isSelectedVideoValid {
-                    ImportSettingsView(
-                        title: $model.title,
-                        quality: $model.conversionQuality,
-                        outputHeightCap: $model.outputHeightCap,
-                        cropOffset: $model.cropOffset,
-                        sourceResolution: model.sourceResolution
-                    )
-                    .disabled(model.isWorking || model.catalogueState != .ready)
-
-                    ImportActivationView(isEnabled: $setWallpaperAfterImport)
-                        .disabled(model.isWorking || model.catalogueState != .ready)
-                }
-
-                if let outcome = model.importOutcome {
-                    ImportSuccessView(
-                        outcome: outcome,
-                        onViewLibrary: onViewLibrary,
-                        onImportAnother: beginAnotherImport
-                    )
-                    .accessibilityFocused($accessibilityStatus, equals: .completion)
-                } else if model.isWorking {
-                    ImportProgressView(
-                        stage: model.stage,
-                        progress: model.displayProgress,
-                        canCancel: model.isImportCancellable,
-                        onCancel: { model.cancelImport() }
-                    )
-                }
-
-                ImportDetailsView()
-
-                if model.importOutcome == nil {
-                    HStack {
-                        Spacer()
-
-                        Button("Import Wallpaper", systemImage: "square.and.arrow.down") {
-                            model.importSelectedVideo()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .disabled(!model.canImport)
-                        .help("Import the selected video (⌘↩)")
-                    }
                 }
             }
-            .frame(maxWidth: 760)
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
-            .frame(maxWidth: .infinity)
         }
         .sensoryFeedback(trigger: model.stage) { old, new in
             guard new == .finished, old != .finished else { return nil }
@@ -90,6 +38,66 @@ struct ImportPane: View {
         .onChange(of: model.importOutcome) { _, outcome in
             guard outcome != nil else { return }
             accessibilityStatus = .completion
+        }
+    }
+
+    private func importWorkflow(model: AppModel) -> some View {
+        @Bindable var model = model
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                if let outcome = model.importOutcome {
+                    ImportSuccessView(
+                        outcome: outcome,
+                        onViewLibrary: onViewLibrary,
+                        onImportAnother: beginAnotherImport
+                    )
+                    .accessibilityFocused($accessibilityStatus, equals: .completion)
+                } else {
+                    if model.isWorking {
+                        ImportProgressView(
+                            stage: model.stage,
+                            progress: model.displayProgress,
+                            canCancel: model.isImportCancellable,
+                            onCancel: { model.cancelImport() }
+                        )
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Source Video")
+                            .font(.headline)
+
+                        ImportSourceView(
+                            url: model.selectedVideo,
+                            resolution: model.sourceResolution,
+                            cropOffset: model.cropOffset,
+                            isValid: model.isSelectedVideoValid,
+                            isDisabled: model.isWorking,
+                            onChoose: { model.showingFileImporter = true },
+                            onDrop: { model.chooseVideo($0) }
+                        )
+                    }
+
+                    if model.isSelectedVideoValid {
+                        ImportSettingsView(
+                            title: $model.title,
+                            quality: $model.conversionQuality,
+                            outputHeightCap: $model.outputHeightCap,
+                            cropOffset: $model.cropOffset,
+                            sourceResolution: model.sourceResolution
+                        )
+                        .disabled(model.isWorking)
+
+                        ImportActivationView(isEnabled: $setWallpaperAfterImport)
+                            .disabled(model.isWorking)
+                    }
+
+                    ImportDetailsView()
+                }
+            }
+            .frame(maxWidth: 760)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity)
         }
     }
 
