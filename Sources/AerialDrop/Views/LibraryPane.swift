@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LibraryPane: View {
     let onImport: () -> Void
+    let onDropVideo: (URL) -> Void
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -14,6 +15,7 @@ struct LibraryPane: View {
     @State private var renameText = ""
     @State private var showingRenameAlert = false
     @State private var highlightTarget: String?
+    @State private var dropTargeted = false
 
     private let wallpaperColumns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 20)
@@ -27,6 +29,27 @@ struct LibraryPane: View {
     var body: some View {
         libraryState
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .padding(12)
+                    .overlay {
+                        Label("Drop to import as wallpaper", systemImage: "plus.circle")
+                            .font(.headline)
+                            .padding(10)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard model.catalogueState == .ready, !model.isWorking, let first = urls.first else { return false }
+            onDropVideo(first)
+            return true
+        } isTargeted: { targeted in
+            guard model.catalogueState == .ready, !model.isWorking else { return }
+            dropTargeted = targeted
+        }
         .onChange(of: model.operationLabel) { _, label in
             if let label {
                 AccessibilityNotification.Announcement(label).post()

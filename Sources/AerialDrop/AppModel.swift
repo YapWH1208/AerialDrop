@@ -110,10 +110,9 @@ final class AppModel {
     func chooseVideo(_ url: URL) {
         selectionVersion += 1
         let version = selectionVersion
-        let previousTitle = selectedVideo.map { $0.deletingPathExtension().lastPathComponent }
-        if title.isEmpty || title == previousTitle {
-            title = url.deletingPathExtension().lastPathComponent
-        }
+        // Always follow the chosen file: a name left over from a previously
+        // selected source is confusing when the source is replaced.
+        title = url.deletingPathExtension().lastPathComponent
         selectedVideo = url
         importOutcome = nil
         cropOffset = 0.5

@@ -63,6 +63,17 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testChoosingANewSourceReplacesTheNameWithTheNewFileStem() {
+        let model = makeModel(service: FakeWallpaperService())
+        model.title = "Custom Name"
+        let url = URL(fileURLWithPath: "/tmp/beach.mp4")
+
+        model.chooseVideo(url)
+
+        XCTAssertEqual(model.title, "beach")
+        XCTAssertEqual(model.selectedVideo, url)
+    }
+
     func testDisplayProgressIsMonotonicAcrossEveryStageTransition() {
         let model = makeModel(service: FakeWallpaperService())
 

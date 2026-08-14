@@ -41,7 +41,7 @@ struct ContentView: View {
                 }
                 .disabled(model.isWorking)
 
-                Button("Wallpaper Settings", systemImage: "gearshape") {
+                Button("Wallpaper Settings", systemImage: "photo") {
                     model.openWallpaperSettings()
                 }
 
@@ -129,8 +129,14 @@ struct ContentView: View {
     private var destinationView: some View {
         switch destination ?? .library {
         case .library:
-            LibraryPane(onImport: beginImport)
-                .navigationTitle("Library")
+            LibraryPane(
+                onImport: beginImport,
+                onDropVideo: { url in
+                    model.chooseVideo(url)
+                    destination = .importVideo
+                }
+            )
+            .navigationTitle("Library")
         case .importVideo:
             ImportPane(onViewLibrary: { destination = .library })
                 .navigationTitle("Import Wallpaper")
