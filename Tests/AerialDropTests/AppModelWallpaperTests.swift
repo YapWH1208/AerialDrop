@@ -180,6 +180,28 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.pendingLibraryHighlightID, wallpaper.id)
     }
 
+    func testRestoreLatestBackupBringsBackARemovedWallpaper() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0016")
+        let service = FakeWallpaperService()
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+        XCTAssertEqual(model.wallpapers.count, 1)
+
+        await model.removeWallpaper(wallpaper)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.wallpapers.count, 1)
+        XCTAssertEqual(model.wallpapers.first?.id, wallpaper.id)
+        // The video file was deleted by the removal, so the entry is degraded.
+        XCTAssertEqual(model.wallpapers.first?.videoExists, false)
+        XCTAssertTrue(model.alertMessage?.contains("Restored") == true)
+        XCTAssertFalse(model.isWorking)
+    }
+
     func testRemovingTheHighlightedWallpaperClearsThePendingHighlight() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0015")
         let service = FakeWallpaperService()

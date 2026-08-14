@@ -122,6 +122,7 @@ enum AerialDropError: LocalizedError {
     case foreignWallpaperSelectionDataChanged(String)
     case wallpaperSelectionVerificationFailed(String)
     case activeWallpaperCannotBeRemoved
+    case backupRestoreRejected(String)
 
     var errorDescription: String? {
         switch self {
@@ -183,6 +184,8 @@ enum AerialDropError: LocalizedError {
             return "AerialDrop wrote the wallpaper selection, but macOS did not confirm the expected Aerial (\(expectedID)). Your backup was kept and no automatic restore was attempted."
         case .activeWallpaperCannotBeRemoved:
             return "Choose another wallpaper before removing the AerialDrop wallpaper that is currently active."
+        case .backupRestoreRejected(let reason):
+            return "The backup could not be restored. \(reason) Nothing was changed."
         }
     }
 }

@@ -447,6 +447,34 @@ final class AppModel {
         systemService.openWallpaperSettings()
     }
 
+    /// The newest AerialDrop catalogue backup, for the restore confirmation.
+    func latestBackupInfo() -> ManifestStore.BackupInfo? {
+        try? manifestStore.latestBackup()
+    }
+
+    /// Replaces the current catalogue with the newest AerialDrop backup. The
+    /// restore is refused (with nothing changed) if foreign catalogue data
+    /// changed since the backup.
+    func restoreLatestBackup() async {
+        isWorking = true
+        operationLabel = "Restoring catalogue backup…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
+        do {
+            guard let info = manifestStore.latestBackup() else {
+                alertMessage = "No AerialDrop backups were found."
+                return
+            }
+            try manifestStore.restoreBackup(info)
+            await reload()
+            alertMessage = "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
     func openStorageFolder() {
         systemService.openFolder(paths.base)
     }

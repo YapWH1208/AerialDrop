@@ -46,7 +46,7 @@ struct LibraryPane: View {
             Button("Remove", role: .destructive) { confirmRemoval() }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This removes the wallpaper and its copied video and thumbnail files. A manifest backup is created first.")
+            Text("This removes the wallpaper and its copied video and thumbnail files. Your original source video is untouched — import it again to restore it. A catalogue backup is created first.")
         }
         .alert("Rename Wallpaper", isPresented: $showingRenameAlert) {
             TextField("Wallpaper name", text: $renameText)

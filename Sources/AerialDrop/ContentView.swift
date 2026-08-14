@@ -6,7 +6,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var destination: AppDestination? = .library
     @State private var preImportDestination: AppDestination?
-    @State private var removeAllConfirmation = false
+    @State private var confirmation: ConfirmationKind?
     @State private var alertPresented = false
     @State private var alertMessage: String?
 
@@ -89,14 +89,17 @@ struct ContentView: View {
             destination = .importVideo
         }
         .confirmationDialog(
-            "Remove every AerialDrop wallpaper?",
-            isPresented: $removeAllConfirmation,
+            confirmationTitle,
+            isPresented: Binding(
+                get: { confirmation != nil },
+                set: { if !$0 { confirmation = nil } }
+            ),
             titleVisibility: .visible
         ) {
-            Button("Remove All", role: .destructive) { model.removeAll() }
-            Button("Cancel", role: .cancel) { }
+            Button(confirmationConfirmTitle, role: confirmationRole) { performConfirmation() }
+            Button("Cancel", role: .cancel) { confirmation = nil }
         } message: {
-            Text("This removes AerialDrop entries and their copied video and thumbnail files. A manifest backup is created first.")
+            Text(confirmationMessage)
         }
         .fileImporter(
             isPresented: $model.showingFileImporter,
@@ -238,8 +241,18 @@ struct ContentView: View {
             Button("Open Aerial Storage Folder") { model.openStorageFolder() }
             Button("Validate Current Catalogue") { model.validateCatalogue() }
             Divider()
+            Button("Restore Latest Backup…") {
+                if let info = model.latestBackupInfo() {
+                    confirmation = .restore(info)
+                } else {
+                    model.alertMessage = "No AerialDrop backups were found."
+                }
+            }
+            .disabled(model.isWorking)
+            .help("Replace the current catalogue with the newest AerialDrop backup")
+            Divider()
             Button("Remove All AerialDrop Wallpapers", role: .destructive) {
-                removeAllConfirmation = true
+                confirmation = .removeAll
             }
             .disabled(
                 model.wallpapers.isEmpty
@@ -257,6 +270,69 @@ struct ContentView: View {
             return "Choose a different wallpaper before removing all AerialDrop wallpapers"
         }
         return "Remove every AerialDrop wallpaper"
+    }
+
+    private var confirmationTitle: String {
+        switch confirmation {
+        case .removeAll:
+            "Remove every AerialDrop wallpaper?"
+        case .restore(let info):
+            "Restore the backup from \(info.date.formatted(date: .abbreviated, time: .shortened))?"
+        case nil:
+            ""
+        }
+    }
+
+    private var confirmationConfirmTitle: String {
+        switch confirmation {
+        case .removeAll: "Remove All"
+        case .restore: "Restore Backup"
+        case nil: ""
+        }
+    }
+
+    private var confirmationRole: ButtonRole? {
+        switch confirmation {
+        case .removeAll: .destructive
+        case .restore: nil
+        case nil: nil
+        }
+    }
+
+    private var confirmationMessage: String {
+        switch confirmation {
+        case .removeAll:
+            "This removes every AerialDrop entry and its copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first."
+        case .restore(let info):
+            "This replaces the current Aerial catalogue with the backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation)). The current catalogue is backed up first. Restoring is refused if the catalogue changed since the backup. Wallpapers whose video files were deleted since the backup will appear as “Video missing” and can be removed."
+        case nil:
+            ""
+        }
+    }
+
+    private func performConfirmation() {
+        switch confirmation {
+        case .removeAll:
+            model.removeAll()
+        case .restore:
+            Task { await model.restoreLatestBackup() }
+        case nil:
+            break
+        }
+        confirmation = nil
+    }
+}
+
+/// The single confirmation dialog covers the maintenance flows that need one.
+private enum ConfirmationKind: Identifiable {
+    case removeAll
+    case restore(ManifestStore.BackupInfo)
+
+    var id: String {
+        switch self {
+        case .removeAll: "removeAll"
+        case .restore: "restore"
+        }
     }
 }
 
