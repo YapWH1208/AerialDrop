@@ -531,7 +531,7 @@ private struct ImportDetailsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Builds an 80-second, 30 fps HEVC Main10 stream", systemImage: "film")
                 Label("Creates a Tahoe-compatible HEIF preview", systemImage: "photo")
-                Label("Backs up entries.json and preserves foreign entries", systemImage: "doc.badge.gearshape")
+                Label("Creates a backup before every catalogue change", systemImage: "doc.badge.gearshape")
                 Label("Adds the result to the native Aerial catalogue", systemImage: "rectangle.stack")
             }
             .font(.callout)

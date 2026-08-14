@@ -442,7 +442,7 @@ final class AppModel {
     func validateCatalogue() {
         do {
             try manifestStore.validateCurrentManifest()
-            alertMessage = "The current Aerial catalogue passed AerialDrop’s structural and preservation checks."
+            alertMessage = "The current Aerial catalogue is valid and ready to use."
         } catch {
             alertMessage = error.localizedDescription
         }
