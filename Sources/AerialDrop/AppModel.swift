@@ -80,8 +80,6 @@ final class AppModel {
     }
 
     /// Maps the real encode fraction into the progress band occupied by the
-    /// video-processing stage; other stages use their fixed milestones.
-    /// Maps the real encode fraction into the progress band occupied by the
     /// video-processing stage; other stages use their fixed milestones. The
     /// encode band starts at the preparing-folders milestone (0.3) and ends
     /// below the thumbnail milestone (0.7), so the bar never moves backward
@@ -453,7 +451,7 @@ final class AppModel {
 
     /// The newest AerialDrop catalogue backup, for the restore confirmation.
     func latestBackupInfo() -> ManifestStore.BackupInfo? {
-        try? manifestStore.latestBackup()
+        manifestStore.latestBackup()
     }
 
     /// Replaces the current catalogue with the newest AerialDrop backup. The
