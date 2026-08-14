@@ -75,6 +75,7 @@ struct WallpaperPreviewView: View {
                     isPlaying ? "Pause Preview" : "Play Preview",
                     systemImage: isPlaying ? "pause.fill" : "play.fill"
                 ) {
+                    wasPlayingBeforeReduceMotion = false
                     isPlaying.toggle()
                 }
                 .buttonStyle(.glass)
