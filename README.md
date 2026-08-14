@@ -32,11 +32,11 @@ brew install --cask aerialdrop
 # brew install --cask yapwh1208/tap/aerialdrop
 ```
 
-The cask tracks new releases automatically, so `brew update && brew upgrade --cask aerialdrop` gets you the latest version. The app is ad-hoc signed, so the first launch may need right-click → Open if Gatekeeper complains (or install with `brew install --cask --no-quarantine aerialdrop`).
+The cask tracks new releases automatically, so `brew update && brew upgrade --cask aerialdrop` gets you the latest version. AerialDrop is ad-hoc signed (not notarized), so the cask clears the download quarantine automatically at install — the first launch works without extra steps.
 
 ### Prebuilt release
 
-Download `AerialDrop-<version>-macOS.zip` from the [Releases](https://github.com/YapWH1208/AerialDrop/releases) page, unzip, and drag `AerialDrop.app` into your Applications folder. It is ad-hoc signed, so right-click → Open the first time if Gatekeeper complains.
+Download `AerialDrop-<version>-macOS.zip` from the [Releases](https://github.com/YapWH1208/AerialDrop/releases) page, unzip, and drag `AerialDrop.app` into your Applications folder. It is ad-hoc signed, so if Gatekeeper complains the first time, right-click → Open once, or clear the download quarantine with `xattr -dr com.apple.quarantine /Applications/AerialDrop.app`.
 
 ### Build from source
 
