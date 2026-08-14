@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3
+
+- Reworked the toolbar around the import stage: while an import runs, the toolbar shows its progress and a **Cancel Import** action (offered only while cancellation is still safe), and the primary action becomes **Continue Import** when you've left a draft mid-configuration.
+- Kept the Import pane stable when the app is switched away mid-import: the chosen video, name, crop and quality settings stay put, and the draft survives until you finish or cancel.
+- Gated wallpaper actions on whether they can actually succeed: **Set as Wallpaper**, **Rename** and **Remove** are now disabled with an explanatory tooltip when invalid — for example when the installed video file is missing.
+- Added an accessible Play/Pause control to the wallpaper preview sheet, labeled wallpaper cards for assistive access, and made the preview loop respect Reduce Motion — a manual pause is preserved when Reduce Motion is toggled back off.
+
 ## 1.1.2
 
 - Added catalogue-readiness onboarding: when the native Apple Aerial catalogue isn't set up yet, the Library shows **Open Wallpaper Settings** and **Check Again** instead of an empty grid, and the Import toolbar action (⌘O) is disabled until the catalogue is ready.
