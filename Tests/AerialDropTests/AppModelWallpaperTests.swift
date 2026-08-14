@@ -171,6 +171,29 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
     }
 
+    func testCompletedImportSetsPendingLibraryHighlight() async {
+        let model = makeModel(service: FakeWallpaperService())
+        let wallpaper = makeWallpaper(id: "C0D3X-0014")
+
+        _ = await model.applyPostImportWallpaperSetting(to: wallpaper)
+
+        XCTAssertEqual(model.pendingLibraryHighlightID, wallpaper.id)
+    }
+
+    func testRemovingTheHighlightedWallpaperClearsThePendingHighlight() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0015")
+        let service = FakeWallpaperService()
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+        model.pendingLibraryHighlightID = wallpaper.id
+
+        await model.removeWallpaper(wallpaper)
+
+        XCTAssertNil(model.pendingLibraryHighlightID)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
     func testDisabledPostImportSettingRefreshesWithoutChangingWallpaper() async {
         let service = FakeWallpaperService(activeIDs: ["CURRENT-AERIAL"])
         let model = makeModel(service: service, automaticActivationEnabled: { false })

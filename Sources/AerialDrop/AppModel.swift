@@ -29,6 +29,9 @@ final class AppModel {
     /// (activation, removal, remove-all, restore), shown as busy feedback.
     /// Nil while idle or during an import, which has its own progress UI.
     private(set) var operationLabel: String?
+    /// ID of the most recently completed import; the Library selects and
+    /// scrolls to this wallpaper when it appears. Cleared once applied.
+    var pendingLibraryHighlightID: String?
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
@@ -282,6 +285,9 @@ final class AppModel {
             guard !activeAerialAssetIDs.contains(wallpaper.id) else {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
             }
+            if pendingLibraryHighlightID == wallpaper.id {
+                pendingLibraryHighlightID = nil
+            }
             try manifestStore.removeWallpaper(id: wallpaper.id)
             await systemService.refresh()
             await reload()
@@ -305,6 +311,7 @@ final class AppModel {
         }
         do {
             refreshActiveSelectionForRemoval()
+            pendingLibraryHighlightID = nil
             let managedIDs = Set(try manifestStore.importedWallpapers().map(\.id))
             guard activeAerialAssetIDs.isDisjoint(with: managedIDs) else {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
@@ -390,6 +397,7 @@ final class AppModel {
             wallpaper: wallpaper,
             activationResult: activationResult
         )
+        pendingLibraryHighlightID = wallpaper.id
         return activationResult
     }
 

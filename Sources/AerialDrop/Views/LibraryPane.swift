@@ -13,6 +13,7 @@ struct LibraryPane: View {
     @State private var renameTarget: ManagedWallpaper?
     @State private var renameText = ""
     @State private var showingRenameAlert = false
+    @State private var highlightTarget: String?
 
     private let wallpaperColumns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 20)
@@ -30,6 +31,12 @@ struct LibraryPane: View {
             if let label {
                 AccessibilityNotification.Announcement(label).post()
             }
+        }
+        .onAppear {
+            applyPendingHighlight()
+        }
+        .onChange(of: model.pendingLibraryHighlightID) { _, _ in
+            applyPendingHighlight()
         }
         .confirmationDialog(
             removeDialogTitle,
@@ -129,30 +136,53 @@ struct LibraryPane: View {
     }
 
     private var wallpaperGrid: some View {
-        ScrollView {
-            LazyVGrid(columns: wallpaperColumns, spacing: 20) {
-                ForEach(filteredWallpapers) { wallpaper in
-                    WallpaperCard(
-                        wallpaper: wallpaper,
-                        isSelected: selectedID == wallpaper.id,
-                        isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
-                        isWorking: model.isWorking,
-                        onSelect: {
-                            guard !model.isWorking else { return }
-                            selectedID = selectedID == wallpaper.id ? nil : wallpaper.id
-                        },
-                        onDoubleClick: { openPreview(wallpaper) },
-                        onPreview: { openPreview(wallpaper) },
-                        onSetWallpaper: { model.setWallpaper(wallpaper) },
-                        onRename: { beginRename(wallpaper) },
-                        onReveal: { model.revealInFinder(wallpaper) },
-                        onRemove: { requestRemoval(wallpaper) }
-                    )
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVGrid(columns: wallpaperColumns, spacing: 20) {
+                    ForEach(filteredWallpapers) { wallpaper in
+                        WallpaperCard(
+                            wallpaper: wallpaper,
+                            isSelected: selectedID == wallpaper.id,
+                            isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                            isWorking: model.isWorking,
+                            onSelect: {
+                                guard !model.isWorking else { return }
+                                selectedID = selectedID == wallpaper.id ? nil : wallpaper.id
+                            },
+                            onDoubleClick: { openPreview(wallpaper) },
+                            onPreview: { openPreview(wallpaper) },
+                            onSetWallpaper: { model.setWallpaper(wallpaper) },
+                            onRename: { beginRename(wallpaper) },
+                            onReveal: { model.revealInFinder(wallpaper) },
+                            onRemove: { requestRemoval(wallpaper) }
+                        )
+                        .id(wallpaper.id)
+                    }
                 }
+                .padding(24)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.wallpapers)
             }
-            .padding(24)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.wallpapers)
+            .onChange(of: highlightTarget) { _, target in
+                guard let target else { return }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(target, anchor: .center)
+                }
+                highlightTarget = nil
+            }
         }
+    }
+
+    /// Selects and scrolls to the wallpaper whose import just completed,
+    /// clearing the request so it is applied only once.
+    private func applyPendingHighlight() {
+        guard let id = model.pendingLibraryHighlightID,
+              model.wallpapers.contains(where: { $0.id == id }) else { return }
+        if !searchText.isEmpty {
+            searchText = ""
+        }
+        selectedID = id
+        highlightTarget = id
+        model.pendingLibraryHighlightID = nil
     }
 
     private var emptyLibrary: some View {
