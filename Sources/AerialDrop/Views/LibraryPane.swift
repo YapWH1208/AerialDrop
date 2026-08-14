@@ -44,6 +44,9 @@ struct LibraryPane: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard model.catalogueState == .ready, !model.isWorking, let first = urls.first else { return false }
+            // Mirror VideoProcessor.validate: only movie files enter the import flow.
+            let ext = first.pathExtension.lowercased()
+            guard ext == "mp4" || ext == "mov" else { return false }
             onDropVideo(first)
             return true
         } isTargeted: { targeted in
