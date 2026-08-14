@@ -12,6 +12,7 @@ struct WallpaperPreviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPlaying = false
+    @State private var wasPlayingBeforeReduceMotion = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -26,7 +27,10 @@ struct WallpaperPreviewView: View {
         }
         .onChange(of: reduceMotion) { _, shouldReduceMotion in
             if shouldReduceMotion {
+                wasPlayingBeforeReduceMotion = isPlaying
                 isPlaying = false
+            } else {
+                isPlaying = wasPlayingBeforeReduceMotion || isPlaying
             }
         }
     }

@@ -78,7 +78,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active, !model.isWorking else { return }
             Task { await model.reload() }
         }
         .onChange(of: model.showingFileImporter) { _, showing in
