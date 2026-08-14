@@ -71,11 +71,57 @@ struct VideoPreview: View {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 1280, height: 1280)
-        let target = min(max(duration ?? 0.5, 0.05), 0.5)
-        let time = CMTime(seconds: target, preferredTimescale: 600)
-        if let result = try? await generator.image(at: time) {
-            frame = NSImage(cgImage: result.image, size: .zero)
+
+        // Sample a few early timestamps and prefer the first frame that is not
+        // (nearly) black, so fade-in sources don't preview as a black box.
+        let durationSeconds = duration ?? 1
+        let candidates = [0.5, 2.0, 5.0].filter { $0 < durationSeconds }
+        let times = candidates.isEmpty
+            ? [min(max(durationSeconds, 0.05), 0.5)]
+            : candidates
+        var fallback: NSImage?
+        for seconds in times {
+            let time = CMTime(seconds: seconds, preferredTimescale: 600)
+            guard let result = try? await generator.image(at: time) else { continue }
+            let image = NSImage(cgImage: result.image, size: .zero)
+            if Self.isMeaningfullyVisible(result.image) {
+                frame = image
+                return
+            }
+            if fallback == nil {
+                fallback = image
+            }
         }
+        frame = fallback
+    }
+
+    /// True when a frame has enough non-dark pixels to represent the video
+    /// (a fade-in-from-black or first-frame-black source fails this).
+    static func isMeaningfullyVisible(_ image: CGImage) -> Bool {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let stepX = max(1, bitmap.pixelsWide / 10)
+        let stepY = max(1, bitmap.pixelsHigh / 10)
+        var bright = 0
+        var sampled = 0
+        var x = 0
+        while x < bitmap.pixelsWide {
+            var y = 0
+            while y < bitmap.pixelsHigh {
+                if let color = bitmap.colorAt(x: x, y: y) {
+                    let luminance =
+                        0.299 * color.redComponent
+                        + 0.587 * color.greenComponent
+                        + 0.114 * color.blueComponent
+                    if luminance > 0.12 {
+                        bright += 1
+                    }
+                }
+                sampled += 1
+                y += stepY
+            }
+            x += stepX
+        }
+        return sampled > 0 && Double(bright) / Double(sampled) > 0.1
     }
 
     private func timeString(_ seconds: Double) -> String {
