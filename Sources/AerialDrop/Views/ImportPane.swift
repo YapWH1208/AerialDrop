@@ -49,7 +49,8 @@ struct ImportPane: View {
                     ImportSuccessView(
                         outcome: outcome,
                         onViewLibrary: onViewLibrary,
-                        onImportAnother: beginAnotherImport
+                        onImportAnother: beginAnotherImport,
+                        onOpenWallpaperSettings: model.openWallpaperSettings
                     )
                     .accessibilityFocused($accessibilityStatus, equals: .completion)
                 } else {
@@ -368,7 +369,11 @@ private struct ImportSettingsView: View {
 
     private var cropPreset: Binding<Double> {
         Binding(
-            get: { nearestCropPreset(cropOffset) },
+            get: {
+                let nearest = nearestCropPreset(cropOffset)
+                if abs(cropOffset - nearest) <= 0.05 { return nearest }
+                return -1 // between presets: no segment highlighted
+            },
             set: { cropOffset = $0 }
         )
     }
@@ -459,6 +464,7 @@ private struct ImportSuccessView: View {
     let outcome: ImportOutcome
     let onViewLibrary: () -> Void
     let onImportAnother: () -> Void
+    let onOpenWallpaperSettings: () -> Void
 
     var body: some View {
         GroupBox {
@@ -483,6 +489,7 @@ private struct ImportSuccessView: View {
                 HStack {
                     Spacer()
 
+                    Button("Open Wallpaper Settings", systemImage: "photo", action: onOpenWallpaperSettings)
                     Button("Import Another", systemImage: "plus", action: onImportAnother)
                     Button("View in Library", systemImage: "photo.on.rectangle.angled", action: onViewLibrary)
                         .buttonStyle(.borderedProminent)
