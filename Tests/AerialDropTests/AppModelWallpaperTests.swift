@@ -63,6 +63,33 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testDisplayProgressIsMonotonicAcrossEveryStageTransition() {
+        let model = makeModel(service: FakeWallpaperService())
+
+        var previous = -1.0
+        for stage in [
+            ImportStage.validating,
+            .preparingFolders,
+            .processingVideo,
+            .generatingThumbnail,
+            .updatingManifest,
+            .refreshingSystem,
+            .finished
+        ] {
+            model.stage = stage
+            for fraction in [0.0, 0.01, 0.5, 0.95] {
+                model.importProgress = fraction
+                let current = model.displayProgress
+                XCTAssertGreaterThanOrEqual(
+                    current, previous,
+                    "Progress regressed at \(stage) with importProgress \(fraction): \(previous) -> \(current)"
+                )
+                previous = current
+            }
+        }
+        XCTAssertEqual(model.displayProgress, 1)
+    }
+
     func testImportCancellationAvailabilityStopsAtCatalogueCommitBoundary() {
         let model = makeModel(service: FakeWallpaperService())
         model.isWorking = true

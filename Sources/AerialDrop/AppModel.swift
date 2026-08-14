@@ -81,9 +81,14 @@ final class AppModel {
 
     /// Maps the real encode fraction into the progress band occupied by the
     /// video-processing stage; other stages use their fixed milestones.
+    /// Maps the real encode fraction into the progress band occupied by the
+    /// video-processing stage; other stages use their fixed milestones. The
+    /// encode band starts at the preparing-folders milestone (0.3) and ends
+    /// below the thumbnail milestone (0.7), so the bar never moves backward
+    /// across stage transitions.
     var displayProgress: Double {
-        if stage == .processingVideo && importProgress > 0 {
-            return 0.15 + importProgress * 0.6
+        if stage == .processingVideo {
+            return 0.3 + min(importProgress, 0.95) * 0.4
         }
         return stage.progress
     }
