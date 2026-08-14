@@ -63,6 +63,10 @@ final class AppModel {
             && !isWorking
     }
 
+    var hasActiveManagedWallpaper: Bool {
+        wallpapers.contains { activeAerialAssetIDs.contains($0.id) }
+    }
+
     var isImportCancellable: Bool {
         isWorking && stage.allowsCancellation
     }

@@ -38,7 +38,10 @@ struct LibraryPane: View {
         }
         .alert("Rename Wallpaper", isPresented: $showingRenameAlert) {
             TextField("Wallpaper name", text: $renameText)
+                .disabled(model.isWorking)
             Button("Rename") { performRename() }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canRename)
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("This updates the name shown in System Settings and AerialDrop.")
@@ -141,6 +144,12 @@ struct LibraryPane: View {
             return "Remove “\(name)”?"
         }
         return "Remove this wallpaper?"
+    }
+
+    private var canRename: Bool {
+        guard let renameTarget, !model.isWorking else { return false }
+        let cleanTitle = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !cleanTitle.isEmpty && cleanTitle != renameTarget.title
     }
 
     private func openPreview(_ wallpaper: ManagedWallpaper) {

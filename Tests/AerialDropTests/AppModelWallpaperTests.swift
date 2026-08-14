@@ -194,6 +194,18 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
+    func testActiveManagedWallpaperAvailabilityMatchesLoadedLibrary() {
+        let wallpaper = makeWallpaper(id: "C0D3X-0011")
+        let model = makeModel(service: FakeWallpaperService())
+        model.wallpapers = [wallpaper]
+
+        model.activeAerialAssetIDs = ["APPLE-AERIAL"]
+        XCTAssertFalse(model.hasActiveManagedWallpaper)
+
+        model.activeAerialAssetIDs = [wallpaper.id]
+        XCTAssertTrue(model.hasActiveManagedWallpaper)
+    }
+
     func testRemoveAllBlocksOnlyActiveManagedWallpapers() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0007")
         let service = FakeWallpaperService(activeIDs: [wallpaper.id])
