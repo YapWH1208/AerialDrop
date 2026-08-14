@@ -57,6 +57,7 @@ struct ImportPane: View {
                         ImportProgressView(
                             stage: model.stage,
                             progress: model.displayProgress,
+                            eta: model.encodeETA,
                             canCancel: model.isImportCancellable,
                             onCancel: { model.cancelImport() }
                         )
@@ -83,7 +84,9 @@ struct ImportPane: View {
                             quality: $model.conversionQuality,
                             outputHeightCap: $model.outputHeightCap,
                             cropOffset: $model.cropOffset,
-                            sourceResolution: model.sourceResolution
+                            sourceResolution: model.sourceResolution,
+                            outputSummary: encodedOutputSummary,
+                            duplicateTitle: duplicateTitle
                         )
                         .disabled(model.isWorking)
 
@@ -103,6 +106,27 @@ struct ImportPane: View {
 
     private var importFinishedWithFailure: Bool {
         model.importOutcome?.activationResult == .activationFailed
+    }
+
+    /// The encoded frame size and an estimated output size for the 80-second
+    /// loop, derived from the same pure functions the pipeline uses, so the
+    /// user sees the consequences of the quality/resolution choices in advance.
+    /// The trimmed wallpaper name when an existing wallpaper already uses it.
+    private var duplicateTitle: String? {
+        let clean = model.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        guard model.wallpapers.contains(where: {
+            $0.title.localizedCaseInsensitiveCompare(clean) == .orderedSame
+        }) else { return nil }
+        return clean
+    }
+
+    private var encodedOutputSummary: String? {
+        guard let source = model.sourceResolution else { return nil }
+        let size = encodedOutputSize(sourceSize: source, outputHeightCap: model.outputHeightCap)
+        let bitrate = bitrateBps(quality: model.conversionQuality, renderHeight: Int(size.height))
+        let megabytes = Int(Double(bitrate) * 80.0 / 8.0 / 1_000_000)
+        return "\(Int(size.width)) × \(Int(size.height)) · est. \(megabytes) MB"
     }
 
     private func beginAnotherImport() {
@@ -258,6 +282,8 @@ private struct ImportSettingsView: View {
     @Binding var cropOffset: Double
 
     let sourceResolution: CGSize?
+    let outputSummary: String?
+    let duplicateTitle: String?
 
     @FocusState private var nameIsFocused: Bool
 
@@ -294,6 +320,13 @@ private struct ImportSettingsView: View {
                     .frame(maxWidth: 240, alignment: .leading)
                 }
 
+                if let outputSummary {
+                    GridRow {
+                        settingLabel("Output")
+                        Text(outputSummary)
+                    }
+                }
+
                 if isUltrawideSource {
                     GridRow(alignment: .top) {
                         settingLabel("Crop")
@@ -314,6 +347,17 @@ private struct ImportSettingsView: View {
                 }
             }
             .padding(8)
+
+            if let duplicateTitle {
+                Label(
+                    "A wallpaper named “\(duplicateTitle)” already exists. Importing will create a duplicate.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
         }
     }
 
@@ -347,6 +391,7 @@ private struct ImportSettingsView: View {
 private struct ImportProgressView: View {
     let stage: ImportStage
     let progress: Double
+    let eta: TimeInterval?
     let canCancel: Bool
     let onCancel: () -> Void
 
@@ -363,6 +408,13 @@ private struct ImportProgressView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+
+                    if let etaText {
+                        Text(etaText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                 }
 
                 ProgressView(value: progress)
@@ -384,6 +436,14 @@ private struct ImportProgressView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Import progress")
+    }
+
+    private var etaText: String? {
+        guard let eta, eta > 5 else { return nil }
+        if eta >= 60 {
+            return "≈ \(Int(eta / 60)) min left"
+        }
+        return "≈ \(Int(eta)) s left"
     }
 
     private var cancellableMessage: String {

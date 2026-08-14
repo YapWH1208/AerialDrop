@@ -33,6 +33,7 @@ final class AppModel {
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
     private var importGeneration = 0
+    private var encodeStartedAt: Date?
 
     private let paths: WallpaperPaths
     private let manifestStore: ManifestStore
@@ -82,6 +83,20 @@ final class AppModel {
             return 0.15 + importProgress * 0.6
         }
         return stage.progress
+    }
+
+    /// Estimated seconds remaining in the encode stage, derived from the
+    /// progress rate observed since encoding started. Nil outside the encode
+    /// stage or while the estimate is not yet meaningful.
+    var encodeETA: TimeInterval? {
+        guard stage == .processingVideo,
+              let start = encodeStartedAt,
+              importProgress > 0.05 else { return nil }
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 3 else { return nil }
+        let fraction = min(max(importProgress, 0.01), 0.95)
+        let eta = elapsed * (1 - fraction) / fraction
+        return eta > 0 ? eta : nil
     }
 
     func chooseVideo(_ url: URL) {
@@ -180,6 +195,7 @@ final class AppModel {
                 try manifestStore.prepareDirectories()
 
                 stage = .processingVideo
+                encodeStartedAt = Date()
                 let encodedSize = try await videoProcessor.makeNativeMOV(
                     from: source,
                     destination: videoDestination,
