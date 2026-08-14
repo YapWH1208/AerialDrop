@@ -34,6 +34,9 @@ struct WallpaperCard: View {
             .buttonStyle(.plain)
             .focusable()
             .focused($selectFocused)
+            .accessibilityLabel(wallpaper.title)
+            .accessibilityValue(cardAccessibilityValue)
+            .accessibilityHint("Select this wallpaper. Use the Preview button to play it.")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             .simultaneousGesture(
                 TapGesture(count: 2).onEnded(onDoubleClick)
@@ -219,5 +222,15 @@ struct WallpaperCard: View {
             return colorSchemeContrast == .increased ? 2 : 1.25
         }
         return 0.5
+    }
+
+    private var cardAccessibilityValue: String {
+        if !wallpaper.videoExists {
+            return "Installed video is missing"
+        }
+        if isActive {
+            return "Active wallpaper"
+        }
+        return "Wallpaper installed"
     }
 }
