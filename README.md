@@ -26,13 +26,12 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 ### Homebrew (recommended)
 
 ```sh
-brew tap YapWH1208/tap
-brew install --cask aerialdrop
-# or in one command:
-# brew install --cask yapwh1208/tap/aerialdrop
+brew install --cask yapwh1208/tap/aerialdrop
 ```
 
-The cask tracks new releases automatically, so `brew update && brew upgrade --cask aerialdrop` gets you the latest version. AerialDrop is ad-hoc signed (not notarized), so the cask clears the download quarantine automatically at install — the first launch works without extra steps.
+The cask tracks new releases automatically, so `brew update && brew upgrade --cask aerialdrop` gets you the latest version.
+
+> **⚠️ Disclaimer — unsigned app:** AerialDrop is **ad-hoc signed and not notarized by Apple**. To make the app open, this cask automatically removes the macOS download quarantine (`com.apple.quarantine`) after install, which disables Apple's malware check for this app — you are trusting the publisher instead of Apple. Only install from the official [YapWH1208/AerialDrop](https://github.com/YapWH1208/AerialDrop) repository, and audit the open-source code if you have concerns. The only way to get Apple's own verification is Developer ID notarization (paid Apple Developer account, $99/year).
 
 ### Prebuilt release
 
