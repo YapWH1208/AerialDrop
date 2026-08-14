@@ -10,6 +10,8 @@ struct WallpaperPreviewView: View {
     let onReveal: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isPlaying = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,6 +21,14 @@ struct WallpaperPreviewView: View {
         }
         .padding(20)
         .frame(minWidth: 640, idealWidth: 780, minHeight: 460, idealHeight: 580)
+        .onAppear {
+            isPlaying = !reduceMotion
+        }
+        .onChange(of: reduceMotion) { _, shouldReduceMotion in
+            if shouldReduceMotion {
+                isPlaying = false
+            }
+        }
     }
 
     private var header: some View {
@@ -53,15 +63,29 @@ struct WallpaperPreviewView: View {
     @ViewBuilder
     private var playerArea: some View {
         if FileManager.default.fileExists(atPath: wallpaper.videoURL.path) {
-            LoopPlayerView(url: wallpaper.videoURL)
-                .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(.separator, lineWidth: 0.5)
+            ZStack(alignment: .bottomLeading) {
+                LoopPlayerView(url: wallpaper.videoURL, isPlaying: isPlaying)
+                    .accessibilityLabel(previewAccessibilityLabel)
+
+                Button(
+                    isPlaying ? "Pause Preview" : "Play Preview",
+                    systemImage: isPlaying ? "pause.fill" : "play.fill"
+                ) {
+                    isPlaying.toggle()
                 }
-                .accessibilityLabel("Looping preview of \(wallpaper.title)")
+                .buttonStyle(.glass)
+                .controlSize(.large)
+                .help(isPlaying ? "Pause the looping preview" : "Play the looping preview")
+                .padding(12)
+            }
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .compositingGroup()
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(.separator, lineWidth: 0.5)
+            }
         } else {
             ContentUnavailableView {
                 Label("Video Missing", systemImage: "exclamationmark.triangle")
@@ -70,6 +94,10 @@ struct WallpaperPreviewView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    private var previewAccessibilityLabel: String {
+        "\(isPlaying ? "Playing" : "Paused") looping preview of \(wallpaper.title)"
     }
 
     private var actionRow: some View {
