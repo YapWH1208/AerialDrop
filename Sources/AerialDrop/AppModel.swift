@@ -25,10 +25,18 @@ final class AppModel {
     var activeAerialAssetIDs: Set<String> = []
     var activationFailure: ManagedWallpaper?
     var activationFailureMessage: String?
+    /// Human-readable label of the Library operation currently in progress
+    /// (activation, removal, remove-all, restore), shown as busy feedback.
+    /// Nil while idle or during an import, which has its own progress UI.
+    private(set) var operationLabel: String?
+    /// ID of the most recently completed import; the Library selects and
+    /// scrolls to this wallpaper when it appears. Cleared once applied.
+    var pendingLibraryHighlightID: String?
 
     private var selectionVersion = 0
     private var importTask: Task<Void, Never>?
     private var importGeneration = 0
+    private var encodeStartedAt: Date?
 
     private let paths: WallpaperPaths
     private let manifestStore: ManifestStore
@@ -72,21 +80,42 @@ final class AppModel {
     }
 
     /// Maps the real encode fraction into the progress band occupied by the
-    /// video-processing stage; other stages use their fixed milestones.
+    /// video-processing stage; other stages use their fixed milestones. The
+    /// encode band starts at the preparing-folders milestone (0.3) and ends
+    /// below the thumbnail milestone (0.7), so the bar never moves backward
+    /// across stage transitions.
     var displayProgress: Double {
-        if stage == .processingVideo && importProgress > 0 {
-            return 0.15 + importProgress * 0.6
+        if stage == .processingVideo {
+            return 0.3 + min(importProgress, 0.95) * 0.4
         }
         return stage.progress
+    }
+
+    /// The encode ETA extrapolates from the throttled 1% progress steps, so a
+    /// stalled encoder would otherwise present an absurd, ever-growing
+    /// countdown. No credible encode of an 80-second segment exceeds this.
+    static let maxEncodeETA: TimeInterval = 1800
+
+    /// Estimated seconds remaining in the encode stage, derived from the
+    /// progress rate observed since encoding started. Nil outside the encode
+    /// stage or while the estimate is not yet meaningful.
+    var encodeETA: TimeInterval? {
+        guard stage == .processingVideo,
+              let start = encodeStartedAt,
+              importProgress > 0.05 else { return nil }
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 3 else { return nil }
+        let fraction = min(max(importProgress, 0.01), 0.95)
+        let eta = elapsed * (1 - fraction) / fraction
+        return min(eta, Self.maxEncodeETA)
     }
 
     func chooseVideo(_ url: URL) {
         selectionVersion += 1
         let version = selectionVersion
-        let previousTitle = selectedVideo.map { $0.deletingPathExtension().lastPathComponent }
-        if title.isEmpty || title == previousTitle {
-            title = url.deletingPathExtension().lastPathComponent
-        }
+        // Always follow the chosen file: a name left over from a previously
+        // selected source is confusing when the source is replaced.
+        title = url.deletingPathExtension().lastPathComponent
         selectedVideo = url
         importOutcome = nil
         cropOffset = 0.5
@@ -176,6 +205,7 @@ final class AppModel {
                 try manifestStore.prepareDirectories()
 
                 stage = .processingVideo
+                encodeStartedAt = Date()
                 let encodedSize = try await videoProcessor.makeNativeMOV(
                     from: source,
                     destination: videoDestination,
@@ -252,11 +282,18 @@ final class AppModel {
 
     func removeWallpaper(_ wallpaper: ManagedWallpaper) async {
         isWorking = true
-        defer { isWorking = false }
+        operationLabel = "Removing “\(wallpaper.title)”…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
         do {
             refreshActiveSelectionForRemoval()
             guard !activeAerialAssetIDs.contains(wallpaper.id) else {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
+            }
+            if pendingLibraryHighlightID == wallpaper.id {
+                pendingLibraryHighlightID = nil
             }
             try manifestStore.removeWallpaper(id: wallpaper.id)
             await systemService.refresh()
@@ -274,9 +311,14 @@ final class AppModel {
 
     func removeAllWallpapers() async {
         isWorking = true
-        defer { isWorking = false }
+        operationLabel = "Removing all AerialDrop wallpapers…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
         do {
             refreshActiveSelectionForRemoval()
+            pendingLibraryHighlightID = nil
             let managedIDs = Set(try manifestStore.importedWallpapers().map(\.id))
             guard activeAerialAssetIDs.isDisjoint(with: managedIDs) else {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
@@ -290,6 +332,7 @@ final class AppModel {
     }
 
     func reload() async {
+        sweepOrphanedTempSegments()
         catalogueState = .loading
         do {
             try manifestStore.requireManifest()
@@ -302,6 +345,17 @@ final class AppModel {
         try? refreshActiveSelection()
     }
 
+    /// Removes leftover AerialDrop encode temp files (e.g. after the app was
+    /// quit mid-import). Only touches files matching AerialDrop's own temp
+    /// naming, never other apps' catalogue files.
+    private func sweepOrphanedTempSegments() {
+        guard !isWorking else { return }
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: paths.videos.path) else { return }
+        for name in files where name.hasPrefix(".AerialDrop-") && name.hasSuffix(".mov") {
+            try? FileManager.default.removeItem(at: paths.videos.appending(path: name))
+        }
+    }
+
     func setWallpaper(_ wallpaper: ManagedWallpaper) {
         Task {
             await activateWallpaper(wallpaper)
@@ -312,7 +366,11 @@ final class AppModel {
     /// model tests while UI callers retain the non-blocking action method.
     func activateWallpaper(_ wallpaper: ManagedWallpaper) async {
         isWorking = true
-        defer { isWorking = false }
+        operationLabel = "Applying “\(wallpaper.title)”…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
         do {
             try await systemService.activateAerial(assetID: wallpaper.id)
             dismissActivationFailure()
@@ -358,6 +416,7 @@ final class AppModel {
             wallpaper: wallpaper,
             activationResult: activationResult
         )
+        pendingLibraryHighlightID = wallpaper.id
         return activationResult
     }
 
@@ -385,7 +444,7 @@ final class AppModel {
     func validateCatalogue() {
         do {
             try manifestStore.validateCurrentManifest()
-            alertMessage = "The current Aerial catalogue passed AerialDrop’s structural and preservation checks."
+            alertMessage = "The current Aerial catalogue is valid and ready to use."
         } catch {
             alertMessage = error.localizedDescription
         }
@@ -393,6 +452,34 @@ final class AppModel {
 
     func openWallpaperSettings() {
         systemService.openWallpaperSettings()
+    }
+
+    /// The newest AerialDrop catalogue backup, for the restore confirmation.
+    func latestBackupInfo() -> ManifestStore.BackupInfo? {
+        manifestStore.latestBackup()
+    }
+
+    /// Replaces the current catalogue with the newest AerialDrop backup. The
+    /// restore is refused (with nothing changed) if foreign catalogue data
+    /// changed since the backup.
+    func restoreLatestBackup() async {
+        isWorking = true
+        operationLabel = "Restoring catalogue backup…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
+        do {
+            guard let info = manifestStore.latestBackup() else {
+                alertMessage = "No AerialDrop backups were found."
+                return
+            }
+            try manifestStore.restoreBackup(info)
+            await reload()
+            alertMessage = "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
+        } catch {
+            alertMessage = error.localizedDescription
+        }
     }
 
     func openStorageFolder() {

@@ -44,6 +44,28 @@ version before evaluating native playback.
    and the activation scope, progress, and completion actions have understandable
    labels.
 
+## Maintenance and recovery
+
+1. With a managed wallpaper present, open Maintenance -> Restore Latest Backup. Confirm the confirmation shows the backup's date and operation, and that restoring replaces the catalogue (success alert) while the foreign Apple entries stay intact.
+2. Confirm a restore is refused with nothing changed when the catalogue contains foreign changes newer than the backup (e.g. an Apple Aerial was added in System Settings after the backup).
+3. After removing a wallpaper, restoring the latest backup brings its entry back marked Video missing (its video file was deleted by the removal) and removing it again is permitted.
+4. During an import, press Command-Q and confirm a quit confirmation appears. Keep Importing resumes; Quit Anyway quits, and the next launch removes leftover .AerialDrop- temp files from the videos folder.
+5. Confirm the Import pane shows the encoded resolution and an estimated file size before importing, and that quality/resolution changes update the estimate live.
+6. Confirm the Import progress shows an estimated time remaining during the encode stage.
+7. Confirm a warning appears when the wallpaper name matches an existing wallpaper.
+8. After an import completes, View in Library selects and scrolls to the new wallpaper.
+9. During Set as Wallpaper, Remove, Remove All, and Restore Latest Backup, confirm a progress banner with a label stays visible until the operation finishes (both in the Library grid and the preview sheet).
+
+## Import and Library polish
+
+1. Confirm the import progress bar never moves backward across stages (the encode start does not drop below the previous stage, and the thumbnail stage continues from a higher value).
+2. With a fade-in-from-black source, confirm the Import preview shows a later, visible frame instead of a black box.
+3. Confirm the completion card offers Open Wallpaper Settings alongside Import Another and View in Library.
+4. Confirm the toolbar's Wallpaper Settings button shows a wallpaper icon (not a gear) and still opens System Settings -> Wallpaper.
+5. Drag an MP4/MOV onto the Library pane and confirm it opens in the Import flow with a drop highlight; non-video drops are ignored.
+6. Choose a video, rename it, then choose a different video; confirm the name field follows the new file.
+7. For an ultrawide source, drag the crop slider between presets and confirm no crop segment is highlighted while the position is between presets, and the preview mask matches the slider.
+
 ## Native activation and playback
 
 1. Leave **Set as wallpaper after importing** enabled (the default), import a

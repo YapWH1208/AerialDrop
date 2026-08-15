@@ -122,6 +122,7 @@ enum AerialDropError: LocalizedError {
     case foreignWallpaperSelectionDataChanged(String)
     case wallpaperSelectionVerificationFailed(String)
     case activeWallpaperCannotBeRemoved
+    case backupRestoreRejected(String)
 
     var errorDescription: String? {
         switch self {
@@ -138,7 +139,10 @@ enum AerialDropError: LocalizedError {
         case .exportSessionUnavailable:
             return "macOS could not create a video export session for this file."
         case .exportFailed(let reason):
-            return "Video conversion failed: \(reason)"
+            let hint = reason.contains("OSStatus")
+                ? " Try freeing up disk space and using a lower quality or resolution."
+                : ""
+            return "Video conversion failed: \(reason)\(hint)"
         case .thumbnailFailed:
             return "A thumbnail could not be generated from the video."
         case .invalidTitle:
@@ -162,9 +166,9 @@ enum AerialDropError: LocalizedError {
         case .nativeVideoWrongFrameRate(let frameRate):
             return "The native Aerial export is \(frameRate.formatted(.number.precision(.fractionLength(3)))) fps instead of 30 fps."
         case .nativeVideoNotMain10(let bits):
-            return "The native Aerial export is only \(bits)-bit. Tahoe custom Aerial playback requires the 10-bit HEVC Main10 media class used by the working Wallper asset."
+            return "The native Aerial export is only \(bits)-bit. Tahoe custom Aerial playback requires the 10-bit HEVC Main10 media format."
         case .nativeVideoNotFullRange:
-            return "The native Aerial export is limited-range video. The working Tahoe custom Aerial asset uses full-range 10-bit HEVC."
+            return "The native Aerial export is limited-range video. Tahoe custom Aerial playback requires full-range 10-bit HEVC."
         case .main10EncodingUnavailable:
             return "This Mac could not initialize the HEVC Main10 encoder required for reliable Tahoe Aerial playback."
         case .manifestChangedDuringOperation:
@@ -183,6 +187,8 @@ enum AerialDropError: LocalizedError {
             return "AerialDrop wrote the wallpaper selection, but macOS did not confirm the expected Aerial (\(expectedID)). Your backup was kept and no automatic restore was attempted."
         case .activeWallpaperCannotBeRemoved:
             return "Choose another wallpaper before removing the AerialDrop wallpaper that is currently active."
+        case .backupRestoreRejected(let reason):
+            return "The backup could not be restored. \(reason) Nothing was changed."
         }
     }
 }

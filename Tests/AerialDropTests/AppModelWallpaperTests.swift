@@ -63,6 +63,44 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testChoosingANewSourceReplacesTheNameWithTheNewFileStem() {
+        let model = makeModel(service: FakeWallpaperService())
+        model.title = "Custom Name"
+        let url = URL(fileURLWithPath: "/tmp/beach.mp4")
+
+        model.chooseVideo(url)
+
+        XCTAssertEqual(model.title, "beach")
+        XCTAssertEqual(model.selectedVideo, url)
+    }
+
+    func testDisplayProgressIsMonotonicAcrossEveryStageTransition() {
+        let model = makeModel(service: FakeWallpaperService())
+
+        var previous = -1.0
+        for stage in [
+            ImportStage.validating,
+            .preparingFolders,
+            .processingVideo,
+            .generatingThumbnail,
+            .updatingManifest,
+            .refreshingSystem,
+            .finished
+        ] {
+            model.stage = stage
+            for fraction in [0.0, 0.01, 0.5, 0.95] {
+                model.importProgress = fraction
+                let current = model.displayProgress
+                XCTAssertGreaterThanOrEqual(
+                    current, previous,
+                    "Progress regressed at \(stage) with importProgress \(fraction): \(previous) -> \(current)"
+                )
+                previous = current
+            }
+        }
+        XCTAssertEqual(model.displayProgress, 1)
+    }
+
     func testImportCancellationAvailabilityStopsAtCatalogueCommitBoundary() {
         let model = makeModel(service: FakeWallpaperService())
         model.isWorking = true
@@ -98,6 +136,30 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
         XCTAssertFalse(model.isWorking)
         XCTAssertNil(model.alertMessage)
+    }
+
+    func testActivationExposesOperationLabelWhileWorking() async throws {
+        let service = FakeWallpaperService()
+        let (enteredStream, enteredContinuation) = AsyncStream<Void>.makeStream()
+        let (releaseStream, releaseContinuation) = AsyncStream<Void>.makeStream()
+        service.enteredContinuation = enteredContinuation
+        service.releaseStream = releaseStream
+        let model = makeModel(service: service)
+        let wallpaper = makeWallpaper(id: "C0D3X-0012")
+
+        let task = Task { await model.activateWallpaper(wallpaper) }
+
+        var iterator = enteredStream.makeAsyncIterator()
+        await iterator.next()
+        XCTAssertEqual(model.operationLabel, "Applying “Test Aerial”…")
+        XCTAssertTrue(model.isWorking)
+
+        releaseContinuation.finish()
+        await task.value
+
+        XCTAssertNil(model.operationLabel)
+        XCTAssertFalse(model.isWorking)
+        XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
     }
 
     func testActivationFailureKeepsExistingActiveStateAndOffersRecovery() async {
@@ -145,6 +207,51 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.activatedAssetIDs, [wallpaper.id])
         XCTAssertEqual(service.refreshCallCount, 0)
         XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
+    }
+
+    func testCompletedImportSetsPendingLibraryHighlight() async {
+        let model = makeModel(service: FakeWallpaperService())
+        let wallpaper = makeWallpaper(id: "C0D3X-0014")
+
+        _ = await model.applyPostImportWallpaperSetting(to: wallpaper)
+
+        XCTAssertEqual(model.pendingLibraryHighlightID, wallpaper.id)
+    }
+
+    func testRestoreLatestBackupBringsBackARemovedWallpaper() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0016")
+        let service = FakeWallpaperService()
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+        XCTAssertEqual(model.wallpapers.count, 1)
+
+        await model.removeWallpaper(wallpaper)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.wallpapers.count, 1)
+        XCTAssertEqual(model.wallpapers.first?.id, wallpaper.id)
+        // The video file was deleted by the removal, so the entry is degraded.
+        XCTAssertEqual(model.wallpapers.first?.videoExists, false)
+        XCTAssertTrue(model.alertMessage?.contains("Restored") == true)
+        XCTAssertFalse(model.isWorking)
+    }
+
+    func testRemovingTheHighlightedWallpaperClearsThePendingHighlight() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0015")
+        let service = FakeWallpaperService()
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+        model.pendingLibraryHighlightID = wallpaper.id
+
+        await model.removeWallpaper(wallpaper)
+
+        XCTAssertNil(model.pendingLibraryHighlightID)
+        XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
     func testDisabledPostImportSettingRefreshesWithoutChangingWallpaper() async {
@@ -322,6 +429,11 @@ private final class FakeWallpaperService: WallpaperServicing {
 
     var selectionReadError: Error?
 
+    /// Optional test hooks: resumes a continuation as soon as activation starts,
+    /// then blocks until the release stream finishes (see the operation-label test).
+    var enteredContinuation: AsyncStream<Void>.Continuation?
+    var releaseStream: AsyncStream<Void>?
+
     init(activeIDs: Set<String> = []) {
         self.activeIDs = activeIDs
     }
@@ -335,6 +447,10 @@ private final class FakeWallpaperService: WallpaperServicing {
 
     func activateAerial(assetID: String) async throws {
         activatedAssetIDs.append(assetID)
+        enteredContinuation?.yield()
+        if let releaseStream {
+            for await _ in releaseStream { break }
+        }
         if let activationError {
             throw activationError
         }

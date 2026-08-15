@@ -49,7 +49,8 @@ struct ImportPane: View {
                     ImportSuccessView(
                         outcome: outcome,
                         onViewLibrary: onViewLibrary,
-                        onImportAnother: beginAnotherImport
+                        onImportAnother: beginAnotherImport,
+                        onOpenWallpaperSettings: model.openWallpaperSettings
                     )
                     .accessibilityFocused($accessibilityStatus, equals: .completion)
                 } else {
@@ -57,6 +58,7 @@ struct ImportPane: View {
                         ImportProgressView(
                             stage: model.stage,
                             progress: model.displayProgress,
+                            eta: model.encodeETA,
                             canCancel: model.isImportCancellable,
                             onCancel: { model.cancelImport() }
                         )
@@ -83,7 +85,9 @@ struct ImportPane: View {
                             quality: $model.conversionQuality,
                             outputHeightCap: $model.outputHeightCap,
                             cropOffset: $model.cropOffset,
-                            sourceResolution: model.sourceResolution
+                            sourceResolution: model.sourceResolution,
+                            outputSummary: encodedOutputSummary,
+                            duplicateTitle: duplicateTitle
                         )
                         .disabled(model.isWorking)
 
@@ -103,6 +107,27 @@ struct ImportPane: View {
 
     private var importFinishedWithFailure: Bool {
         model.importOutcome?.activationResult == .activationFailed
+    }
+
+    /// The encoded frame size and an estimated output size for the 80-second
+    /// loop, derived from the same pure functions the pipeline uses, so the
+    /// user sees the consequences of the quality/resolution choices in advance.
+    /// The trimmed wallpaper name when an existing wallpaper already uses it.
+    private var duplicateTitle: String? {
+        let clean = model.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        guard model.wallpapers.contains(where: {
+            $0.title.localizedCaseInsensitiveCompare(clean) == .orderedSame
+        }) else { return nil }
+        return clean
+    }
+
+    private var encodedOutputSummary: String? {
+        guard let source = model.sourceResolution else { return nil }
+        let size = encodedOutputSize(sourceSize: source, outputHeightCap: model.outputHeightCap)
+        let bitrate = bitrateBps(quality: model.conversionQuality, renderHeight: Int(size.height))
+        let megabytes = Int(Double(bitrate) * 80.0 / 8.0 / 1_000_000)
+        return "\(Int(size.width)) × \(Int(size.height)) · est. \(megabytes) MB"
     }
 
     private func beginAnotherImport() {
@@ -258,6 +283,8 @@ private struct ImportSettingsView: View {
     @Binding var cropOffset: Double
 
     let sourceResolution: CGSize?
+    let outputSummary: String?
+    let duplicateTitle: String?
 
     @FocusState private var nameIsFocused: Bool
 
@@ -266,7 +293,7 @@ private struct ImportSettingsView: View {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
                 GridRow {
                     settingLabel("Name")
-                    TextField("Wallpaper name", text: $title)
+                    TextField("Enter a wallpaper name", text: $title)
                         .focused($nameIsFocused)
                         .onSubmit { nameIsFocused = false }
                 }
@@ -294,6 +321,13 @@ private struct ImportSettingsView: View {
                     .frame(maxWidth: 240, alignment: .leading)
                 }
 
+                if let outputSummary {
+                    GridRow {
+                        settingLabel("Output")
+                        Text(outputSummary)
+                    }
+                }
+
                 if isUltrawideSource {
                     GridRow(alignment: .top) {
                         settingLabel("Crop")
@@ -314,6 +348,17 @@ private struct ImportSettingsView: View {
                 }
             }
             .padding(8)
+
+            if let duplicateTitle {
+                Label(
+                    "A wallpaper named “\(duplicateTitle)” already exists. Importing will create a duplicate.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.footnote)
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
         }
     }
 
@@ -324,7 +369,11 @@ private struct ImportSettingsView: View {
 
     private var cropPreset: Binding<Double> {
         Binding(
-            get: { nearestCropPreset(cropOffset) },
+            get: {
+                let nearest = nearestCropPreset(cropOffset)
+                if abs(cropOffset - nearest) <= 0.05 { return nearest }
+                return -1 // between presets: no segment highlighted
+            },
             set: { cropOffset = $0 }
         )
     }
@@ -347,6 +396,7 @@ private struct ImportSettingsView: View {
 private struct ImportProgressView: View {
     let stage: ImportStage
     let progress: Double
+    let eta: TimeInterval?
     let canCancel: Bool
     let onCancel: () -> Void
 
@@ -363,6 +413,13 @@ private struct ImportProgressView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+
+                    if let etaText {
+                        Text(etaText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                 }
 
                 ProgressView(value: progress)
@@ -386,6 +443,14 @@ private struct ImportProgressView: View {
         .accessibilityLabel("Import progress")
     }
 
+    private var etaText: String? {
+        guard let eta, eta > 5 else { return nil }
+        if eta >= 60 {
+            return "≈ \(Int(eta / 60)) min left"
+        }
+        return "≈ \(Int(eta)) s left"
+    }
+
     private var cancellableMessage: String {
         "The source video stays unchanged. You can cancel before installation begins."
     }
@@ -399,6 +464,7 @@ private struct ImportSuccessView: View {
     let outcome: ImportOutcome
     let onViewLibrary: () -> Void
     let onImportAnother: () -> Void
+    let onOpenWallpaperSettings: () -> Void
 
     var body: some View {
         GroupBox {
@@ -423,6 +489,7 @@ private struct ImportSuccessView: View {
                 HStack {
                     Spacer()
 
+                    Button("Open Wallpaper Settings", systemImage: "photo", action: onOpenWallpaperSettings)
                     Button("Import Another", systemImage: "plus", action: onImportAnother)
                     Button("View in Library", systemImage: "photo.on.rectangle.angled", action: onViewLibrary)
                         .buttonStyle(.borderedProminent)
@@ -471,7 +538,7 @@ private struct ImportDetailsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Builds an 80-second, 30 fps HEVC Main10 stream", systemImage: "film")
                 Label("Creates a Tahoe-compatible HEIF preview", systemImage: "photo")
-                Label("Backs up entries.json and preserves foreign entries", systemImage: "doc.badge.gearshape")
+                Label("Creates a backup before every catalogue change", systemImage: "doc.badge.gearshape")
                 Label("Adds the result to the native Aerial catalogue", systemImage: "rectangle.stack")
             }
             .font(.callout)

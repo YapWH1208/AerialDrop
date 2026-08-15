@@ -68,6 +68,80 @@ struct ManifestStore {
         try validateCandidate(root, preservingForeignEntriesFrom: root)
     }
 
+    /// A restorable catalogue backup: the backup file, its creation date, and
+    /// the operation that produced it.
+    struct BackupInfo: Equatable {
+        let url: URL
+        let date: Date
+        let operation: String
+    }
+
+    /// The newest AerialDrop manifest backup, or nil when none exists.
+    /// Backups written within the same millisecond share a timestamp, so they
+    /// are ordered by the file's modification date (the actual write order);
+    /// the full backup name breaks any remaining ties so that directory
+    /// enumeration order never decides the winner.
+    func latestBackup() -> BackupInfo? {
+        guard let names = try? fileManager.contentsOfDirectory(atPath: paths.backups.path) else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+
+        let candidates: [(name: String, info: BackupInfo)] = names.compactMap { name in
+            guard name.hasPrefix("entries-"), name.hasSuffix(".json") else { return nil }
+            let core = String(name.dropFirst("entries-".count).dropLast(".json".count))
+            guard core.count > 20 else { return nil }
+            let timestamp = String(core.prefix(19))
+            let operation = String(core.dropFirst(20))
+            guard let date = formatter.date(from: timestamp) else { return nil }
+            return (name, BackupInfo(
+                url: paths.backups.appending(path: name),
+                date: date,
+                operation: operation
+            ))
+        }
+
+        return candidates
+            .sorted { lhs, rhs in
+                guard lhs.info.date == rhs.info.date else { return lhs.info.date > rhs.info.date }
+                let lhsModified = (try? lhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? lhs.info.date
+                let rhsModified = (try? rhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? rhs.info.date
+                guard lhsModified == rhsModified else { return lhsModified > rhsModified }
+                return lhs.name > rhs.name
+            }
+            .first?.info
+    }
+
+    /// Replaces the current manifest with the backup's content, after backing
+    /// up the current manifest and refusing when foreign (non-AerialDrop)
+    /// catalogue data changed since the backup. Managed assets whose installed
+    /// files are missing are tolerated — they surface as "Video missing" in
+    /// the Library and can be removed there.
+    func restoreBackup(_ info: BackupInfo) throws {
+        do {
+            let backupData = try Data(contentsOf: info.url)
+            let backupRoot = try loadRoot(from: backupData)
+            try mutateManifest(operation: "restore", requireManagedFiles: false) { root in
+                root = backupRoot
+            }
+        } catch let error as AerialDropError {
+            throw AerialDropError.backupRestoreRejected(reason(for: error))
+        } catch {
+            throw AerialDropError.backupRestoreRejected(error.localizedDescription)
+        }
+    }
+
+    private func reason(for error: AerialDropError) -> String {
+        switch error {
+        case .foreignManifestDataChanged:
+            return "The catalogue has changed since this backup was created, and restoring it would remove newer changes."
+        case .manifestChangedDuringOperation:
+            return "The catalogue changed while the restore was being prepared. Try again."
+        default:
+            return error.localizedDescription
+        }
+    }
+
     func addWallpaper(id: String, title: String, width: Int = 0, height: Int = 0) throws {
         try requireManifest()
         try prepareDirectories()
@@ -291,6 +365,7 @@ struct ManifestStore {
 
     private func mutateManifest(
         operation: String,
+        requireManagedFiles: Bool = true,
         mutation: (inout [String: Any]) throws -> Void
     ) throws {
         let originalData = try Data(contentsOf: paths.manifest)
@@ -299,7 +374,11 @@ struct ManifestStore {
 
         var candidateRoot = originalRoot
         try mutation(&candidateRoot)
-        try validateCandidate(candidateRoot, preservingForeignEntriesFrom: originalRoot)
+        try validateCandidate(
+            candidateRoot,
+            preservingForeignEntriesFrom: originalRoot,
+            requireManagedFiles: requireManagedFiles
+        )
 
         guard JSONSerialization.isValidJSONObject(candidateRoot) else {
             throw AerialDropError.malformedManifest("generated JSON is invalid")
@@ -324,7 +403,11 @@ struct ManifestStore {
             throw AerialDropError.manifestChangedDuringOperation
         }
         let writtenRoot = try loadRoot(from: writtenData)
-        try validateCandidate(writtenRoot, preservingForeignEntriesFrom: originalRoot)
+        try validateCandidate(
+            writtenRoot,
+            preservingForeignEntriesFrom: originalRoot,
+            requireManagedFiles: requireManagedFiles
+        )
     }
 
     private func loadRoot(from data: Data) throws -> [String: Any] {
@@ -357,7 +440,8 @@ struct ManifestStore {
 
     private func validateCandidate(
         _ candidate: [String: Any],
-        preservingForeignEntriesFrom original: [String: Any]
+        preservingForeignEntriesFrom original: [String: Any],
+        requireManagedFiles: Bool = true
     ) throws {
         try validateBaseManifest(candidate)
 
@@ -420,7 +504,7 @@ struct ManifestStore {
         }
 
         for asset in managedAssets {
-            try validateManagedAsset(asset)
+            try validateManagedAsset(asset, requireFiles: requireManagedFiles)
         }
 
         guard let category = candidateCategories.first(where: { ($0["id"] as? String) == Self.categoryID }) else {
@@ -429,7 +513,7 @@ struct ManifestStore {
         try validateManagedCategory(category, validAssetIDs: Set(managedAssets.compactMap { $0["id"] as? String }))
     }
 
-    private func validateManagedAsset(_ asset: [String: Any]) throws {
+    private func validateManagedAsset(_ asset: [String: Any], requireFiles: Bool = true) throws {
         let requiredStrings = [
             "id", "shotID", "localizedNameKey", "accessibilityLabel",
             "previewImage", "url-4K-SDR-240FPS"
@@ -439,11 +523,16 @@ struct ManifestStore {
         }
         guard let id = asset["id"] as? String,
               (asset["previewImage"] as? String) == paths.thumbnailURL(for: id).absoluteString,
-              (asset["url-4K-SDR-240FPS"] as? String) == paths.videoURL(for: id).absoluteString,
-              fileManager.fileExists(atPath: paths.thumbnailURL(for: id).path),
-              fileManager.fileExists(atPath: paths.videoURL(for: id).path)
+              (asset["url-4K-SDR-240FPS"] as? String) == paths.videoURL(for: id).absoluteString
         else {
-            throw AerialDropError.malformedManifest("AerialDrop asset paths or installed files are invalid")
+            throw AerialDropError.malformedManifest("AerialDrop asset paths are invalid")
+        }
+        if requireFiles {
+            guard fileManager.fileExists(atPath: paths.thumbnailURL(for: id).path),
+                  fileManager.fileExists(atPath: paths.videoURL(for: id).path)
+            else {
+                throw AerialDropError.malformedManifest("AerialDrop asset paths or installed files are invalid")
+            }
         }
         guard (asset["categories"] as? [String])?.contains(Self.categoryID) == true else {
             throw AerialDropError.malformedManifest("AerialDrop asset has the wrong category")
