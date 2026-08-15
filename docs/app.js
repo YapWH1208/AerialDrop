@@ -66,25 +66,37 @@
     ta.style.opacity = "0";
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand("copy"); } catch (e) {}
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) {}
     document.body.removeChild(ta);
+    return ok;
   }
   function copyText(text, btn, doneText) {
-    function done() {
+    function flash(label, cls) {
       if (!btn) return;
       var original = btn.textContent;
-      btn.textContent = doneText || "Copied \u2713";
-      btn.classList.add("is-copied");
+      btn.textContent = label;
+      btn.classList.add(cls);
       setTimeout(function () {
         btn.textContent = original;
-        btn.classList.remove("is-copied");
+        btn.classList.remove(cls);
       }, 1600);
     }
+    var okLabel = doneText || "Copied \u2713";
+    function tryLegacy() {
+      if (legacyCopy(text)) {
+        flash(okLabel, "is-copied");
+      } else {
+        flash("Copy failed", "is-failed");
+      }
+    }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done, function () { legacyCopy(text); done(); });
+      navigator.clipboard.writeText(text).then(
+        function () { flash(okLabel, "is-copied"); },
+        tryLegacy
+      );
     } else {
-      legacyCopy(text);
-      done();
+      tryLegacy();
     }
   }
   function commandFor(btn) {

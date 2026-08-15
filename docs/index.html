@@ -17,6 +17,7 @@
 <script>
 /* Apply the saved or system theme before first paint to avoid a flash. */
 (function () {
+  document.documentElement.classList.add("js");
   var saved = null;
   try { saved = localStorage.getItem("ad-theme"); } catch (e) {}
   var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: light)").matches === false;

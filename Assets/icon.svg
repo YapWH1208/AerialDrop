@@ -1,5 +1,6 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024"
      fill="none" xmlns="http://www.w3.org/2000/svg">
+<!-- Mirror of the other icon.svg in this repo (Assets/icon.svg <-> docs/assets/icon.svg): keep these two files byte-identical. Regenerate docs/assets/icon.png when the art changes. -->
   <defs>
     <linearGradient id="bg" x1="128" y1="80" x2="896" y2="944" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0C1830"/>
