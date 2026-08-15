@@ -32,6 +32,7 @@ macOS Tahoe 26-only Swift Package (SPM executable → SwiftUI app) that imports 
 
 - Version/build is in **AppVersion.swift** (single source; `Scripts/build-app.sh` parses it for Info.plist — update **both** `shortVersion` and `buildNumber` or the script exits 1).
 - Release order matters: in one commit, bump AppVersion.swift **and** add the `## <version>` section to CHANGELOG.md, push it, then push tag `v<version>` pointing at that commit. release.yml's changelog extraction exits 1 if the section is missing, and the Info.plist version comes from AppVersion.swift — tagging a commit without either publishes the wrong version or fails the run (a moved tag is the only recovery). Release zips `dist/AerialDrop.app` as `AerialDrop-<version>-macOS.zip`.
+- The Pages site hardcodes the current version as a no-JS/offline fallback: bump `v1.1.3` in `docs/index.html` (hero terminal output, `#expectVersion`, unzip commands, release chip) and the `applyRelease("v1.1.3", …)` fallback in `docs/app.js` in the same commit as AppVersion.swift, or visitors whose release fetch fails see a stale version. `Assets/icon.svg` and `docs/assets/icon.svg` must stay byte-identical, and `docs/assets/icon.png` must be regenerated from it when the art changes.
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph

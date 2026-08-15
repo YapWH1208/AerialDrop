@@ -1,0 +1,117 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024"
+     fill="none" xmlns="http://www.w3.org/2000/svg">
+<!-- Mirror of the other icon.svg in this repo (Assets/icon.svg <-> docs/assets/icon.svg): keep these two files byte-identical. Regenerate docs/assets/icon.png when the art changes. -->
+  <defs>
+    <linearGradient id="bg" x1="128" y1="80" x2="896" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0C1830"/>
+      <stop offset="0.48" stop-color="#143D68"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+
+    <linearGradient id="sky" x1="256" y1="260" x2="768" y2="690" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6EE7F9"/>
+      <stop offset="0.5" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+
+    <linearGradient id="land" x1="250" y1="535" x2="795" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="0.52" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+
+    <linearGradient id="drop" x1="512" y1="178" x2="512" y2="506" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#A5F3FC"/>
+    </linearGradient>
+
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+
+    <clipPath id="screenClip">
+      <rect x="202" y="252" width="620" height="520" rx="96"/>
+    </clipPath>
+  </defs>
+
+  <!-- App-icon background -->
+  <rect x="72" y="72" width="880" height="880" rx="224" fill="url(#bg)"/>
+  <rect x="74" y="74" width="876" height="876" rx="222"
+        stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="4"/>
+
+  <!-- Ambient glow -->
+  <ellipse cx="512" cy="510" rx="292" ry="280"
+           fill="#38BDF8" fill-opacity="0.14" filter="url(#softGlow)"/>
+
+  <!-- Native wallpaper panel -->
+  <g filter="url(#shadow)">
+    <rect x="202" y="252" width="620" height="520" rx="96"
+          fill="#F8FAFC" fill-opacity="0.055"
+          stroke="#E0F2FE" stroke-opacity="0.38" stroke-width="12"/>
+
+    <g clip-path="url(#screenClip)">
+      <!-- Sky -->
+      <rect x="202" y="252" width="620" height="520" fill="url(#sky)" fill-opacity="0.30"/>
+
+      <!-- distant aerial ridge -->
+      <path d="M160 625
+               C260 562 337 551 415 576
+               C492 601 558 607 633 566
+               C702 529 770 522 864 574
+               L864 806 L160 806 Z"
+            fill="#E0F2FE" fill-opacity="0.34"/>
+
+      <!-- foreground ridge -->
+      <path d="M165 692
+               C271 615 344 619 421 660
+               C505 705 594 718 671 662
+               C727 621 784 620 867 668
+               L867 812 L165 812 Z"
+            fill="url(#land)" fill-opacity="0.96"/>
+
+      <!-- lower soft ridge / depth -->
+      <path d="M160 757
+               C290 687 398 706 485 746
+               C572 786 665 796 868 720
+               L868 824 L160 824 Z"
+            fill="#0F172A" fill-opacity="0.34"/>
+    </g>
+  </g>
+
+  <!-- "Drop" gesture: a falling capsule into the aerial scene -->
+  <g>
+    <rect x="486" y="166" width="52" height="236" rx="26" fill="url(#drop)"/>
+    <circle cx="512" cy="438" r="58" fill="#A5F3FC" fill-opacity="0.16" filter="url(#softGlow)"/>
+    <path d="M442 383
+             C442 367 460 358 473 368
+             L512 399
+             L551 368
+             C564 358 582 367 582 383
+             C582 391 578 398 572 403
+             L531 437
+             C520 446 504 446 493 437
+             L452 403
+             C446 398 442 391 442 383Z"
+          fill="url(#drop)"/>
+  </g>
+
+  <!-- subtle aerial sparkles -->
+  <g fill="#F8FAFC">
+    <path d="M736 212
+             C736 198 747 187 761 187
+             C747 187 736 176 736 162
+             C736 176 725 187 711 187
+             C725 187 736 198 736 212Z"
+          fill-opacity="0.92"/>
+    <path d="M796 286
+             C796 278 802 272 810 272
+             C802 272 796 266 796 258
+             C796 266 790 272 782 272
+             C790 272 796 278 796 286Z"
+          fill-opacity="0.66"/>
+  </g>
+</svg>
