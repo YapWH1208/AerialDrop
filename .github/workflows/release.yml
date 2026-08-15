@@ -57,8 +57,8 @@ jobs:
         if: env.TAP_TOKEN != ''
         env:
           TAP_TOKEN: ${{ secrets.TAP_UPDATE_TOKEN }}
+          GH_TOKEN: ${{ secrets.TAP_UPDATE_TOKEN }}
         run: |
           gh api --method POST repos/YapWH1208/homebrew-tap/dispatches \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $TAP_TOKEN" \
             -f event_type=release-published
