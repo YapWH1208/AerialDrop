@@ -475,6 +475,14 @@ struct VideoProcessor: Sendable {
             cursor = CMTimeAdd(cursor, insertionDuration)
         }
 
+        // Export to a marked temp file and move it into place: an interrupted
+        // passthrough must never leave an unmarked partial file at the final
+        // destination, which the orphan sweep cannot identify as AerialDrop's.
+        let repeatURL = destination.deletingLastPathComponent().appendingPathComponent(
+            ".AerialDrop-\(UUID().uuidString)-repeat.mov"
+        )
+        defer { try? FileManager.default.removeItem(at: repeatURL) }
+
         guard let exporter = AVAssetExportSession(
             asset: repeated,
             presetName: AVAssetExportPresetPassthrough
@@ -485,15 +493,13 @@ struct VideoProcessor: Sendable {
             throw AerialDropError.passthroughUnavailable
         }
 
-        try? FileManager.default.removeItem(at: destination)
-        exporter.outputURL = destination
         exporter.outputFileType = .mov
         exporter.shouldOptimizeForNetworkUse = true
         exporter.timeRange = CMTimeRange(start: .zero, duration: nativeTargetDuration)
 
         try Task.checkCancellation()
         do {
-            try await exporter.export(to: destination, as: .mov)
+            try await exporter.export(to: repeatURL, as: .mov)
         } catch {
             throw AerialDropError.exportFailed(
                 error.localizedDescription
@@ -501,6 +507,8 @@ struct VideoProcessor: Sendable {
             )
         }
         try Task.checkCancellation()
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: repeatURL, to: destination)
     }
 
     private func firstRenderableSampleTime(asset: AVAsset, track: AVAssetTrack) throws -> CMTime {

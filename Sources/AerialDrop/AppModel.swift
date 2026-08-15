@@ -91,6 +91,11 @@ final class AppModel {
         return stage.progress
     }
 
+    /// The encode ETA extrapolates from the throttled 1% progress steps, so a
+    /// stalled encoder would otherwise present an absurd, ever-growing
+    /// countdown. No credible encode of an 80-second segment exceeds this.
+    static let maxEncodeETA: TimeInterval = 1800
+
     /// Estimated seconds remaining in the encode stage, derived from the
     /// progress rate observed since encoding started. Nil outside the encode
     /// stage or while the estimate is not yet meaningful.
@@ -102,7 +107,7 @@ final class AppModel {
         guard elapsed > 3 else { return nil }
         let fraction = min(max(importProgress, 0.01), 0.95)
         let eta = elapsed * (1 - fraction) / fraction
-        return eta > 0 ? eta : nil
+        return min(eta, Self.maxEncodeETA)
     }
 
     func chooseVideo(_ url: URL) {

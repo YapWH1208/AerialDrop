@@ -150,6 +150,49 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(info.operation, "import-2")
     }
 
+    func testLatestBackupOrdersSameMillisecondBackupsByWriteOrder() throws {
+        let timestamp = "20260809-181419-745"
+        let importBackup = paths.backups.appending(path: "entries-\(timestamp)-import.json")
+        let renameBackup = paths.backups.appending(path: "entries-\(timestamp)-rename.json")
+        try Data("{}".utf8).write(to: importBackup)
+        try Data("{}".utf8).write(to: renameBackup)
+
+        let info = try XCTUnwrap(store.latestBackup())
+        XCTAssertEqual(info.url, renameBackup)
+    }
+
+    func testLatestBackupFallsBackToNameOrderWhenModificationTimesMatch() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let importBackup = paths.backups.appending(path: "entries-20260809-181419-745-import.json")
+        let renameBackup = paths.backups.appending(path: "entries-20260809-181419-745-rename.json")
+        try Data("{}".utf8).write(to: importBackup)
+        try Data("{}".utf8).write(to: renameBackup)
+        try FileManager.default.setAttributes(
+            [.modificationDate: date],
+            ofItemAtPath: importBackup.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: date],
+            ofItemAtPath: renameBackup.path
+        )
+
+        let info = try XCTUnwrap(store.latestBackup())
+        XCTAssertEqual(info.url, renameBackup)
+    }
+
+    func testRestoreBackupWrapsMissingManifestAsRejected() throws {
+        let backup = paths.backups.appending(path: "entries-20260809-181419-745-import.json")
+        try fixtureData().write(to: backup)
+        try FileManager.default.removeItem(at: paths.manifest)
+
+        let info = try XCTUnwrap(store.latestBackup())
+        XCTAssertThrowsError(try store.restoreBackup(info)) { error in
+            guard case AerialDropError.backupRestoreRejected = error else {
+                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            }
+        }
+    }
+
     func testRestoreBackupReturnsManagedStateAndPreservesForeignData() throws {
         let firstID = "12121212-3434-4567-8AAA-999999999991"
         try Data("video".utf8).write(to: paths.videoURL(for: firstID))

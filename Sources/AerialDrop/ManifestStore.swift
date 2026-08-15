@@ -77,28 +77,39 @@ struct ManifestStore {
     }
 
     /// The newest AerialDrop manifest backup, or nil when none exists.
+    /// Backups written within the same millisecond share a timestamp, so they
+    /// are ordered by the file's modification date (the actual write order);
+    /// the full backup name breaks any remaining ties so that directory
+    /// enumeration order never decides the winner.
     func latestBackup() -> BackupInfo? {
         guard let names = try? fileManager.contentsOfDirectory(atPath: paths.backups.path) else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-        var newest: (timestamp: String, info: BackupInfo)?
-        for name in names {
-            guard name.hasPrefix("entries-"), name.hasSuffix(".json") else { continue }
+
+        let candidates: [(name: String, info: BackupInfo)] = names.compactMap { name in
+            guard name.hasPrefix("entries-"), name.hasSuffix(".json") else { return nil }
             let core = String(name.dropFirst("entries-".count).dropLast(".json".count))
-            guard core.count > 20 else { continue }
+            guard core.count > 20 else { return nil }
             let timestamp = String(core.prefix(19))
             let operation = String(core.dropFirst(20))
-            guard let date = formatter.date(from: timestamp) else { continue }
-            if newest == nil || timestamp > newest!.timestamp {
-                newest = (timestamp, BackupInfo(
-                    url: paths.backups.appending(path: name),
-                    date: date,
-                    operation: operation
-                ))
-            }
+            guard let date = formatter.date(from: timestamp) else { return nil }
+            return (name, BackupInfo(
+                url: paths.backups.appending(path: name),
+                date: date,
+                operation: operation
+            ))
         }
-        return newest?.info
+
+        return candidates
+            .sorted { lhs, rhs in
+                guard lhs.info.date == rhs.info.date else { return lhs.info.date > rhs.info.date }
+                let lhsModified = (try? lhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? lhs.info.date
+                let rhsModified = (try? rhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? rhs.info.date
+                guard lhsModified == rhsModified else { return lhsModified > rhsModified }
+                return lhs.name > rhs.name
+            }
+            .first?.info
     }
 
     /// Replaces the current manifest with the backup's content, after backing
@@ -107,14 +118,16 @@ struct ManifestStore {
     /// files are missing are tolerated — they surface as "Video missing" in
     /// the Library and can be removed there.
     func restoreBackup(_ info: BackupInfo) throws {
-        let backupData = try Data(contentsOf: info.url)
-        let backupRoot = try loadRoot(from: backupData)
         do {
+            let backupData = try Data(contentsOf: info.url)
+            let backupRoot = try loadRoot(from: backupData)
             try mutateManifest(operation: "restore", requireManagedFiles: false) { root in
                 root = backupRoot
             }
         } catch let error as AerialDropError {
             throw AerialDropError.backupRestoreRejected(reason(for: error))
+        } catch {
+            throw AerialDropError.backupRestoreRejected(error.localizedDescription)
         }
     }
 
