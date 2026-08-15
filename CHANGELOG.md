@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.4
+
+- Added two more installation methods: a `brew install --cask yapwh1208/tap/aerialdrop` one-liner (Homebrew tap) and a downloadable `install.sh` that verifies the release checksum, installs to `/Applications`, and clears the quarantine.
+- Improved Import feedback: the encoded output size and encode ETA now appear during conversion, and a warning flags a wallpaper name that's already in use.
+- Made import progress monotonic across stages and prefer a representative non-black frame for the preview, so the preview no longer freezes on a dark first frame.
+- Added feedback to library operations (rename, remove, restore, activation) and highlighted the wallpaper that was just imported.
+- Added **Restore Latest Backup** to the Maintenance menu, with removal recovery explained more clearly; backups are now restored deterministically and orphaned repeat-export temp files are swept.
+- Guarded the app against quitting mid-import: quit during an import now asks first, and leftover encode temp files are cleaned up.
+- The Library pane now accepts video drops directly and follows the dropped file's name when naming the wallpaper; non-video drops are ignored.
+- Polish pass: crop presets now report their state honestly, a **Wallpaper Settings** shortcut was added to the completion summary, the toolbar icon and the wallpaper-name placeholder are clearer, and user-facing copy no longer references third-party jargon.
+
 ## 1.1.3
 
 - Reworked the toolbar around the import stage: while an import runs, the toolbar shows its progress and a **Cancel Import** action (offered only while cancellation is still safe), and the primary action becomes **Continue Import** when you've left a draft mid-configuration.
