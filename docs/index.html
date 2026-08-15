@@ -1,18 +1,18 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AerialDrop — Your videos, natively on the macOS Tahoe desktop</title>
-<meta name="description" content="AerialDrop imports your own MP4/MOV videos into macOS Tahoe's native Aerial wallpaper catalogue — they play as screen savers and lock screen wallpapers with Apple's own playback pipeline. Free, open source, MIT licensed.">
-<meta name="theme-color" content="#05070d">
+<title>AerialDrop — your videos, natively on the macOS Tahoe desktop</title>
+<meta name="description" content="Import your own MP4/MOV videos into macOS Tahoe's native Aerial wallpaper catalogue. They play as screen savers and lock screen wallpapers through Apple's own pipeline. Free, open source, MIT licensed.">
+<meta name="theme-color" content="#070b10">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AerialDrop — Your videos, natively on the macOS Tahoe desktop">
+<meta property="og:title" content="AerialDrop — your videos, natively on the macOS Tahoe desktop">
 <meta property="og:description" content="Import your own videos into macOS Tahoe's native Aerial wallpaper catalogue. No helper processes, no app-managed player.">
 <meta property="og:url" content="https://yapwh1208.github.io/AerialDrop/">
 <meta property="og:image" content="https://yapwh1208.github.io/AerialDrop/assets/icon.png">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
 <link rel="icon" type="image/png" href="assets/icon.png">
-<link rel="preconnect" href="https://api.github.com">
 <link rel="stylesheet" href="styles.css">
 <script>
 /* Apply the saved or system theme before first paint to avoid a flash. */
@@ -27,33 +27,24 @@
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 
-<div class="aurora" aria-hidden="true">
-  <div class="aurora__blob aurora__blob--1"></div>
-  <div class="aurora__blob aurora__blob--2"></div>
-  <div class="aurora__blob aurora__blob--3"></div>
-  <div class="aurora__noise"></div>
-  <div class="aurora__vignette"></div>
-</div>
-
 <header class="site-header">
   <nav class="nav container" aria-label="Primary">
     <a class="brand" href="#top">
-      <img class="brand__icon" src="assets/icon.png" alt="" width="32" height="32">
+      <img class="brand__icon" src="assets/icon.svg" alt="" width="28" height="28">
       <span class="brand__name">AerialDrop</span>
-      <span class="brand__version" id="navVersion">v1.1.3</span>
     </a>
     <button class="nav__toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks">
       <span class="nav__toggle-bar"></span><span class="nav__toggle-bar"></span><span class="nav__toggle-bar"></span>
       <span class="visually-hidden">Menu</span>
     </button>
     <ul class="nav__links" id="navLinks">
-      <li><a href="#features">Features</a></li>
-      <li><a href="#how">How it works</a></li>
       <li><a href="#install">Install</a></li>
-      <li><a href="#usage">Usage</a></li>
+      <li><a href="#specs">Specs</a></li>
+      <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#checklist">Checklist</a></li>
       <li><a href="#faq">FAQ</a></li>
       <li class="nav__actions">
-        <button class="icon-btn" id="themeToggle" aria-pressed="false" title="Toggle light / dark theme">
+        <button class="icon-btn" id="themeToggle" aria-pressed="false" title="Toggle day / night theme">
           <svg class="icon icon--sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>
           <svg class="icon icon--moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>
           <span class="visually-hidden">Toggle theme</span>
@@ -68,226 +59,389 @@
 </header>
 
 <main id="main">
+
   <!-- ============ HERO ============ -->
   <section class="hero" id="top">
     <div class="container hero__grid">
       <div class="hero__copy reveal">
-        <p class="eyebrow"><span class="pill pill--accent">macOS Tahoe 26</span><span class="pill">Free &amp; open source</span><span class="pill">MIT license</span></p>
-        <h1>Your videos, <span class="grad">natively</span> on the Tahoe desktop.</h1>
-        <p class="lede">AerialDrop imports your own MP4 and MOV videos into macOS Tahoe&rsquo;s native Aerial wallpaper catalogue. They play as screen savers and lock screen wallpapers through Apple&rsquo;s own pipeline &mdash; no helper processes, no app-managed player, just your footage where it belongs.</p>
+        <p class="hero__eyebrow"><span class="pill">macOS Tahoe 26</span><span class="pill">Free &amp; open source</span><span class="pill">MIT</span></p>
+        <h1>Your videos, natively on the Tahoe desktop.</h1>
+        <p class="hero__lede">AerialDrop imports your MP4 or MOV into macOS Tahoe&rsquo;s own Aerial catalogue. Screen saver and lock screen, played by Apple&rsquo;s pipeline. No helper processes, no app-managed player.</p>
         <div class="hero__cta">
-          <a class="btn btn--primary" href="https://github.com/YapWH1208/AerialDrop/releases/latest" id="downloadBtn">
+          <a class="btn btn--primary btn--lg" href="#install">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
-            <span id="downloadBtnLabel">Download for macOS</span>
+            Install
           </a>
-          <a class="btn btn--glass" href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">View on GitHub</a>
+          <a class="btn btn--glass btn--lg" href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">View on GitHub</a>
         </div>
-        <ul class="hero__stats" aria-label="Key facts">
-          <li><strong>80&nbsp;s</strong><span>native loops</span></li>
-          <li><strong>HEVC Main10</strong><span>30 fps &middot; 10-bit</span></li>
-          <li><strong>Auto-backups</strong><span>before every write</span></li>
-          <li><strong>MIT</strong><span>open source</span></li>
-        </ul>
+        <p class="hero__hint">One command. Copy it below or pick your method.</p>
       </div>
 
       <div class="hero__visual reveal">
-        <!-- App window mock (pure CSS) -->
-        <div class="app-mock" aria-hidden="true">
-          <div class="app-mock__bar">
-            <span class="app-mock__dot app-mock__dot--r"></span>
-            <span class="app-mock__dot app-mock__dot--y"></span>
-            <span class="app-mock__dot app-mock__dot--g"></span>
-            <span class="app-mock__title">AerialDrop</span>
+        <div class="terminal" role="img" aria-label="Terminal showing the AerialDrop install command">
+          <div class="terminal__bar">
+            <span class="terminal__dot terminal__dot--r"></span>
+            <span class="terminal__dot terminal__dot--y"></span>
+            <span class="terminal__dot terminal__dot--g"></span>
+            <span class="terminal__title">install — zsh</span>
           </div>
-          <div class="app-mock__toolbar">
-            <span class="app-mock__seg app-mock__seg--on">Library</span>
-            <span class="app-mock__seg">Import</span>
-            <span class="app-mock__search"></span>
-          </div>
-          <div class="app-mock__grid">
-            <div class="app-mock__card app-mock__card--1">
-              <span class="app-mock__badge">Active</span>
-              <span class="app-mock__play"></span>
-              <span class="app-mock__label">Sunset Ridge</span>
-              <span class="app-mock__meta">3840&times;2160</span>
-            </div>
-            <div class="app-mock__card app-mock__card--2">
-              <span class="app-mock__label">Harbor</span>
-              <span class="app-mock__meta">2560&times;1440</span>
-            </div>
-            <div class="app-mock__card app-mock__card--3">
-              <span class="app-mock__label">Aurora</span>
-              <span class="app-mock__meta">3840&times;2160</span>
-            </div>
-            <div class="app-mock__card app-mock__card--4">
-              <span class="app-mock__label">Desert</span>
-              <span class="app-mock__meta">2560&times;1440</span>
-            </div>
-          </div>
-          <div class="app-mock__drop">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
-            Drop an MP4 or MOV here
+          <div class="terminal__body" id="termBody">
+            <p class="term-line term-line--cmd" data-copy="brew install --cask yapwh1208/tap/aerialdrop">
+              <span class="term-prompt">$</span>
+              <span class="term-cmd" id="termCmd"></span>
+              <button class="term-copy" type="button" data-copy="brew install --cask yapwh1208/tap/aerialdrop" title="Copy command">Copy</button>
+            </p>
+            <p class="term-line term-out is-hidden" id="termOut1"><span class="term-ok">==&gt;</span> Downloading AerialDrop-1.1.3-macOS.zip</p>
+            <p class="term-line term-out is-hidden" id="termOut2"><span class="term-ok">==&gt;</span> Moving AerialDrop.app to /Applications</p>
+            <p class="term-line term-out is-hidden" id="termOut3"><span class="term-ok">==&gt;</span> Clearing quarantine attribute</p>
+            <p class="term-line term-out is-hidden" id="termOut4"><span class="term-check">✓</span> aerialdrop 1.1.3 is ready. Open it, drop in a video.</p>
+            <p class="term-line term-cursor-wrap is-hidden" id="termCursor"><span class="term-prompt">$</span><span class="term-cursor"></span></p>
           </div>
         </div>
 
-        <div class="hero__cards">
-          <!-- Live release card (populated from the GitHub API by app.js) -->
-          <div class="glass-card release-card">
-            <div class="release-card__head">
-              <h2 class="release-card__title">Latest release</h2>
-              <span class="chip chip--accent" id="releaseTag">v1.1.3</span>
-            </div>
-            <dl class="release-card__meta">
-              <div><dt>Released</dt><dd id="releaseDate">checking&hellip;</dd></div>
-              <div><dt>Size</dt><dd id="releaseSize">checking&hellip;</dd></div>
-              <div><dt>Requires</dt><dd>macOS 26 (Tahoe)+</dd></div>
-            </dl>
-            <a class="btn btn--primary btn--block" href="https://github.com/YapWH1208/AerialDrop/releases/latest" id="releaseBtn">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
-              <span id="releaseBtnLabel">Get AerialDrop v1.1.3</span>
-            </a>
-            <button class="copy-line" data-copy="brew install --cask yapwh1208/tap/aerialdrop">
-              <code>$ brew install --cask yapwh1208/tap/aerialdrop</code>
-              <svg class="icon icon--copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
-            </button>
-            <p class="release-card__note">Ad-hoc signed, not notarized by Apple &mdash; see the <a href="#install">install notes</a>.</p>
-          </div>
-
-          <!-- System check card -->
-          <div class="glass-card os-card">
-            <h2 class="os-card__title">Compatibility check</h2>
-            <p class="os-card__text" id="osCheck">Checking your browser&hellip;</p>
-            <ul class="os-card__list">
-              <li>macOS Tahoe 26 or later</li>
-              <li>MP4 or MOV &middot; H.264 or HEVC</li>
-              <li>Any resolution or orientation</li>
-            </ul>
-          </div>
+        <div class="release-chip" id="releaseChip">
+          <span class="release-chip__tag" id="releaseTag">v1.1.3</span>
+          <span class="release-chip__meta"><span id="releaseSize">checking&hellip;</span> &middot; macOS 26+ &middot; <a href="https://github.com/YapWH1208/AerialDrop/releases/latest" target="_blank" rel="noopener" data-download>download</a></span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============ FEATURES ============ -->
-  <section class="section" id="features">
-    <div class="container">
+  <div class="spec-strip container reveal">
+    <dl>
+      <div><dt>Encoding</dt><dd>HEVC Main10 &middot; 30 fps &middot; 10-bit Rec.709</dd></div>
+      <div><dt>Loops</dt><dd>80 s &middot; sync samples at boundaries</dd></div>
+      <div><dt>Sources</dt><dd>MP4 / MOV &middot; H.264 / HEVC</dd></div>
+      <div><dt>Backups</dt><dd>Auto, before every write</dd></div>
+      <div><dt>License</dt><dd>MIT</dd></div>
+    </dl>
+  </div>
+
+  <!-- ============ SPECS ============ -->
+  <section class="section" id="specs">
+    <div class="container container--narrow">
       <header class="section__head reveal">
-        <p class="eyebrow">Why AerialDrop</p>
-        <h2>Native by design, not by emulation</h2>
-        <p class="section__sub">Every import becomes a first-class entry in Apple&rsquo;s own Aerial catalogue, so macOS treats your video exactly like the built-in ones.</p>
+        <h2>Built like Apple&rsquo;s own aerials</h2>
+        <p class="section__sub">Every import is re-encoded to the exact sample-group shape Tahoe expects, then registered as a first-class catalogue entry.</p>
       </header>
-      <div class="feature-grid">
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2.5"/><path d="M8 22h8M12 18v4"/></svg></span>
-          <h3>Native catalogue integration</h3>
-          <p>Imports become full Tahoe Aerial entries with HEIF previews, visible under <strong>AerialDrop</strong> in System Settings &rarr; Wallpaper.</p>
+      <div class="spec-grid">
+        <article class="spec reveal">
+          <span class="spec__name mono">Catalogue</span>
+          <p class="spec__value">Native entries</p>
+          <p class="spec__body">Imports appear under <strong>AerialDrop</strong> in System Settings &rarr; Wallpaper, with HEIF previews like the built-in aerials.</p>
         </article>
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h10a3 3 0 0 1 3 3V16a3 3 0 0 0 3 3H8a3 3 0 0 1-3-3V6.5Z"/><path d="M17 9.5h3v6.5a3 3 0 0 1-3 3"/><circle cx="7.5" cy="14.5" r="1"/></svg></span>
-          <h3>Native-compatible encoding</h3>
-          <p>Re-encodes to HEVC Main10, 30 fps, 10-bit Rec.709 with temporal sub-layers &mdash; matching the sample groups of Apple&rsquo;s own aerials, so lock/unlock playback stays smooth.</p>
+        <article class="spec reveal">
+          <span class="spec__name mono">Encoding</span>
+          <p class="spec__value">HEVC Main10</p>
+          <p class="spec__body">30 fps, 10-bit full-range YUV, Rec.709, temporal sub-layers with a 15 fps base layer and 1.9 s closed GOPs.</p>
         </article>
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14.5-4.7M20 12a8 8 0 0 1-14.5 4.7"/><path d="M18.5 3.5v3.8h-3.8M5.5 20.5v-3.8h3.8"/></svg></span>
-          <h3>Loop-safe passthrough repeats</h3>
-          <p>Sources shorter than 80 seconds are repeated by passthrough export with the loop snapped to whole 30 fps frames, so every loop boundary lands on a sync sample.</p>
+        <article class="spec reveal">
+          <span class="spec__name mono">Looping</span>
+          <p class="spec__value">Every boundary safe</p>
+          <p class="spec__body">Short sources are repeated by passthrough export with the loop snapped to whole 30 fps frames, so every loop lands on a sync sample.</p>
         </article>
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18 12h3M16.3 7.7l2.1-2.1"/><path d="M12 10a5 5 0 1 0 5 5"/><path d="M12 10v5l3.5 2"/></svg></span>
-          <h3>Automatic backups</h3>
-          <p>Every write to the catalogue manifest is backed up first. The last known-good catalogue state always survives at <code>aerials/AerialDropBackups</code>.</p>
+        <article class="spec reveal">
+          <span class="spec__name mono">Activation</span>
+          <p class="spec__value">One click</p>
+          <p class="spec__body">Imported aerials apply across all Spaces and displays; WallpaperAgent and WallpaperAerialsExtension are restarted and the change verified.</p>
         </article>
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5 7 9l3.5 3L17 6.5M17 6.5h-4M17 6.5V10.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/></svg></span>
-          <h3>Inline preview &amp; tuning</h3>
-          <p>The Import pane shows your source with a live 16:9 crop mask. Crop, quality, and output resolution are tuned in place &mdash; the source file is never modified.</p>
+        <article class="spec reveal">
+          <span class="spec__name mono">Safety</span>
+          <p class="spec__value">Reversible writes</p>
+          <p class="spec__body">Every catalogue write is backed up first, compares the file before writing, and can be restored from the Maintenance menu.</p>
         </article>
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span>
-          <h3>Controllable Library preview</h3>
-          <p>Installed wallpapers loop in a native preview sheet with a visible Play/Pause control that respects Reduced Motion.</p>
-        </article>
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M12 8v8"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg></span>
-          <h3>In-app activation</h3>
-          <p>Imported Aerials are applied across all Spaces and displays by default. Library also offers a manual <em>Set as Wallpaper</em> action and an Active status.</p>
-        </article>
-        <article class="feature-card reveal">
-          <span class="feature-card__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5a3.5 3.5 0 0 1 4 4"/><path d="M14.5 2.5a6.5 6.5 0 0 1 7 7"/><path d="M3 21l2.8-8.5a2 2 0 0 1 3.4-.6l3.2 3.9a2 2 0 0 0 2.9.2L20.5 13a2 2 0 0 1 2.8.4"/></svg></span>
-          <h3>Maintenance tools</h3>
-          <p>Validate the catalogue, open the storage folder, restore the latest backup, or remove all imported wallpapers &mdash; all from one menu.</p>
+        <article class="spec reveal">
+          <span class="spec__name mono">Source</span>
+          <p class="spec__value">Never touched</p>
+          <p class="spec__body">Your file is opened read-only. Crop, quality, and resolution are tuned in place with a live 16:9 preview mask.</p>
         </article>
       </div>
     </div>
   </section>
 
-  <!-- ============ HOW IT WORKS ============ -->
-  <section class="section" id="how">
+  <!-- ============ INSTALL ============ -->
+  <section class="section section--install" id="install">
     <div class="container">
-      <header class="section__head reveal">
-        <p class="eyebrow">How it works</p>
-        <h2>One import, seven steps</h2>
-        <p class="section__sub">Explore the pipeline behind every wallpaper. Press play to watch it run, or step through manually.</p>
+      <header class="section__head section__head--row reveal">
+        <div>
+          <h2>Install</h2>
+          <p class="section__sub">Four ways in. Copy a command, run it, then verify with the check step.</p>
+        </div>
+        <div class="platform-chip" id="osCheck" role="status">checking your platform&hellip;</div>
       </header>
 
-      <div class="how-layout">
+      <div class="installer reveal" id="installer">
+        <div class="installer__rail" role="tablist" aria-label="Installation methods">
+          <button class="method is-active" id="method-homebrew" role="tab" aria-selected="true" aria-controls="panel-homebrew" data-tab="panel-homebrew">
+            <span class="method__num">01</span>
+            <span class="method__label">Homebrew</span>
+            <span class="method__tag">recommended</span>
+          </button>
+          <button class="method" id="method-script" role="tab" aria-selected="false" aria-controls="panel-script" data-tab="panel-script">
+            <span class="method__num">02</span>
+            <span class="method__label">Install script</span>
+          </button>
+          <button class="method" id="method-release" role="tab" aria-selected="false" aria-controls="panel-release" data-tab="panel-release">
+            <span class="method__num">03</span>
+            <span class="method__label">Release zip</span>
+          </button>
+          <button class="method" id="method-source" role="tab" aria-selected="false" aria-controls="panel-source" data-tab="panel-source">
+            <span class="method__num">04</span>
+            <span class="method__label">Build from source</span>
+          </button>
+        </div>
+
+        <div class="installer__panel">
+          <!-- Homebrew -->
+          <div class="panel is-active" id="panel-homebrew" role="tabpanel" aria-labelledby="method-homebrew">
+            <div class="panel__head">
+              <h3>Homebrew cask</h3>
+              <p>The cask tracks new releases, so <code>brew upgrade --cask aerialdrop</code> keeps you current.</p>
+            </div>
+            <ol class="steps">
+              <li class="step">
+                <span class="step__num" aria-hidden="true">1</span>
+                <div class="step__content">
+                  <h4>Install the cask</h4>
+                  <div class="cmd">
+                    <pre><code>brew install --cask yapwh1208/tap/aerialdrop</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="brew install --cask yapwh1208/tap/aerialdrop">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>Verify it&rsquo;s in place</h4>
+                  <div class="cmd">
+                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code>AerialDrop.app</code> and the version:
+                  <button class="cmd__copy cmd__copy--inline" type="button" data-copy="defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString">Copy</button></p>
+                  <div class="cmd">
+                    <pre><code>defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code><span id="expectVersion">1.1.3</span></code></p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>To upgrade later</h4>
+                  <div class="cmd">
+                    <pre><code>brew update &amp;&amp; brew upgrade --cask aerialdrop</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="brew update && brew upgrade --cask aerialdrop">Copy</button>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Script -->
+          <div class="panel" id="panel-script" role="tabpanel" aria-labelledby="method-script" hidden>
+            <div class="panel__head">
+              <h3>Install script</h3>
+              <p>Downloads the latest release, verifies its sha256 checksum against the release metadata, installs to <code>/Applications</code>, and clears the quarantine.</p>
+            </div>
+            <ol class="steps">
+              <li class="step">
+                <span class="step__num" aria-hidden="true">1</span>
+                <div class="step__content">
+                  <h4>Fetch the script</h4>
+                  <div class="cmd">
+                    <pre><code>curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>Run it</h4>
+                  <div class="cmd">
+                    <pre><code>bash install.sh</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="bash install.sh">Copy</button>
+                  </div>
+                  <p class="expect">Options: <code>install.sh 1.1.3</code> pins a version &middot; <code>--open</code> launches after install &middot; <code>--force</code> replaces without asking &middot; <code>--install-dir &lt;path&gt;</code> sets the destination.</p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>Verify</h4>
+                  <div class="cmd">
+                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Release -->
+          <div class="panel" id="panel-release" role="tabpanel" aria-labelledby="method-release" hidden>
+            <div class="panel__head">
+              <h3>Release zip</h3>
+              <p>Grab <code>AerialDrop-&lt;version&gt;-macOS.zip</code> from the releases page, unzip, and drag the app into your Applications folder.</p>
+            </div>
+            <ol class="steps">
+              <li class="step">
+                <span class="step__num" aria-hidden="true">1</span>
+                <div class="step__content">
+                  <h4>Download</h4>
+                  <a class="btn btn--primary" href="https://github.com/YapWH1208/AerialDrop/releases/latest" data-download target="_blank" rel="noopener">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
+                    <span data-download-label>Go to Releases</span>
+                  </a>
+                  <p class="expect">Or extract from the terminal:</p>
+                  <div class="cmd">
+                    <pre id="unzipCmd"><code>unzip -q AerialDrop-1.1.3-macOS.zip -d /Applications</code></pre>
+                    <button class="cmd__copy" id="unzipCopy" type="button" data-copy="unzip -q AerialDrop-1.1.3-macOS.zip -d /Applications">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>First launch</h4>
+                  <p class="step__note">The app is ad-hoc signed, so Gatekeeper may ask the first time: right-click the app and choose <strong>Open</strong> once, or clear the quarantine:</p>
+                  <div class="cmd">
+                    <pre><code>xattr -dr com.apple.quarantine /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="xattr -dr com.apple.quarantine /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>Verify</h4>
+                  <div class="cmd">
+                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Source -->
+          <div class="panel" id="panel-source" role="tabpanel" aria-labelledby="method-source" hidden>
+            <div class="panel__head">
+              <h3>Build from source</h3>
+              <p>Requires Swift 6.2+ with the macOS 26 SDK (Xcode). The final app lands at <code>dist/AerialDrop.app</code>.</p>
+            </div>
+            <ol class="steps">
+              <li class="step">
+                <span class="step__num" aria-hidden="true">1</span>
+                <div class="step__content">
+                  <h4>Clone</h4>
+                  <div class="cmd">
+                    <pre><code>git clone https://github.com/YapWH1208/AerialDrop.git</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="git clone https://github.com/YapWH1208/AerialDrop.git">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>Build the release binary</h4>
+                  <div class="cmd">
+                    <pre><code>cd AerialDrop &amp;&amp; swift build -c release</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="cd AerialDrop && swift build -c release">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>Package the app</h4>
+                  <div class="cmd">
+                    <pre><code>Scripts/build-app.sh</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="Scripts/build-app.sh">Copy</button>
+                  </div>
+                  <p class="expect">Produces <code>dist/AerialDrop.app</code> (Info.plist + ad-hoc codesign, icon from Assets/).</p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">4</span>
+                <div class="step__content">
+                  <h4>Launch, then verify</h4>
+                  <div class="cmd">
+                    <pre><code>open -n dist/AerialDrop.app &amp;&amp; ls dist/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="open -n dist/AerialDrop.app && ls dist/AerialDrop.app">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code>AerialDrop.app</code> &mdash; the app is running.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <details class="notice reveal">
+        <summary>Before you install: the unsigned-app notice</summary>
+        <p>AerialDrop is ad-hoc signed and <strong>not notarized</strong> by Apple. The install methods above clear the macOS download quarantine, which disables Apple&rsquo;s malware check for this app; you are trusting the publisher instead of Apple. Only install from the official
+        <a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">YapWH1208/AerialDrop</a> repository, and audit the open-source code if you have concerns. The only way to get Apple&rsquo;s own verification is Developer ID notarization, which needs a paid Apple Developer account.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ PIPELINE ============ -->
+  <section class="section" id="pipeline">
+    <div class="container">
+      <header class="section__head reveal">
+        <h2>What happens when you import</h2>
+        <p class="section__sub">Seven steps, one pipeline. Press play to watch it run, or step through it manually.</p>
+      </header>
+
+      <div class="pipeline reveal" id="pipelineBox">
         <ol class="stepper" id="stepper">
-          <li class="stepper__step is-active">
-            <button class="stepper__node" data-step="0" aria-controls="stepPanel0" aria-current="step"><span>1</span> Choose</button>
-          </li>
-          <li class="stepper__step">
-            <button class="stepper__node" data-step="1" aria-controls="stepPanel1"><span>2</span> Validate</button>
-          </li>
-          <li class="stepper__step">
-            <button class="stepper__node" data-step="2" aria-controls="stepPanel2"><span>3</span> Compose</button>
-          </li>
-          <li class="stepper__step">
-            <button class="stepper__node" data-step="3" aria-controls="stepPanel3"><span>4</span> Encode</button>
-          </li>
-          <li class="stepper__step">
-            <button class="stepper__node" data-step="4" aria-controls="stepPanel4"><span>5</span> Preview</button>
-          </li>
-          <li class="stepper__step">
-            <button class="stepper__node" data-step="5" aria-controls="stepPanel5"><span>6</span> Register</button>
-          </li>
-          <li class="stepper__step">
-            <button class="stepper__node" data-step="6" aria-controls="stepPanel6"><span>7</span> Activate</button>
-          </li>
+          <li class="stepper__step is-active"><button class="stepper__node" data-step="0" aria-controls="stepPanel0" aria-current="step"><span>1</span>Choose</button></li>
+          <li class="stepper__step"><button class="stepper__node" data-step="1" aria-controls="stepPanel1"><span>2</span>Validate</button></li>
+          <li class="stepper__step"><button class="stepper__node" data-step="2" aria-controls="stepPanel2"><span>3</span>Compose</button></li>
+          <li class="stepper__step"><button class="stepper__node" data-step="3" aria-controls="stepPanel3"><span>4</span>Encode</button></li>
+          <li class="stepper__step"><button class="stepper__node" data-step="4" aria-controls="stepPanel4"><span>5</span>Preview</button></li>
+          <li class="stepper__step"><button class="stepper__node" data-step="5" aria-controls="stepPanel5"><span>6</span>Register</button></li>
+          <li class="stepper__step"><button class="stepper__node" data-step="6" aria-controls="stepPanel6"><span>7</span>Activate</button></li>
         </ol>
 
         <div class="step-stage">
           <div class="step-panel is-active" id="stepPanel0" role="group" aria-label="Step 1: Choose">
             <h3>Choose your video</h3>
-            <p>Pick any MP4 or MOV (H.264 or HEVC) &mdash; or drop it straight into the Import pane. You can review and tune the name, crop, quality, and output resolution before anything is written.</p>
+            <p>Pick any MP4 or MOV (H.264 or HEVC), or drop it straight into the Import pane. You can tune the name, crop, quality, and output resolution before anything is written.</p>
             <ul class="chips"><li class="chip">MP4 / MOV</li><li class="chip">H.264 / HEVC</li><li class="chip">Any orientation</li></ul>
           </div>
           <div class="step-panel" id="stepPanel1" role="group" aria-label="Step 2: Validate" hidden>
             <h3>Validate the source</h3>
-            <p>The source is checked for readable media, correct timing, and loop-ability. Sources under 80 seconds are fine &mdash; they are repeated by the composer.</p>
+            <p>The source is checked for readable media and correct timing. Sources under 80 seconds are fine, the composer repeats them.</p>
             <ul class="chips"><li class="chip">&ge; 79.5 s loops</li><li class="chip">Starts at PTS 0</li></ul>
           </div>
           <div class="step-panel" id="stepPanel2" role="group" aria-label="Step 3: Compose" hidden>
             <h3>Compose an 80-second loop</h3>
-            <p>A video-only composition is built. Short sources are repeated via passthrough export, with the loop duration snapped to whole 30 fps frames so every boundary is a sync sample.</p>
+            <p>A video-only composition is built. Short sources are repeated via passthrough export with the loop duration snapped to whole 30 fps frames, so every boundary is a sync sample.</p>
             <ul class="chips"><li class="chip">80 s duration</li><li class="chip">Whole-frame loops</li><li class="chip">Passthrough repeats</li></ul>
           </div>
           <div class="step-panel" id="stepPanel3" role="group" aria-label="Step 4: Encode" hidden>
             <h3>Encode HEVC Main10</h3>
-            <p>The composition is decoded with AVAssetReader and re-encoded to match Apple&rsquo;s own aerials: HEVC Main10, 30 fps, 10-bit full-range YUV, Rec.709, temporal sub-layers with a 15 fps base layer, and 1.9 s closed GOPs.</p>
+            <p>The composition is decoded with AVAssetReader and re-encoded to Apple&rsquo;s own shape: HEVC Main10, 30 fps, 10-bit full-range YUV, Rec.709, temporal sub-layers with a 15 fps base layer, and 1.9 s closed GOPs.</p>
             <ul class="chips"><li class="chip">HEVC Main10</li><li class="chip">30 fps</li><li class="chip">10-bit &middot; Rec.709</li><li class="chip">Base layer 15 fps</li><li class="chip">Closed GOP 1.9 s</li></ul>
           </div>
           <div class="step-panel" id="stepPanel4" role="group" aria-label="Step 5: Preview" hidden>
             <h3>Generate the preview frame</h3>
-            <p>A HEIF preview is generated at timestamp zero, the same way Apple&rsquo;s catalogue entries carry their thumbnails &mdash; so your wallpaper shows up properly in System Settings.</p>
+            <p>A HEIF preview is captured at timestamp zero, the same way Apple&rsquo;s catalogue entries carry their thumbnails, so your wallpaper shows up properly in System Settings.</p>
             <ul class="chips"><li class="chip">HEIF @ t=0</li></ul>
           </div>
           <div class="step-panel" id="stepPanel5" role="group" aria-label="Step 6: Register" hidden>
             <h3>Register in the catalogue</h3>
-            <p>The video and preview are written into Tahoe&rsquo;s private Aerial manifest as a full entry &mdash; after the current catalogue is automatically backed up to <code>aerials/AerialDropBackups</code>.</p>
+            <p>The video and preview are written into Tahoe&rsquo;s private Aerial manifest as a full entry, after the current catalogue is automatically backed up to <code>aerials/AerialDropBackups</code>.</p>
             <ul class="chips"><li class="chip">Backup first</li><li class="chip">Compare-before-write</li></ul>
           </div>
           <div class="step-panel" id="stepPanel6" role="group" aria-label="Step 7: Activate" hidden>
-            <h3>Activate &amp; refresh</h3>
+            <h3>Activate and refresh</h3>
             <p>The wallpaper is linked across all Spaces and displays, then <code>WallpaperAgent</code> and <code>WallpaperAerialsExtension</code> are restarted and the change is verified.</p>
             <ul class="chips"><li class="chip">Linked selection</li><li class="chip">Restart + verify</li></ul>
           </div>
@@ -302,152 +456,45 @@
             <p class="step-controls__status" id="stepStatus" role="status">Step 1 of 7 &middot; Choose</p>
           </div>
         </div>
-
-        <aside class="why-native reveal">
-          <h3>Why native matters</h3>
-          <ul>
-            <li><strong>No helper processes.</strong> Once imported, macOS plays your video with Apple&rsquo;s own pipeline &mdash; nothing of AerialDrop needs to keep running.</li>
-            <li><strong>Real transitions.</strong> The slow-down on unlock and the fade back to the desktop work exactly like Apple&rsquo;s built-in aerials.</li>
-            <li><strong>Power-friendly.</strong> Playback runs under the system&rsquo;s native wallpaper agent, not a third-party player.</li>
-          </ul>
-        </aside>
       </div>
     </div>
   </section>
 
-  <!-- ============ INSTALL ============ -->
-  <section class="section" id="install">
-    <div class="container">
+  <!-- ============ CHECKLIST ============ -->
+  <section class="section section--checklist" id="checklist">
+    <div class="container container--narrow">
       <header class="section__head reveal">
-        <p class="eyebrow">Install</p>
-        <h2>Three minutes to a custom sky</h2>
-        <p class="section__sub">Requires macOS Tahoe 26 or later. Source videos: MP4 or MOV, H.264 or HEVC.</p>
+        <h2>First wallpaper in five checks</h2>
+        <p class="section__sub">Tick each step as you go. Your progress is saved in this browser.</p>
       </header>
 
-      <div class="notice notice--warn reveal" role="note">
-        <strong>Heads up &mdash; unsigned app.</strong> AerialDrop is ad-hoc signed and <em>not notarized</em> by Apple. Installation clears the macOS download quarantine (disabling Apple&rsquo;s malware check for this app), so you are trusting the publisher instead of Apple. Only install from the official
-        <a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">YapWH1208/AerialDrop</a> repository, and audit the open-source code if you have concerns. The only way to get Apple&rsquo;s own verification is Developer ID notarization (paid Apple Developer account).
-      </div>
-
-      <div class="tabs reveal" id="installTabs">
-        <div class="tabs__list" role="tablist" aria-label="Installation methods">
-          <button class="tab is-active" id="tab-homebrew" role="tab" aria-selected="true" aria-controls="panel-homebrew" data-tab="panel-homebrew">Homebrew <span class="tab__tag">recommended</span></button>
-          <button class="tab" id="tab-script" role="tab" aria-selected="false" aria-controls="panel-script" data-tab="panel-script">Install script</button>
-          <button class="tab" id="tab-release" role="tab" aria-selected="false" aria-controls="panel-release" data-tab="panel-release">Release zip</button>
-          <button class="tab" id="tab-source" role="tab" aria-selected="false" aria-controls="panel-source" data-tab="panel-source">Build from source</button>
-        </div>
-
-        <div class="tab-panel is-active" id="panel-homebrew" role="tabpanel" aria-labelledby="tab-homebrew">
-          <p>One command, and the cask tracks new releases automatically &mdash; <code>brew upgrade --cask aerialdrop</code> keeps you current.</p>
-          <div class="code-block">
-            <button class="code-block__copy" type="button" data-copy="brew install --cask yapwh1208/tap/aerialdrop">Copy</button>
-            <pre><code>brew install --cask yapwh1208/tap/aerialdrop</code></pre>
-          </div>
-          <p class="tab-panel__hint">To upgrade later:</p>
-          <div class="code-block">
-            <button class="code-block__copy" type="button" data-copy="brew update && brew upgrade --cask aerialdrop">Copy</button>
-            <pre><code>brew update && brew upgrade --cask aerialdrop</code></pre>
-          </div>
-        </div>
-
-        <div class="tab-panel" id="panel-script" role="tabpanel" aria-labelledby="tab-script" hidden>
-          <p>Downloads the latest release, verifies its sha256 checksum against the release metadata, installs <code>AerialDrop.app</code> into /Applications, and clears the download quarantine.</p>
-          <div class="code-block">
-            <button class="code-block__copy" type="button" data-copy="curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh
-bash install.sh">Copy</button>
-            <pre><code>curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh
-bash install.sh</code></pre>
-          </div>
-          <p class="tab-panel__hint">Useful options: <code>install.sh 1.1.3</code> (pin a version), <code>--open</code> (launch after install), <code>--force</code> (replace without asking), <code>--install-dir &lt;path&gt;</code>.</p>
-        </div>
-
-        <div class="tab-panel" id="panel-release" role="tabpanel" aria-labelledby="tab-release" hidden>
-          <p>Download <code>AerialDrop-&lt;version&gt;-macOS.zip</code> from the <a href="https://github.com/YapWH1208/AerialDrop/releases" target="_blank" rel="noopener">Releases page</a>, unzip, and drag <code>AerialDrop.app</code> into your Applications folder.</p>
-          <p class="tab-panel__hint">It is ad-hoc signed, so if Gatekeeper complains the first time: right-click &rarr; Open once, or clear the quarantine with <code>xattr -dr com.apple.quarantine /Applications/AerialDrop.app</code>.</p>
-          <a class="btn btn--primary" href="https://github.com/YapWH1208/AerialDrop/releases/latest" id="releaseTabBtn">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
-            Go to Releases
-          </a>
-        </div>
-
-        <div class="tab-panel" id="panel-source" role="tabpanel" aria-labelledby="tab-source" hidden>
-          <p>Requires Swift 6.2+ with the macOS 26 SDK (Xcode). The binary lands at <code>.build/release/AerialDrop</code>.</p>
-          <div class="code-block">
-            <button class="code-block__copy" type="button" data-copy="git clone https://github.com/YapWH1208/AerialDrop.git
-cd AerialDrop
-swift build -c release
-Scripts/build-app.sh
-open -n dist/AerialDrop.app">Copy</button>
-            <pre><code>git clone https://github.com/YapWH1208/AerialDrop.git
-cd AerialDrop
-swift build -c release
-Scripts/build-app.sh   # builds a proper .app bundle
-open -n dist/AerialDrop.app</code></pre>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ USAGE ============ -->
-  <section class="section" id="usage">
-    <div class="container">
-      <header class="section__head reveal">
-        <p class="eyebrow">Usage</p>
-        <h2>From video to live wallpaper</h2>
-        <p class="section__sub">AerialDrop handles the plumbing &mdash; you handle the footage.</p>
-      </header>
-      <ol class="steps">
-        <li class="step-card reveal">
-          <span class="step-card__num">1</span>
-          <h3>Set up Apple Aerials</h3>
-          <p>Open System Settings &rarr; Wallpaper and download at least one Apple Aerial. If the native catalogue isn&rsquo;t ready, AerialDrop shows <strong>Open Wallpaper Settings</strong> and <strong>Check Again</strong> instead of an empty Library.</p>
-        </li>
-        <li class="step-card reveal">
-          <span class="step-card__num">2</span>
-          <h3>Choose &amp; configure</h3>
-          <p>Use <strong>Choose Video&hellip;</strong> or drop an MP4/MOV in the Import pane, then review name, crop, quality, and output resolution. The source file is never modified. <em>Set as wallpaper after importing</em> is on by default.</p>
-        </li>
-        <li class="step-card reveal">
-          <span class="step-card__num">3</span>
-          <h3>Import</h3>
-          <p>Press the persistent <strong>Import Wallpaper</strong> action or Command-Return. Progress stays visible even when the form is scrolled; cancel is offered while it&rsquo;s still safe. Once installation starts, AerialDrop finishes.</p>
-        </li>
-        <li class="step-card reveal">
-          <span class="step-card__num">4</span>
-          <h3>Continue</h3>
-          <p>The completion summary tells you whether the wallpaper was activated everywhere or installed without changing the desktop. Choose <strong>View in Library</strong> or <strong>Import Another</strong>.</p>
-        </li>
-        <li class="step-card reveal">
-          <span class="step-card__num">5</span>
-          <h3>Quit</h3>
-          <p>AerialDrop can be quit after setup &mdash; macOS handles playback natively. The Maintenance menu stays available for validating the catalogue, opening the storage folder, restoring a backup, or removing everything.</p>
-        </li>
-      </ol>
-    </div>
-  </section>
-
-  <!-- ============ SAFETY ============ -->
-  <section class="section" id="safety">
-    <div class="container">
-      <header class="section__head reveal">
-        <p class="eyebrow">Safety &amp; compatibility</p>
-        <h2>Your catalogue, guarded</h2>
-        <p class="section__sub">AerialDrop writes into a private Apple data format &mdash; so it writes defensively.</p>
-      </header>
-      <div class="safety-grid">
-        <article class="safety-card reveal">
-          <h3>Backup before every write</h3>
-          <p>Manifest writes back up first to <code>aerials/AerialDropBackups</code>; linked-selection writes use separate binary-plist backups under <code>Store/AerialDropBackups</code> and refuse concurrent changes.</p>
-        </article>
-        <article class="safety-card reveal">
-          <h3>Restore when you need it</h3>
-          <p><strong>Restore Latest Backup</strong> replaces the catalogue with the newest AerialDrop backup &mdash; and refuses if Apple&rsquo;s catalogue changed since the backup, so it never clobbers a newer system state.</p>
-        </article>
-        <article class="safety-card reveal">
-          <h3>A private format, treated with respect</h3>
-          <p>The Aerial catalogue and its processes are not a public API. A future macOS update may change the manifest schema and require an AerialDrop update &mdash; that&rsquo;s why every change is reversible.</p>
-        </article>
+      <div class="checklist reveal" id="checklistBox">
+        <div class="checklist__progress" aria-hidden="true"><span id="checkProgress"></span></div>
+        <p class="checklist__count" id="checkCount" role="status">0 of 5 done</p>
+        <ol class="checklist__list">
+          <li class="check">
+            <input type="checkbox" id="ck1">
+            <label for="ck1"><strong>Set up Apple Aerials.</strong> Open System Settings &rarr; Wallpaper and download at least one Apple Aerial. If the catalogue isn&rsquo;t ready, AerialDrop offers Open Wallpaper Settings and Check Again instead of an empty Library.</label>
+          </li>
+          <li class="check">
+            <input type="checkbox" id="ck2">
+            <label for="ck2"><strong>Choose a video.</strong> Use Choose Video&hellip; or drop an MP4/MOV into the Import pane. H.264 or HEVC, any length, any resolution.</label>
+          </li>
+          <li class="check">
+            <input type="checkbox" id="ck3">
+            <label for="ck3"><strong>Tune it.</strong> Review the name, crop (live 16:9 mask), quality, and output resolution. Your source file is never modified.</label>
+          </li>
+          <li class="check">
+            <input type="checkbox" id="ck4">
+            <label for="ck4"><strong>Import.</strong> Press the persistent Import Wallpaper action or Command-Return. Progress stays visible while the form is scrolled.</label>
+          </li>
+          <li class="check">
+            <input type="checkbox" id="ck5">
+            <label for="ck5"><strong>Quit.</strong> AerialDrop can be quit after setup, macOS plays your wallpaper natively. The Maintenance menu keeps backups, validation, and removal available.</label>
+          </li>
+        </ol>
+        <p class="checklist__done is-hidden" id="checkDone">All five done. Your desktop is flying. macOS keeps playing it; AerialDrop is just watching.</p>
+        <button class="link-btn" id="checkReset" type="button">Reset checklist</button>
       </div>
     </div>
   </section>
@@ -456,41 +503,36 @@ open -n dist/AerialDrop.app</code></pre>
   <section class="section" id="faq">
     <div class="container container--narrow">
       <header class="section__head reveal">
-        <p class="eyebrow">FAQ</p>
         <h2>Questions, answered</h2>
       </header>
-      <div class="faq">
-        <details class="faq__item reveal">
-          <summary>Does AerialDrop modify my original video file?</summary>
+      <div class="faq reveal">
+        <details class="faq__item">
+          <summary>Does AerialDrop modify my original video?</summary>
           <p>No. Your source is opened read-only and never touched. A re-encoded copy is installed into the wallpaper catalogue.</p>
         </details>
-        <details class="faq__item reveal">
+        <details class="faq__item">
           <summary>Why does my video need re-encoding at all?</summary>
           <p>Tahoe&rsquo;s native player expects HEVC Main10 with temporal sub-layers (a 15 fps base layer at 30 fps) and sync samples at loop boundaries. Without that shape, the unlock transition can fail with <code>VideoSampleReadingErrors</code> and leave a black desktop. AerialDrop encodes to exactly the shape Apple&rsquo;s own aerials use.</p>
         </details>
-        <details class="faq__item reveal">
-          <summary>My video is shorter than 80 seconds &mdash; will it work?</summary>
+        <details class="faq__item">
+          <summary>My video is shorter than 80 seconds. Will it work?</summary>
           <p>Yes. Short sources are encoded once, then repeated via passthrough export. The loop duration is snapped to whole 30 fps frames so every loop boundary lands on a sync sample.</p>
         </details>
-        <details class="faq__item reveal">
-          <summary>What if a future macOS update changes the catalogue format?</summary>
-          <p>The catalogue is a private API, so it could change. Every write is backed up first, <strong>Restore Latest Backup</strong> can put the catalogue back, and a future update may require an AerialDrop update.</p>
-        </details>
-        <details class="faq__item reveal">
+        <details class="faq__item">
           <summary>Is the app signed or notarized?</summary>
-          <p>It is ad-hoc signed and <strong>not notarized</strong>. Gatekeeper may complain on first launch &mdash; right-click &rarr; Open once, or clear the quarantine. Only install from the official repository, and audit the open-source code if you have concerns.</p>
+          <p>It is ad-hoc signed and not notarized. Gatekeeper may complain on first launch: right-click and choose Open once, or clear the quarantine. Only install from the official repository, and audit the open-source code if you have concerns.</p>
         </details>
-        <details class="faq__item reveal">
+        <details class="faq__item">
           <summary>Does AerialDrop need to keep running after setup?</summary>
           <p>No. Once a wallpaper is imported, macOS plays it natively. AerialDrop is only needed for importing and managing the catalogue.</p>
         </details>
-        <details class="faq__item reveal">
+        <details class="faq__item">
           <summary>Where are my wallpapers stored?</summary>
-          <p>Inside <code>~/Library/Application Support/com.apple.wallpaper/aerials/</code>, with backups under <code>aerials/AerialDropBackups</code> and <code>Store/AerialDropBackups</code>. Use <strong>Open Aerial Storage Folder</strong> from the Maintenance menu to get there.</p>
+          <p>Inside <code>~/Library/Application Support/com.apple.wallpaper/aerials/</code>, with backups under <code>aerials/AerialDropBackups</code> and <code>Store/AerialDropBackups</code>. Use Open Aerial Storage Folder from the Maintenance menu to get there.</p>
         </details>
-        <details class="faq__item reveal">
-          <summary>Can I remove everything again?</summary>
-          <p>Yes &mdash; <strong>Maintenance &rarr; Remove All AerialDrop Wallpapers</strong> clears the imported entries, and any removal is backed up first. You can also manage entries in System Settings &rarr; Wallpaper.</p>
+        <details class="faq__item">
+          <summary>What if a future macOS update changes the catalogue format?</summary>
+          <p>The catalogue is a private API, so it could change. Every write is backed up first, Restore Latest Backup can put the catalogue back, and a future update may require an AerialDrop update.</p>
         </details>
       </div>
     </div>
@@ -500,9 +542,9 @@ open -n dist/AerialDrop.app</code></pre>
   <section class="cta">
     <div class="container cta__inner reveal">
       <h2>Bring your own skies.</h2>
-      <p>Turn a flight, a hike, a city at night &mdash; anything you shot &mdash; into a living Tahoe wallpaper.</p>
+      <p>Turn a flight, a hike, a city at night, anything you shot, into a living Tahoe wallpaper.</p>
       <div class="cta__actions">
-        <a class="btn btn--primary btn--lg" href="https://github.com/YapWH1208/AerialDrop/releases/latest" id="ctaDownloadBtn">Download for macOS</a>
+        <a class="btn btn--primary btn--lg" href="#install">Install</a>
         <a class="btn btn--glass btn--lg" href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">Star on GitHub</a>
       </div>
     </div>
@@ -513,7 +555,7 @@ open -n dist/AerialDrop.app</code></pre>
   <div class="container footer-grid">
     <div class="footer-brand">
       <a class="brand" href="#top">
-        <img class="brand__icon" src="assets/icon.png" alt="" width="32" height="32">
+        <img class="brand__icon" src="assets/icon.svg" alt="" width="28" height="28">
         <span class="brand__name">AerialDrop</span>
       </a>
       <p>Import your own videos into macOS Tahoe&rsquo;s native Aerial catalogue. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/LICENSE" target="_blank" rel="noopener">MIT licensed</a>.</p>
