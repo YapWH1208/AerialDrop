@@ -1,11 +1,47 @@
 import Foundation
 
+enum LibrarySortOrder: String, CaseIterable {
+    case title
+    case recentlyAdded
+}
+
+extension [ManagedWallpaper] {
+    /// The Library's ordering: title (localized, the manifest's natural order)
+    /// or Recently Added (import order descending, titles breaking ties).
+    func sortedForLibrary(_ order: LibrarySortOrder) -> [ManagedWallpaper] {
+        switch order {
+        case .title:
+            return self
+        case .recentlyAdded:
+            return sorted { lhs, rhs in
+                let lhsOrder = lhs.preferredOrder ?? Int.min
+                let rhsOrder = rhs.preferredOrder ?? Int.min
+                if lhsOrder != rhsOrder {
+                    return lhsOrder > rhsOrder
+                }
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+        }
+    }
+}
+
+/// A user-facing alert with a workflow- and outcome-scoped title, so the
+/// user can tell what happened (and whether it was a failure) at a glance
+/// instead of reading a body under a generic app-name heading.
+struct AppAlert: Equatable {
+    let title: String
+    let message: String
+}
+
 struct ManagedWallpaper: Identifiable, Hashable {
     let id: String
     let title: String
     let videoURL: URL
     let thumbnailURL: URL
     var resolution: CGSize? = nil
+    /// Import order from the manifest (higher = added more recently), used
+    /// for the Library's "Recently Added" sort. Nil for entries without it.
+    var preferredOrder: Int? = nil
 
     var videoExists: Bool {
         FileManager.default.fileExists(atPath: videoURL.path)
@@ -154,7 +190,7 @@ enum AerialDropError: LocalizedError {
         case .incompatibleExportCodec:
             return "The exported MOV is not HEVC, so it was not installed."
         case .incompatibleSourceCodec:
-            return "The source video must use H.264 or HEVC."
+            return "The source video must use H.264 or HEVC. Convert or re-export the video in that format, then import it again."
         case .passthroughUnavailable:
             return "macOS could not export this source as a native HEVC MOV."
         case .installedFileMissing(let url):
@@ -172,7 +208,7 @@ enum AerialDropError: LocalizedError {
         case .main10EncodingUnavailable:
             return "This Mac could not initialize the HEVC Main10 encoder required for reliable Tahoe Aerial playback."
         case .manifestChangedDuringOperation:
-            return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close Wallper and System Settings, then try again."
+            return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close System Settings and any other wallpaper app, then try again."
         case .foreignManifestDataChanged(let description):
             return "AerialDrop refused to write because the change would alter \(description)."
         case .missingWallpaperSelectionStore(let url):

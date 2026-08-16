@@ -14,6 +14,7 @@ struct WallpaperPreviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPlaying = false
     @State private var wasPlayingBeforeReduceMotion = false
+    @State private var playbackState: LoopPlaybackState = .loading
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -67,10 +68,37 @@ struct WallpaperPreviewView: View {
 
     @ViewBuilder
     private var playerArea: some View {
-        if FileManager.default.fileExists(atPath: wallpaper.videoURL.path) {
+        if !FileManager.default.fileExists(atPath: wallpaper.videoURL.path) {
+            ContentUnavailableView {
+                Label("Video Missing", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text("The installed video file could not be found on disk.")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if playbackState == .failed {
+            ContentUnavailableView {
+                Label("Couldn’t Play Preview", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text("The installed video could not be played. It may have been moved, deleted, or damaged — the catalogue entry is untouched.")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
             ZStack(alignment: .bottomLeading) {
-                LoopPlayerView(url: wallpaper.videoURL, isPlaying: isPlaying)
-                    .accessibilityLabel(previewAccessibilityLabel)
+                LoopPlayerView(url: wallpaper.videoURL, isPlaying: isPlaying) { state in
+                    playbackState = state
+                }
+                .accessibilityLabel(previewAccessibilityLabel)
+
+                if playbackState == .loading {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                        Text("Loading preview…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
 
                 Button(
                     isPlaying ? "Pause Preview" : "Play Preview",
@@ -92,13 +120,6 @@ struct WallpaperPreviewView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(.separator, lineWidth: 0.5)
             }
-        } else {
-            ContentUnavailableView {
-                Label("Video Missing", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text("The installed video file could not be found on disk.")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

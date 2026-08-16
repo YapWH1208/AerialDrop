@@ -2,6 +2,36 @@ import XCTest
 @testable import AerialDrop
 
 final class ConversionOptionsTests: XCTestCase {
+    func testLoopDescriptionStatesTrimForLongSources() {
+        XCTAssertEqual(loopDescription(sourceDuration: 300), "First 1:20 of the source, looped")
+        XCTAssertEqual(loopDescription(sourceDuration: 80), "First 1:20 of the source, looped")
+    }
+
+    func testLoopDescriptionStatesRepeatForShortSources() {
+        XCTAssertEqual(loopDescription(sourceDuration: 12), "Whole video, repeated to fill 1:20")
+        XCTAssertEqual(loopDescription(sourceDuration: 79.9), "Whole video, repeated to fill 1:20")
+    }
+
+    func testLoopDescriptionFallsBackWithoutADuration() {
+        XCTAssertEqual(loopDescription(sourceDuration: nil), "80-second loop")
+        XCTAssertEqual(loopDescription(sourceDuration: 0), "80-second loop")
+        XCTAssertEqual(loopDescription(sourceDuration: .nan), "80-second loop")
+    }
+
+    func testApplicableHeightCapKeepsOnlyDownscalingCaps() {
+        // 1080p source: its natural 16:9 window is 1080 tall.
+        let source = CGSize(width: 1920, height: 1080)
+        XCTAssertEqual(applicableHeightCap(1080, sourceSize: source), nil)
+        XCTAssertEqual(applicableHeightCap(2160, sourceSize: source), nil)
+        XCTAssertEqual(applicableHeightCap(nil, sourceSize: source), nil)
+    }
+
+    func testApplicableHeightCapKeepsSmallerCaps() {
+        let source = CGSize(width: 3840, height: 2160)
+        XCTAssertEqual(applicableHeightCap(1440, sourceSize: source), 1440)
+        XCTAssertEqual(applicableHeightCap(1080, sourceSize: source), 1080)
+    }
+
     func testCropPanCenterIsZero() {
         XCTAssertEqual(
             cropPan(cropOffset: 0.5, sourceSize: CGSize(width: 3440, height: 1440), renderSize: CGSize(width: 1920, height: 1080)),

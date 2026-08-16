@@ -36,4 +36,33 @@ final class AppPreferencesTests: XCTestCase {
 
         XCTAssertTrue(AppPreferences.isSetWallpaperAfterImportEnabled(defaults: defaults))
     }
+
+    func testLastConversionQualityRoundTrips() {
+        XCTAssertNil(AppPreferences.lastConversionQuality(defaults: defaults))
+
+        AppPreferences.setLastConversionQuality(.high, defaults: defaults)
+
+        XCTAssertEqual(AppPreferences.lastConversionQuality(defaults: defaults), .high)
+    }
+
+    func testLastConversionQualityIgnoresUnknownRawValues() {
+        defaults.set("ultra", forKey: AppPreferences.lastConversionQualityKey)
+
+        XCTAssertNil(AppPreferences.lastConversionQuality(defaults: defaults))
+    }
+
+    func testLastOutputHeightCapRoundTrips() {
+        XCTAssertNil(AppPreferences.lastOutputHeightCap(defaults: defaults))
+
+        AppPreferences.setLastOutputHeightCap(1440, defaults: defaults)
+
+        XCTAssertEqual(AppPreferences.lastOutputHeightCap(defaults: defaults), 1440)
+    }
+
+    func testLastOutputHeightCapClearsOnNil() {
+        AppPreferences.setLastOutputHeightCap(1440, defaults: defaults)
+        AppPreferences.setLastOutputHeightCap(nil, defaults: defaults)
+
+        XCTAssertNil(AppPreferences.lastOutputHeightCap(defaults: defaults))
+    }
 }

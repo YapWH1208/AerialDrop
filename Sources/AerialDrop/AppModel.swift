@@ -13,7 +13,7 @@ final class AppModel {
     var catalogueState: CatalogueState = .loading
     var stage: ImportStage = .idle
     var isWorking = false
-    var alertMessage: String?
+    var activeAlert: AppAlert?
     var showingFileImporter = false
     var importProgress: Double = 0
     var importOutcome: ImportOutcome?
@@ -22,7 +22,12 @@ final class AppModel {
     var conversionQuality: ConversionOptions.Quality = .standard
     var outputHeightCap: Int? = nil
     var sourceResolution: CGSize?
+    var sourceDuration: Double?
     var activeAerialAssetIDs: Set<String> = []
+    /// True when the wallpaper selection store could not be read, so Active
+    /// badges may be out of date. Removal stays permissive (an unreadable
+    /// store means no selection can be verified) — this only adds honesty.
+    var isSelectionStatusUnknown = false
     var activationFailure: ManagedWallpaper?
     var activationFailureMessage: String?
     /// Human-readable label of the Library operation currently in progress
@@ -43,6 +48,7 @@ final class AppModel {
     private let videoProcessor = VideoProcessor()
     private let systemService: any WallpaperServicing
     private let automaticActivationEnabled: () -> Bool
+    private let preferencesDefaults: UserDefaults
 
     init(
         paths: WallpaperPaths = WallpaperPaths(),
@@ -50,7 +56,8 @@ final class AppModel {
         automaticallyReload: Bool = true,
         automaticActivationEnabled: @escaping () -> Bool = {
             AppPreferences.isSetWallpaperAfterImportEnabled()
-        }
+        },
+        preferencesDefaults: UserDefaults = .standard
     ) {
         self.paths = paths
         manifestStore = ManifestStore(paths: paths)
@@ -58,6 +65,7 @@ final class AppModel {
             selectionStore: WallpaperSelectionStore(paths: paths)
         )
         self.automaticActivationEnabled = automaticActivationEnabled
+        self.preferencesDefaults = preferencesDefaults
         if automaticallyReload {
             Task { await reload() }
         }
@@ -119,9 +127,12 @@ final class AppModel {
         selectedVideo = url
         importOutcome = nil
         cropOffset = 0.5
-        conversionQuality = .standard
-        outputHeightCap = nil
+        // Seed from the most recent import so repeated importers keep their
+        // quality/resolution choices; crop stays per-video (content-specific).
+        conversionQuality = AppPreferences.lastConversionQuality(defaults: preferencesDefaults) ?? .standard
+        outputHeightCap = AppPreferences.lastOutputHeightCap(defaults: preferencesDefaults)
         sourceResolution = nil
+        sourceDuration = nil
         isSelectedVideoValid = false
         Task {
             let access = url.startAccessingSecurityScopedResource()
@@ -131,7 +142,10 @@ final class AppModel {
                 try await videoProcessor.validate(source: url)
             } catch {
                 guard version == selectionVersion else { return }
-                alertMessage = error.localizedDescription
+                activeAlert = AppAlert(
+                    title: "Couldn’t Use This Video",
+                    message: error.localizedDescription
+                )
                 selectedVideo = nil
                 title = ""
                 isSelectedVideoValid = false
@@ -146,6 +160,16 @@ final class AppModel {
             // validation — the import pipeline loads the same track metadata
             // again and surfaces its own errors there.
             let asset = AVURLAsset(url: url)
+            // Prefer the duration the encoder can actually use (skipping
+            // leading unrenderable samples) so the Loop row states the same
+            // trim-versus-repeat decision the encode will make.
+            let effective = await videoProcessor.effectiveSourceDuration(for: url)
+            let fallback = try? await asset.load(.duration).seconds
+            let seconds = effective ?? fallback
+            if let seconds, seconds.isFinite, seconds > 0 {
+                guard version == selectionVersion else { return }
+                sourceDuration = seconds
+            }
             guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
             guard let naturalSize = try? await track.load(.naturalSize) else { return }
             guard let preferredTransform = try? await track.load(.preferredTransform) else { return }
@@ -160,6 +184,9 @@ final class AppModel {
             if transformedSize.width.isFinite, transformedSize.height.isFinite,
                transformedSize.width > 0, transformedSize.height > 0 {
                 sourceResolution = transformedSize
+                // A remembered cap that this source would not downscale shows
+                // no picker selection; fall back to Original for it.
+                outputHeightCap = applicableHeightCap(outputHeightCap, sourceSize: transformedSize)
             }
         }
     }
@@ -173,9 +200,17 @@ final class AppModel {
         guard isSelectedVideoValid, let source = selectedVideo else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
-            alertMessage = AerialDropError.invalidTitle.localizedDescription
+            activeAlert = AppAlert(
+                title: "Couldn’t Import the Video",
+                message: AerialDropError.invalidTitle.localizedDescription
+            )
             return
         }
+
+        // Remember the choices this import commits to, so the next video
+        // starts from them.
+        AppPreferences.setLastConversionQuality(conversionQuality, defaults: preferencesDefaults)
+        AppPreferences.setLastOutputHeightCap(outputHeightCap, defaults: preferencesDefaults)
 
         importTask?.cancel()
         importGeneration += 1
@@ -256,7 +291,10 @@ final class AppModel {
                 stage = .idle
                 importProgress = 0
                 guard !Task.isCancelled else { return }
-                alertMessage = error.localizedDescription
+                activeAlert = AppAlert(
+                    title: "Couldn’t Import the Video",
+                    message: error.localizedDescription
+                )
             }
         }
     }
@@ -269,7 +307,10 @@ final class AppModel {
                 try manifestStore.renameWallpaper(id: wallpaper.id, title: cleanTitle)
                 await reload()
             } catch {
-                alertMessage = error.localizedDescription
+                activeAlert = AppAlert(
+                    title: "Couldn’t Rename Wallpaper",
+                    message: error.localizedDescription
+                )
             }
         }
     }
@@ -277,6 +318,12 @@ final class AppModel {
     func remove(_ wallpaper: ManagedWallpaper) {
         Task {
             await removeWallpaper(wallpaper)
+        }
+    }
+
+    func remove(_ wallpapers: [ManagedWallpaper]) {
+        Task {
+            await removeWallpapers(wallpapers)
         }
     }
 
@@ -299,13 +346,64 @@ final class AppModel {
             await systemService.refresh()
             await reload()
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Couldn’t Remove Wallpaper",
+                message: error.localizedDescription
+            )
         }
     }
 
     func removeAll() {
         Task {
             await removeAllWallpapers()
+        }
+    }
+
+    /// Removes several wallpapers in one confirmed operation. Each removal is
+    /// its own backed-up manifest mutation; a failure partway through keeps
+    /// the already-removed items removed and still refreshes the catalogue.
+    func removeWallpapers(_ wallpapers: [ManagedWallpaper]) async {
+        let ids = Set(wallpapers.map(\.id))
+        guard !ids.isEmpty else { return }
+        isWorking = true
+        operationLabel = "Removing \(ids.count) wallpapers…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
+        do {
+            refreshActiveSelectionForRemoval()
+            guard activeAerialAssetIDs.isDisjoint(with: ids) else {
+                throw AerialDropError.activeWallpaperCannotBeRemoved
+            }
+            var firstError: Error?
+            var removedCount = 0
+            for id in ids.sorted() {
+                do {
+                    try manifestStore.removeWallpaper(id: id)
+                    removedCount += 1
+                } catch {
+                    firstError = firstError ?? error
+                }
+            }
+            if let highlight = pendingLibraryHighlightID, ids.contains(highlight) {
+                pendingLibraryHighlightID = nil
+            }
+            await systemService.refresh()
+            await reload()
+            if let firstError {
+                // State exactly how far the bulk removal got so the outcome
+                // never contradicts the confirmed "Remove N" promise.
+                activeAlert = AppAlert(
+                    title: "Couldn’t Remove Wallpapers",
+                    message: "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError.localizedDescription)"
+                )
+            }
+        } catch {
+            activeAlert = AppAlert(
+                title: "Couldn’t Remove Wallpapers",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -327,7 +425,10 @@ final class AppModel {
             await systemService.refresh()
             await reload()
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Couldn’t Remove Wallpapers",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -342,7 +443,12 @@ final class AppModel {
             wallpapers = []
             catalogueState = .unavailable(error.localizedDescription)
         }
-        try? refreshActiveSelection()
+        do {
+            try refreshActiveSelection()
+            isSelectionStatusUnknown = false
+        } catch {
+            isSelectionStatusUnknown = true
+        }
     }
 
     /// Removes leftover AerialDrop encode temp files (e.g. after the app was
@@ -444,9 +550,15 @@ final class AppModel {
     func validateCatalogue() {
         do {
             try manifestStore.validateCurrentManifest()
-            alertMessage = "The current Aerial catalogue is valid and ready to use."
+            activeAlert = AppAlert(
+                title: "Catalogue Valid",
+                message: "The current Aerial catalogue is valid and ready to use."
+            )
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Catalogue Problem",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -471,14 +583,23 @@ final class AppModel {
         }
         do {
             guard let info = manifestStore.latestBackup() else {
-                alertMessage = "No AerialDrop backups were found."
+                activeAlert = AppAlert(
+                    title: "No Backups Found",
+                    message: "No AerialDrop backups were found."
+                )
                 return
             }
             try manifestStore.restoreBackup(info)
             await reload()
-            alertMessage = "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
+            activeAlert = AppAlert(
+                title: "Catalogue Restored",
+                message: "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
+            )
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Restore Failed",
+                message: error.localizedDescription
+            )
         }
     }
 

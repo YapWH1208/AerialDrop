@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var preImportDestination: AppDestination?
     @State private var confirmation: ConfirmationKind?
     @State private var alertPresented = false
+    @State private var alertTitle = "AerialDrop"
     @State private var alertMessage: String?
 
     var body: some View {
@@ -48,7 +49,7 @@ struct ContentView: View {
                 maintenanceMenu
             }
         }
-        .alert("AerialDrop", isPresented: $alertPresented) { } message: {
+        .alert(alertTitle, isPresented: $alertPresented) { } message: {
             Text(alertMessage ?? "")
         }
         .alert(
@@ -66,15 +67,16 @@ struct ContentView: View {
                 ?? "You can retry or choose it in System Settings."
             Text("AerialDrop kept its imported video and catalogue entry, but could not apply it as wallpaper. \(failureMessage)")
         }
-        .onChange(of: model.alertMessage) { _, newValue in
+        .onChange(of: model.activeAlert) { _, newValue in
             if let newValue {
-                alertMessage = newValue
+                alertTitle = newValue.title
+                alertMessage = newValue.message
                 alertPresented = true
             }
         }
         .onChange(of: alertPresented) { _, presented in
-            if !presented && model.alertMessage != nil {
-                model.alertMessage = nil
+            if !presented && model.activeAlert != nil {
+                model.activeAlert = nil
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -117,7 +119,10 @@ struct ContentView: View {
                     }
                     preImportDestination = nil
                 } else {
-                    model.alertMessage = error.localizedDescription
+                    model.activeAlert = AppAlert(
+                        title: "Couldn’t Choose a Video",
+                        message: error.localizedDescription
+                    )
                 }
             }
         }
@@ -251,7 +256,10 @@ struct ContentView: View {
                 if let info = model.latestBackupInfo() {
                     confirmation = .restore(info)
                 } else {
-                    model.alertMessage = "No AerialDrop backups were found."
+                    model.activeAlert = AppAlert(
+                        title: "No Backups Found",
+                        message: "No AerialDrop backups were found."
+                    )
                 }
             }
             .disabled(model.isWorking)

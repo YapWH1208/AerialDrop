@@ -74,6 +74,31 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.selectedVideo, url)
     }
 
+    func testChoosingANewSourceSeedsRememberedConversionChoices() throws {
+        let suiteName = "AerialDropSeedingTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        AppPreferences.setLastConversionQuality(.maximum, defaults: defaults)
+        AppPreferences.setLastOutputHeightCap(1440, defaults: defaults)
+        let model = makeModel(service: FakeWallpaperService(), preferencesDefaults: defaults)
+
+        model.chooseVideo(URL(fileURLWithPath: "/tmp/beach.mp4"))
+
+        XCTAssertEqual(model.conversionQuality, .maximum)
+        XCTAssertEqual(model.outputHeightCap, 1440)
+        // Crop stays per-video.
+        XCTAssertEqual(model.cropOffset, 0.5)
+    }
+
+    func testChoosingANewSourceWithoutRememberedChoicesFallsBackToDefaults() {
+        let model = makeModel(service: FakeWallpaperService())
+
+        model.chooseVideo(URL(fileURLWithPath: "/tmp/beach.mp4"))
+
+        XCTAssertEqual(model.conversionQuality, .standard)
+        XCTAssertNil(model.outputHeightCap)
+    }
+
     func testDisplayProgressIsMonotonicAcrossEveryStageTransition() {
         let model = makeModel(service: FakeWallpaperService())
 
@@ -135,7 +160,7 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.activatedAssetIDs, [wallpaper.id])
         XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
         XCTAssertFalse(model.isWorking)
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
     }
 
     func testActivationExposesOperationLabelWhileWorking() async throws {
@@ -175,7 +200,7 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.activeAerialAssetIDs, Set(["CURRENT-AERIAL"]))
         XCTAssertEqual(model.activationFailure, wallpaper)
         XCTAssertEqual(model.activationFailureMessage, TestError.activationFailed.localizedDescription)
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
         XCTAssertFalse(model.isWorking)
     }
 
@@ -236,7 +261,8 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.wallpapers.first?.id, wallpaper.id)
         // The video file was deleted by the removal, so the entry is degraded.
         XCTAssertEqual(model.wallpapers.first?.videoExists, false)
-        XCTAssertTrue(model.alertMessage?.contains("Restored") == true)
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
+        XCTAssertTrue(model.activeAlert?.message.contains("Restored") == true)
         XCTAssertFalse(model.isWorking)
     }
 
@@ -297,7 +323,8 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeWallpaper(wallpaper)
 
-        XCTAssertEqual(model.alertMessage, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpaper")
+        XCTAssertEqual(model.activeAlert?.message, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
@@ -322,8 +349,79 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeAllWallpapers()
 
-        XCTAssertEqual(model.alertMessage, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpapers")
+        XCTAssertEqual(model.activeAlert?.message, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
         XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testBulkRemoveRemovesOnlyTheSelectedWallpapers() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0100")
+        let second = makeWallpaper(id: "C0D3X-0101")
+        let third = makeWallpaper(id: "C0D3X-0102")
+        try installManagedWallpapers([first, second, third], in: home)
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+        XCTAssertEqual(model.wallpapers.count, 3)
+
+        await model.removeWallpapers([first, second])
+
+        XCTAssertEqual(model.wallpapers.map(\.id), [third.id])
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertNil(model.activeAlert)
+        XCTAssertFalse(model.isWorking)
+    }
+
+    func testBulkRemoveRefusesAnActiveWallpaperWithoutRemovingAnything() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0110")
+        let second = makeWallpaper(id: "C0D3X-0111")
+        try installManagedWallpapers([first, second], in: home)
+        let service = FakeWallpaperService(activeIDs: [first.id])
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        await model.removeWallpapers([first, second])
+
+        XCTAssertEqual(model.wallpapers.count, 2)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpapers")
+        XCTAssertEqual(model.activeAlert?.message, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testBulkRemoveReportsPartialFailureCounts() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0130")
+        let second = makeWallpaper(id: "C0D3X-0131")
+        try installManagedWallpapers([first, second], in: home)
+        // An entry whose manifest record has vanished underneath the app:
+        // its removal throws wallpaperNotFound while the others succeed.
+        let ghost = makeWallpaper(id: "C0D3X-0132")
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        await model.removeWallpapers([first, second, ghost])
+
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpapers")
+        XCTAssertEqual(model.activeAlert?.message.contains("Removed 2 of 3 wallpapers"), true)
+        XCTAssertEqual(service.refreshCallCount, 1)
+    }
+
+    func testBulkRemoveClearsThePendingHighlightForRemovedWallpapers() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0120")
+        let second = makeWallpaper(id: "C0D3X-0121")
+        try installManagedWallpapers([first, second], in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+        model.pendingLibraryHighlightID = first.id
+
+        await model.removeWallpapers([first])
+
+        XCTAssertNil(model.pendingLibraryHighlightID)
     }
 
     func testRemoveAllDoesNotTreatAnAppleAerialAsManaged() async {
@@ -335,9 +433,52 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeAllWallpapers()
 
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
         XCTAssertEqual(service.refreshCallCount, 1)
         XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    func testLibrarySortOrderByRecentlyAddedAndTitle() {
+        let alpha = makeWallpaper(id: "C0D3X-0200")
+        let mid = makeWallpaper(id: "C0D3X-0201")
+        let newest = makeWallpaper(id: "C0D3X-0202")
+        let wallpapers = [
+            ManagedWallpaper(id: mid.id, title: "Mid", videoURL: mid.videoURL, thumbnailURL: mid.thumbnailURL, preferredOrder: 1),
+            ManagedWallpaper(id: newest.id, title: "Newest", videoURL: newest.videoURL, thumbnailURL: newest.thumbnailURL, preferredOrder: 2),
+            ManagedWallpaper(id: alpha.id, title: "Alpha", videoURL: alpha.videoURL, thumbnailURL: alpha.thumbnailURL, preferredOrder: 0)
+        ]
+
+        XCTAssertEqual(wallpapers.sortedForLibrary(.title).map(\.title), ["Mid", "Newest", "Alpha"])
+        XCTAssertEqual(wallpapers.sortedForLibrary(.recentlyAdded).map(\.title), ["Newest", "Mid", "Alpha"])
+    }
+
+    func testLibrarySortOrderHandlesMissingPreferredOrder() {
+        let ordered = makeWallpaper(id: "C0D3X-0210")
+        let legacy = makeWallpaper(id: "C0D3X-0211")
+        let wallpapers = [
+            ManagedWallpaper(id: legacy.id, title: "Legacy", videoURL: legacy.videoURL, thumbnailURL: legacy.thumbnailURL, preferredOrder: nil),
+            ManagedWallpaper(id: ordered.id, title: "Ordered", videoURL: ordered.videoURL, thumbnailURL: ordered.thumbnailURL, preferredOrder: 0)
+        ]
+
+        XCTAssertEqual(wallpapers.sortedForLibrary(.recentlyAdded).map(\.title), ["Ordered", "Legacy"])
+    }
+
+    func testReloadMarksSelectionStatusUnknownWhenTheStoreIsUnreadable() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let service = FakeWallpaperService()
+        service.selectionReadError = TestError.storeUnreadable
+        let model = makeModel(service: service, home: home)
+
+        await model.reload()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertTrue(model.isSelectionStatusUnknown)
+
+        service.selectionReadError = nil
+        await model.reload()
+
+        XCTAssertFalse(model.isSelectionStatusUnknown)
     }
 
     func testRemovalProceedsWhenTheSelectionStoreIsUnreadable() async {
@@ -350,22 +491,70 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeWallpaper(wallpaper)
 
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
         XCTAssertEqual(service.refreshCallCount, 1)
         XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    func testImportFailureProducesATitledAlert() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let suiteName = "AerialDropImportAlertTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let model = makeModel(
+            service: FakeWallpaperService(),
+            home: home,
+            preferencesDefaults: defaults
+        )
+        model.catalogueState = .ready
+        model.isSelectedVideoValid = true
+        model.selectedVideo = URL(fileURLWithPath: "/tmp/aerialdrop-nothing-here.mov")
+        model.title = "Ghost"
+
+        model.importSelectedVideo()
+        for _ in 0..<500 where model.activeAlert == nil {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Import the Video")
+        XCTAssertFalse(model.activeAlert?.message.isEmpty ?? true)
+        XCTAssertFalse(model.isWorking)
+        XCTAssertEqual(model.stage, .idle)
+    }
+
+    func testValidateCatalogueFailureProducesATitledAlert() {
+        let model = makeModel(service: FakeWallpaperService())
+
+        model.validateCatalogue()
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Problem")
+        XCTAssertFalse(model.activeAlert?.message.isEmpty ?? true)
+    }
+
+    func testValidateCatalogueSuccessProducesATitledAlert() throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+
+        model.validateCatalogue()
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Valid")
     }
 
     private func makeModel(
         service: FakeWallpaperService,
         home: URL? = nil,
-        automaticActivationEnabled: @escaping () -> Bool = { true }
+        automaticActivationEnabled: @escaping () -> Bool = { true },
+        preferencesDefaults: UserDefaults = UserDefaults.standard
     ) -> AppModel {
         let temporaryHome = home ?? makeTemporaryHome()
         return AppModel(
             paths: WallpaperPaths(homeDirectory: temporaryHome),
             systemService: service,
             automaticallyReload: false,
-            automaticActivationEnabled: automaticActivationEnabled
+            automaticActivationEnabled: automaticActivationEnabled,
+            preferencesDefaults: preferencesDefaults
         )
     }
 
@@ -377,6 +566,25 @@ final class AppModelWallpaperTests: XCTestCase {
             try? FileManager.default.removeItem(at: temporaryHome)
         }
         return temporaryHome
+    }
+
+    /// Installs several managed wallpapers into one manifest (the single-item
+    /// helper resets the manifest on every call, so it cannot build a set).
+    private func installManagedWallpapers(_ wallpapers: [ManagedWallpaper], in home: URL) throws {
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        try store.prepareDirectories()
+        try installEmptyManifest(in: home)
+        for wallpaper in wallpapers {
+            try Data("video".utf8).write(to: paths.videoURL(for: wallpaper.id))
+            try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: wallpaper.id))
+            try store.addWallpaper(
+                id: wallpaper.id,
+                title: wallpaper.title,
+                width: Int(wallpaper.resolution?.width ?? 0),
+                height: Int(wallpaper.resolution?.height ?? 0)
+            )
+        }
     }
 
     private func installManagedWallpaper(_ wallpaper: ManagedWallpaper, in home: URL) throws {

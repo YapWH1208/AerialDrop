@@ -1,29 +1,39 @@
+import AppKit
 import SwiftUI
 
 struct LibraryPane: View {
+    static let sortOrderKey = "librarySortOrder"
     let onImport: () -> Void
     let onDropVideo: (URL) -> Void
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selectedID: String?
+    @State private var selectedIDs: Set<String> = []
     @State private var searchText = ""
     @State private var previewWallpaper: ManagedWallpaper?
     @State private var pendingRemoval: ManagedWallpaper?
+    @State private var pendingBulkRemoval: [ManagedWallpaper] = []
+    @State private var showingBulkRemoveConfirmation = false
     @State private var showingRemoveConfirmation = false
     @State private var renameTarget: ManagedWallpaper?
     @State private var renameText = ""
     @State private var showingRenameAlert = false
     @State private var highlightTarget: String?
     @State private var dropTargeted = false
+    @AppStorage(LibraryPane.sortOrderKey) private var sortOrder = LibrarySortOrder.title
 
     private let wallpaperColumns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 20)
     ]
 
     private var filteredWallpapers: [ManagedWallpaper] {
-        guard !searchText.isEmpty else { return model.wallpapers }
-        return model.wallpapers.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        let base: [ManagedWallpaper]
+        if searchText.isEmpty {
+            base = model.wallpapers
+        } else {
+            base = model.wallpapers.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        }
+        return base.sortedForLibrary(sortOrder)
     }
 
     var body: some View {
@@ -74,6 +84,16 @@ struct LibraryPane: View {
         } message: {
             Text("This removes the wallpaper and its copied video and thumbnail files. Your original source video is untouched — import it again to restore it. A catalogue backup is created first.")
         }
+        .confirmationDialog(
+            "Remove \(pendingBulkRemoval.count) wallpapers?",
+            isPresented: $showingBulkRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove \(pendingBulkRemoval.count)", role: .destructive) { confirmBulkRemoval() }
+            Button("Cancel", role: .cancel) { pendingBulkRemoval = [] }
+        } message: {
+            Text("This removes the selected wallpapers and their copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first.")
+        }
         .alert("Rename Wallpaper", isPresented: $showingRenameAlert) {
             TextField("Wallpaper name", text: $renameText)
                 .disabled(model.isWorking)
@@ -82,7 +102,7 @@ struct LibraryPane: View {
                 .disabled(!canRename)
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This updates the name shown in System Settings and AerialDrop.")
+            renameMessage
         }
         .sheet(item: $previewWallpaper) { wallpaper in
             WallpaperPreviewView(
@@ -131,6 +151,21 @@ struct LibraryPane: View {
                 operationBanner(label)
             }
 
+            if model.isSelectionStatusUnknown {
+                Label(
+                    "Couldn’t read the current wallpaper selection — Active status may be out of date.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
+                .accessibilityElement(children: .combine)
+            }
+
+            if selectedWallpapers.count > 1 {
+                bulkSelectionBanner
+            }
+
             if model.wallpapers.isEmpty {
                 emptyLibrary
             } else {
@@ -142,8 +177,72 @@ struct LibraryPane: View {
                     }
                 }
                 .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Picker("Sort", selection: $sortOrder) {
+                            Text("Title").tag(LibrarySortOrder.title)
+                            Text("Recently Added").tag(LibrarySortOrder.recentlyAdded)
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(model.wallpapers.count < 2)
+                    }
+                }
             }
         }
+    }
+
+    private var selectedWallpapers: [ManagedWallpaper] {
+        model.wallpapers.filter { selectedIDs.contains($0.id) }
+    }
+
+    private var bulkSelectionBanner: some View {
+        HStack(spacing: 10) {
+            Text("\(selectedWallpapers.count) wallpapers selected")
+                .font(.callout)
+            Spacer()
+            Button("Clear Selection") {
+                selectedIDs = []
+            }
+            .disabled(model.isWorking)
+            Button("Remove Selected…", role: .destructive) {
+                requestBulkRemoval()
+            }
+            .disabled(!canBulkRemove)
+            .help(bulkRemoveHelp)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var canBulkRemove: Bool {
+        !model.isWorking
+            && !selectedWallpapers.contains { model.activeAerialAssetIDs.contains($0.id) }
+    }
+
+    private var bulkRemoveHelp: String {
+        if model.isWorking {
+            return "Wait for the current operation to finish"
+        }
+        if selectedWallpapers.contains(where: { model.activeAerialAssetIDs.contains($0.id) }) {
+            return "One of the selected wallpapers is currently active — choose a different wallpaper first"
+        }
+        return "Remove the selected wallpapers"
+    }
+
+    private func requestBulkRemoval() {
+        pendingBulkRemoval = selectedWallpapers
+        showingBulkRemoveConfirmation = true
+    }
+
+    private func confirmBulkRemoval() {
+        let wallpapers = pendingBulkRemoval
+        pendingBulkRemoval = []
+        selectedIDs = []
+        guard !wallpapers.isEmpty else { return }
+        model.remove(wallpapers)
     }
 
     private func operationBanner(_ label: String) -> some View {
@@ -168,12 +267,12 @@ struct LibraryPane: View {
                     ForEach(filteredWallpapers) { wallpaper in
                         WallpaperCard(
                             wallpaper: wallpaper,
-                            isSelected: selectedID == wallpaper.id,
+                            isSelected: selectedIDs.contains(wallpaper.id),
                             isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
                             isWorking: model.isWorking,
                             onSelect: {
                                 guard !model.isWorking else { return }
-                                selectedID = selectedID == wallpaper.id ? nil : wallpaper.id
+                                select(wallpaper)
                             },
                             onDoubleClick: { openPreview(wallpaper) },
                             onPreview: { openPreview(wallpaper) },
@@ -206,9 +305,27 @@ struct LibraryPane: View {
         if !searchText.isEmpty {
             searchText = ""
         }
-        selectedID = id
+        selectedIDs = [id]
         highlightTarget = id
         model.pendingLibraryHighlightID = nil
+    }
+
+    /// Plain clicks keep single-selection semantics; Command- and Shift-click
+    /// extend the selection so several wallpapers can be removed at once.
+    private func select(_ wallpaper: ManagedWallpaper) {
+        let modifiers = NSEvent.modifierFlags
+        let extendsSelection = modifiers.contains(.command) || modifiers.contains(.shift)
+        if extendsSelection {
+            if selectedIDs.contains(wallpaper.id) {
+                selectedIDs.remove(wallpaper.id)
+            } else {
+                selectedIDs.insert(wallpaper.id)
+            }
+        } else if selectedIDs == [wallpaper.id] {
+            selectedIDs = []
+        } else {
+            selectedIDs = [wallpaper.id]
+        }
     }
 
     private var emptyLibrary: some View {
@@ -235,12 +352,39 @@ struct LibraryPane: View {
         return !cleanTitle.isEmpty && cleanTitle != renameTarget.title
     }
 
+    /// Mirrors the import pane's duplicate-name warning so both naming paths
+    /// share one policy: warn, but permit.
+    private var renameDuplicateTitle: String? {
+        guard let target = renameTarget else { return nil }
+        let clean = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        let collides = model.wallpapers.contains {
+            $0.id != target.id
+                && $0.title.localizedCaseInsensitiveCompare(clean) == .orderedSame
+        }
+        return collides ? clean : nil
+    }
+
+    private var renameMessage: Text {
+        var message = "This updates the name shown in System Settings and AerialDrop."
+        if let duplicate = renameDuplicateTitle {
+            message += "\n\nA wallpaper named “\(duplicate)” already exists."
+        }
+        return Text(message)
+    }
+
     private func openPreview(_ wallpaper: ManagedWallpaper) {
-        selectedID = wallpaper.id
+        selectedIDs = [wallpaper.id]
         previewWallpaper = wallpaper
     }
 
     private func requestRemoval(_ wallpaper: ManagedWallpaper) {
+        // A removal requested for a card inside a multi-selection applies to
+        // the whole selection (Delete key, card menu, and preview sheet alike).
+        if selectedIDs.count > 1, selectedIDs.contains(wallpaper.id) {
+            requestBulkRemoval()
+            return
+        }
         pendingRemoval = wallpaper
         showingRemoveConfirmation = true
     }
