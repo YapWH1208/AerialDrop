@@ -160,7 +160,7 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.activatedAssetIDs, [wallpaper.id])
         XCTAssertEqual(model.activeAerialAssetIDs, Set([wallpaper.id]))
         XCTAssertFalse(model.isWorking)
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
     }
 
     func testActivationExposesOperationLabelWhileWorking() async throws {
@@ -200,7 +200,7 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.activeAerialAssetIDs, Set(["CURRENT-AERIAL"]))
         XCTAssertEqual(model.activationFailure, wallpaper)
         XCTAssertEqual(model.activationFailureMessage, TestError.activationFailed.localizedDescription)
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
         XCTAssertFalse(model.isWorking)
     }
 
@@ -261,7 +261,8 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.wallpapers.first?.id, wallpaper.id)
         // The video file was deleted by the removal, so the entry is degraded.
         XCTAssertEqual(model.wallpapers.first?.videoExists, false)
-        XCTAssertTrue(model.alertMessage?.contains("Restored") == true)
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
+        XCTAssertTrue(model.activeAlert?.message.contains("Restored") == true)
         XCTAssertFalse(model.isWorking)
     }
 
@@ -322,7 +323,8 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeWallpaper(wallpaper)
 
-        XCTAssertEqual(model.alertMessage, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpaper")
+        XCTAssertEqual(model.activeAlert?.message, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
@@ -347,7 +349,8 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeAllWallpapers()
 
-        XCTAssertEqual(model.alertMessage, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpapers")
+        XCTAssertEqual(model.activeAlert?.message, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
@@ -360,7 +363,7 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeAllWallpapers()
 
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
         XCTAssertEqual(service.refreshCallCount, 1)
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
@@ -375,9 +378,55 @@ final class AppModelWallpaperTests: XCTestCase {
 
         await model.removeWallpaper(wallpaper)
 
-        XCTAssertNil(model.alertMessage)
+        XCTAssertNil(model.activeAlert)
         XCTAssertEqual(service.refreshCallCount, 1)
         XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    func testImportFailureProducesATitledAlert() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let suiteName = "AerialDropImportAlertTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let model = makeModel(
+            service: FakeWallpaperService(),
+            home: home,
+            preferencesDefaults: defaults
+        )
+        model.catalogueState = .ready
+        model.isSelectedVideoValid = true
+        model.selectedVideo = URL(fileURLWithPath: "/tmp/aerialdrop-nothing-here.mov")
+        model.title = "Ghost"
+
+        model.importSelectedVideo()
+        for _ in 0..<500 where model.activeAlert == nil {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Import the Video")
+        XCTAssertFalse(model.activeAlert?.message.isEmpty ?? true)
+        XCTAssertFalse(model.isWorking)
+        XCTAssertEqual(model.stage, .idle)
+    }
+
+    func testValidateCatalogueFailureProducesATitledAlert() {
+        let model = makeModel(service: FakeWallpaperService())
+
+        model.validateCatalogue()
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Problem")
+        XCTAssertFalse(model.activeAlert?.message.isEmpty ?? true)
+    }
+
+    func testValidateCatalogueSuccessProducesATitledAlert() throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+
+        model.validateCatalogue()
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Valid")
     }
 
     private func makeModel(

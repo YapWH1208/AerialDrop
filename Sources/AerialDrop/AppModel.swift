@@ -13,7 +13,7 @@ final class AppModel {
     var catalogueState: CatalogueState = .loading
     var stage: ImportStage = .idle
     var isWorking = false
-    var alertMessage: String?
+    var activeAlert: AppAlert?
     var showingFileImporter = false
     var importProgress: Double = 0
     var importOutcome: ImportOutcome?
@@ -138,7 +138,10 @@ final class AppModel {
                 try await videoProcessor.validate(source: url)
             } catch {
                 guard version == selectionVersion else { return }
-                alertMessage = error.localizedDescription
+                activeAlert = AppAlert(
+                    title: "Couldn’t Use This Video",
+                    message: error.localizedDescription
+                )
                 selectedVideo = nil
                 title = ""
                 isSelectedVideoValid = false
@@ -187,7 +190,10 @@ final class AppModel {
         guard isSelectedVideoValid, let source = selectedVideo else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
-            alertMessage = AerialDropError.invalidTitle.localizedDescription
+            activeAlert = AppAlert(
+                title: "Couldn’t Import the Video",
+                message: AerialDropError.invalidTitle.localizedDescription
+            )
             return
         }
 
@@ -275,7 +281,10 @@ final class AppModel {
                 stage = .idle
                 importProgress = 0
                 guard !Task.isCancelled else { return }
-                alertMessage = error.localizedDescription
+                activeAlert = AppAlert(
+                    title: "Couldn’t Import the Video",
+                    message: error.localizedDescription
+                )
             }
         }
     }
@@ -288,7 +297,10 @@ final class AppModel {
                 try manifestStore.renameWallpaper(id: wallpaper.id, title: cleanTitle)
                 await reload()
             } catch {
-                alertMessage = error.localizedDescription
+                activeAlert = AppAlert(
+                    title: "Couldn’t Rename Wallpaper",
+                    message: error.localizedDescription
+                )
             }
         }
     }
@@ -318,7 +330,10 @@ final class AppModel {
             await systemService.refresh()
             await reload()
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Couldn’t Remove Wallpaper",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -346,7 +361,10 @@ final class AppModel {
             await systemService.refresh()
             await reload()
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Couldn’t Remove Wallpapers",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -463,9 +481,15 @@ final class AppModel {
     func validateCatalogue() {
         do {
             try manifestStore.validateCurrentManifest()
-            alertMessage = "The current Aerial catalogue is valid and ready to use."
+            activeAlert = AppAlert(
+                title: "Catalogue Valid",
+                message: "The current Aerial catalogue is valid and ready to use."
+            )
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Catalogue Problem",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -490,14 +514,23 @@ final class AppModel {
         }
         do {
             guard let info = manifestStore.latestBackup() else {
-                alertMessage = "No AerialDrop backups were found."
+                activeAlert = AppAlert(
+                    title: "No Backups Found",
+                    message: "No AerialDrop backups were found."
+                )
                 return
             }
             try manifestStore.restoreBackup(info)
             await reload()
-            alertMessage = "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
+            activeAlert = AppAlert(
+                title: "Catalogue Restored",
+                message: "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
+            )
         } catch {
-            alertMessage = error.localizedDescription
+            activeAlert = AppAlert(
+                title: "Restore Failed",
+                message: error.localizedDescription
+            )
         }
     }
 

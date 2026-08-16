@@ -1,5 +1,13 @@
 import Foundation
 
+/// A user-facing alert with a workflow- and outcome-scoped title, so the
+/// user can tell what happened (and whether it was a failure) at a glance
+/// instead of reading a body under a generic app-name heading.
+struct AppAlert: Equatable {
+    let title: String
+    let message: String
+}
+
 struct ManagedWallpaper: Identifiable, Hashable {
     let id: String
     let title: String
@@ -154,7 +162,7 @@ enum AerialDropError: LocalizedError {
         case .incompatibleExportCodec:
             return "The exported MOV is not HEVC, so it was not installed."
         case .incompatibleSourceCodec:
-            return "The source video must use H.264 or HEVC."
+            return "The source video must use H.264 or HEVC. Convert or re-export the video in that format, then import it again."
         case .passthroughUnavailable:
             return "macOS could not export this source as a native HEVC MOV."
         case .installedFileMissing(let url):
@@ -172,7 +180,7 @@ enum AerialDropError: LocalizedError {
         case .main10EncodingUnavailable:
             return "This Mac could not initialize the HEVC Main10 encoder required for reliable Tahoe Aerial playback."
         case .manifestChangedDuringOperation:
-            return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close Wallper and System Settings, then try again."
+            return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close System Settings and any other wallpaper app, then try again."
         case .foreignManifestDataChanged(let description):
             return "AerialDrop refused to write because the change would alter \(description)."
         case .missingWallpaperSelectionStore(let url):
