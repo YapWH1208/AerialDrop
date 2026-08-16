@@ -418,6 +418,24 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testReloadMarksSelectionStatusUnknownWhenTheStoreIsUnreadable() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let service = FakeWallpaperService()
+        service.selectionReadError = TestError.storeUnreadable
+        let model = makeModel(service: service, home: home)
+
+        await model.reload()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertTrue(model.isSelectionStatusUnknown)
+
+        service.selectionReadError = nil
+        await model.reload()
+
+        XCTAssertFalse(model.isSelectionStatusUnknown)
+    }
+
     func testRemovalProceedsWhenTheSelectionStoreIsUnreadable() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0010")
         let service = FakeWallpaperService(activeIDs: [wallpaper.id])

@@ -168,6 +168,17 @@ struct LibraryPane: View {
                 operationBanner(label)
             }
 
+            if model.isSelectionStatusUnknown {
+                Label(
+                    "Couldn’t read the current wallpaper selection — Active status may be out of date.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
+                .accessibilityElement(children: .combine)
+            }
+
             if selectedWallpapers.count > 1 {
                 bulkSelectionBanner
             }

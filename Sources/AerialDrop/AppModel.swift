@@ -24,6 +24,10 @@ final class AppModel {
     var sourceResolution: CGSize?
     var sourceDuration: Double?
     var activeAerialAssetIDs: Set<String> = []
+    /// True when the wallpaper selection store could not be read, so Active
+    /// badges may be out of date. Removal stays permissive (an unreadable
+    /// store means no selection can be verified) — this only adds honesty.
+    var isSelectionStatusUnknown = false
     var activationFailure: ManagedWallpaper?
     var activationFailureMessage: String?
     /// Human-readable label of the Library operation currently in progress
@@ -429,7 +433,12 @@ final class AppModel {
             wallpapers = []
             catalogueState = .unavailable(error.localizedDescription)
         }
-        try? refreshActiveSelection()
+        do {
+            try refreshActiveSelection()
+            isSelectionStatusUnknown = false
+        } catch {
+            isSelectionStatusUnknown = true
+        }
     }
 
     /// Removes leftover AerialDrop encode temp files (e.g. after the app was
