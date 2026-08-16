@@ -253,6 +253,15 @@ private struct ImportSourceView: View {
                     .strokeBorder(.separator, lineWidth: 0.5)
             }
 
+            if let resolution, isNarrowerThan16By9(resolution) {
+                // The encode's 16:9 window is always vertically centered and
+                // the pan is horizontal-only; state that instead of leaving
+                // the darkened mask to imply hidden control.
+                Text("The 16:9 wallpaper keeps the vertical center of the frame")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(url.lastPathComponent)

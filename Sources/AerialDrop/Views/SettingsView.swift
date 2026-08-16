@@ -11,6 +11,12 @@ struct SettingsView: View {
             Text("When enabled, AerialDrop applies the new Aerial across all Spaces and displays after a successful import. Turn this off to add videos without changing your current wallpaper.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+
+            // Shown regardless of bundling: unbundled swift-run launches have
+            // no About panel version to consult.
+            Text("AerialDrop (AppVersion.shortVersion) ((AppVersion.buildNumber))")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
         .frame(width: 460)

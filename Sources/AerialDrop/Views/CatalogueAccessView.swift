@@ -23,7 +23,7 @@ struct CatalogueAccessView: View {
             } description: {
                 Text(message)
             } actions: {
-                Button("Open Wallpaper Settings", systemImage: "gearshape", action: onOpenSettings)
+                Button("Open Wallpaper Settings", systemImage: "photo", action: onOpenSettings)
                     .buttonStyle(.borderedProminent)
 
                 Button("Check Again", systemImage: "arrow.clockwise", action: onCheckAgain)
