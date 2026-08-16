@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.5
+
+- The Import pane now states the fixed 80-second loop contract before encoding — long sources show **First 1:20 of the source, looped** and shorter sources show **Whole video, repeated to fill 1:20**.
+- Import quality and output resolution are remembered from your last import and seed the next video; a remembered resolution that would not downscale the new source automatically falls back to **Original**.
+- The Library supports keyboard and bulk removal: Delete on a focused card opens the existing removal confirmation, and Command-/Shift-click selects several wallpapers for one confirmed **Remove Selected…** operation with the active-wallpaper guard and per-item backups.
+- Alerts now carry workflow- and outcome-specific titles instead of a generic app-name heading, with recovery hints for common failures and no third-party jargon.
+- The Library can sort by **Title** or **Recently Added** (the choice is remembered), and renaming to a name that already exists shows the same warn-but-permit duplicate notice as importing.
+- The Library now says when the current wallpaper selection cannot be read, so **Active** badges are honestly marked as potentially out of date.
+- The wallpaper preview sheet shows loading and failure states instead of a silent black box, and playback-status observation follows the item actually playing.
+- Polish: the onboarding icon matches the toolbar, narrow-source center-crop is captioned, removal from inside a multi-selection applies to the whole selection, partial bulk-removal outcomes are reported accurately, and Settings shows the real version and build.
+
 ## 1.1.4
 
 - Added two more installation methods: a `brew install --cask yapwh1208/tap/aerialdrop` one-liner (Homebrew tap) and a downloadable `install.sh` that verifies the release checksum, installs to `/Applications`, and clears the quarantine.
