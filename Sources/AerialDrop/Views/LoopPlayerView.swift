@@ -33,6 +33,7 @@ final class PlayerNSView: NSView {
     private var player: AVQueuePlayer?
     private var looper: AVPlayerLooper?
     private var currentURL: URL?
+    private var currentItem: AVPlayerItem?
     private var statusObservation: NSKeyValueObservation?
     private var lastReportedState: LoopPlaybackState?
 
@@ -76,6 +77,8 @@ final class PlayerNSView: NSView {
         player = nil
         playerLayer.player = nil
         currentURL = nil
+        currentItem = nil
+        lastReportedState = nil
     }
 
     private func load(url: URL, isPlaying: Bool) {
@@ -86,6 +89,7 @@ final class PlayerNSView: NSView {
         self.player = queuePlayer
         self.looper = looper
         currentURL = url
+        currentItem = item
         playerLayer.player = queuePlayer
         observeItemStatus(of: item)
         report(.loading)
@@ -93,7 +97,9 @@ final class PlayerNSView: NSView {
     }
 
     /// Status changes are observed where registered (the main run loop) but
-    /// the hop keeps the strict-concurrency contract explicit.
+    /// the hop keeps the strict-concurrency contract explicit. The observed
+    /// item is captured so a torn-down item's late callback cannot overwrite
+    /// the state of the item that replaced it (fast preview switching).
     private func observeItemStatus(of item: AVPlayerItem) {
         statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] observed, _ in
             let state: LoopPlaybackState
@@ -107,6 +113,7 @@ final class PlayerNSView: NSView {
             }
             guard let self else { return }
             Task { @MainActor in
+                guard self.currentItem === item else { return }
                 self.report(state)
             }
         }

@@ -418,6 +418,31 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testLibrarySortOrderByRecentlyAddedAndTitle() {
+        let alpha = makeWallpaper(id: "C0D3X-0200")
+        let mid = makeWallpaper(id: "C0D3X-0201")
+        let newest = makeWallpaper(id: "C0D3X-0202")
+        let wallpapers = [
+            ManagedWallpaper(id: mid.id, title: "Mid", videoURL: mid.videoURL, thumbnailURL: mid.thumbnailURL, preferredOrder: 1),
+            ManagedWallpaper(id: newest.id, title: "Newest", videoURL: newest.videoURL, thumbnailURL: newest.thumbnailURL, preferredOrder: 2),
+            ManagedWallpaper(id: alpha.id, title: "Alpha", videoURL: alpha.videoURL, thumbnailURL: alpha.thumbnailURL, preferredOrder: 0)
+        ]
+
+        XCTAssertEqual(wallpapers.sortedForLibrary(.title).map(\.title), ["Mid", "Newest", "Alpha"])
+        XCTAssertEqual(wallpapers.sortedForLibrary(.recentlyAdded).map(\.title), ["Newest", "Mid", "Alpha"])
+    }
+
+    func testLibrarySortOrderHandlesMissingPreferredOrder() {
+        let ordered = makeWallpaper(id: "C0D3X-0210")
+        let legacy = makeWallpaper(id: "C0D3X-0211")
+        let wallpapers = [
+            ManagedWallpaper(id: legacy.id, title: "Legacy", videoURL: legacy.videoURL, thumbnailURL: legacy.thumbnailURL, preferredOrder: nil),
+            ManagedWallpaper(id: ordered.id, title: "Ordered", videoURL: ordered.videoURL, thumbnailURL: ordered.thumbnailURL, preferredOrder: 0)
+        ]
+
+        XCTAssertEqual(wallpapers.sortedForLibrary(.recentlyAdded).map(\.title), ["Ordered", "Legacy"])
+    }
+
     func testReloadMarksSelectionStatusUnknownWhenTheStoreIsUnreadable() async throws {
         let home = makeTemporaryHome()
         try installEmptyManifest(in: home)

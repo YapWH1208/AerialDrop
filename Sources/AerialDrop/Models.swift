@@ -1,5 +1,30 @@
 import Foundation
 
+enum LibrarySortOrder: String, CaseIterable {
+    case title
+    case recentlyAdded
+}
+
+extension [ManagedWallpaper] {
+    /// The Library's ordering: title (localized, the manifest's natural order)
+    /// or Recently Added (import order descending, titles breaking ties).
+    func sortedForLibrary(_ order: LibrarySortOrder) -> [ManagedWallpaper] {
+        switch order {
+        case .title:
+            return self
+        case .recentlyAdded:
+            return sorted { lhs, rhs in
+                let lhsOrder = lhs.preferredOrder ?? Int.min
+                let rhsOrder = rhs.preferredOrder ?? Int.min
+                if lhsOrder != rhsOrder {
+                    return lhsOrder > rhsOrder
+                }
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+        }
+    }
+}
+
 /// A user-facing alert with a workflow- and outcome-scoped title, so the
 /// user can tell what happened (and whether it was a failure) at a glance
 /// instead of reading a body under a generic app-name heading.

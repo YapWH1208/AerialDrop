@@ -1,11 +1,6 @@
 import AppKit
 import SwiftUI
 
-enum LibrarySortOrder: String, CaseIterable {
-    case title
-    case recentlyAdded
-}
-
 struct LibraryPane: View {
     static let sortOrderKey = "librarySortOrder"
     let onImport: () -> Void
@@ -38,19 +33,7 @@ struct LibraryPane: View {
         } else {
             base = model.wallpapers.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
         }
-        switch sortOrder {
-        case .title:
-            return base
-        case .recentlyAdded:
-            return base.sorted { lhs, rhs in
-                let lhsOrder = lhs.preferredOrder ?? Int.min
-                let rhsOrder = rhs.preferredOrder ?? Int.min
-                if lhsOrder != rhsOrder {
-                    return lhsOrder > rhsOrder
-                }
-                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-            }
-        }
+        return base.sortedForLibrary(sortOrder)
     }
 
     var body: some View {
@@ -214,7 +197,7 @@ struct LibraryPane: View {
 
     private var bulkSelectionBanner: some View {
         HStack(spacing: 10) {
-            Text("\(selectedIDs.count) wallpapers selected")
+            Text("\(selectedWallpapers.count) wallpapers selected")
                 .font(.callout)
             Spacer()
             Button("Clear Selection") {
@@ -396,6 +379,12 @@ struct LibraryPane: View {
     }
 
     private func requestRemoval(_ wallpaper: ManagedWallpaper) {
+        // A removal requested for a card inside a multi-selection applies to
+        // the whole selection (Delete key, card menu, and preview sheet alike).
+        if selectedIDs.count > 1, selectedIDs.contains(wallpaper.id) {
+            requestBulkRemoval()
+            return
+        }
         pendingRemoval = wallpaper
         showingRemoveConfirmation = true
     }

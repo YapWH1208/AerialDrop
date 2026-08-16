@@ -178,6 +178,22 @@ struct VideoProcessor: Sendable {
         }
     }
 
+    /// The source duration the encode pipeline can actually use — from the
+    /// first renderable sample to the track's end — mirroring the
+    /// trim-versus-repeat decision in makeNativeMOV. Best-effort for UI
+    /// metadata: nil when the values cannot be read.
+    func effectiveSourceDuration(for source: URL) async -> Double? {
+        let asset = AVURLAsset(url: source)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return nil }
+        guard let timeRange = try? await track.load(.timeRange) else { return nil }
+        let first = (try? firstRenderableSampleTime(asset: asset, track: track)) ?? .zero
+        let available = CMTimeSubtract(timeRange.end, CMTimeMaximum(timeRange.start, first))
+        guard available.isNumeric, available.seconds.isFinite, available.seconds > 0 else {
+            return nil
+        }
+        return available.seconds
+    }
+
     /// Encodes one normalized source loop, then repeats that already-encoded segment
     /// without re-encoding. The working Wallper asset uses this sample-table shape:
     /// regular 1.9-second closed GOPs plus a fresh sync sample at every loop boundary.

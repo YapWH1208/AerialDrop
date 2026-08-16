@@ -160,7 +160,13 @@ final class AppModel {
             // validation — the import pipeline loads the same track metadata
             // again and surfaces its own errors there.
             let asset = AVURLAsset(url: url)
-            if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
+            // Prefer the duration the encoder can actually use (skipping
+            // leading unrenderable samples) so the Loop row states the same
+            // trim-versus-repeat decision the encode will make.
+            let effective = await videoProcessor.effectiveSourceDuration(for: url)
+            let fallback = try? await asset.load(.duration).seconds
+            let seconds = effective ?? fallback
+            if let seconds, seconds.isFinite, seconds > 0 {
                 guard version == selectionVersion else { return }
                 sourceDuration = seconds
             }
