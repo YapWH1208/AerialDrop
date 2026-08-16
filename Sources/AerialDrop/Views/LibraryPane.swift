@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct LibraryPane: View {
@@ -6,10 +7,12 @@ struct LibraryPane: View {
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selectedID: String?
+    @State private var selectedIDs: Set<String> = []
     @State private var searchText = ""
     @State private var previewWallpaper: ManagedWallpaper?
     @State private var pendingRemoval: ManagedWallpaper?
+    @State private var pendingBulkRemoval: [ManagedWallpaper] = []
+    @State private var showingBulkRemoveConfirmation = false
     @State private var showingRemoveConfirmation = false
     @State private var renameTarget: ManagedWallpaper?
     @State private var renameText = ""
@@ -74,6 +77,16 @@ struct LibraryPane: View {
         } message: {
             Text("This removes the wallpaper and its copied video and thumbnail files. Your original source video is untouched — import it again to restore it. A catalogue backup is created first.")
         }
+        .confirmationDialog(
+            "Remove \(pendingBulkRemoval.count) wallpapers?",
+            isPresented: $showingBulkRemoveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove \(pendingBulkRemoval.count)", role: .destructive) { confirmBulkRemoval() }
+            Button("Cancel", role: .cancel) { pendingBulkRemoval = [] }
+        } message: {
+            Text("This removes the selected wallpapers and their copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first.")
+        }
         .alert("Rename Wallpaper", isPresented: $showingRenameAlert) {
             TextField("Wallpaper name", text: $renameText)
                 .disabled(model.isWorking)
@@ -131,6 +144,10 @@ struct LibraryPane: View {
                 operationBanner(label)
             }
 
+            if selectedWallpapers.count > 1 {
+                bulkSelectionBanner
+            }
+
             if model.wallpapers.isEmpty {
                 emptyLibrary
             } else {
@@ -144,6 +161,60 @@ struct LibraryPane: View {
                 .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
             }
         }
+    }
+
+    private var selectedWallpapers: [ManagedWallpaper] {
+        model.wallpapers.filter { selectedIDs.contains($0.id) }
+    }
+
+    private var bulkSelectionBanner: some View {
+        HStack(spacing: 10) {
+            Text("\(selectedIDs.count) wallpapers selected")
+                .font(.callout)
+            Spacer()
+            Button("Clear Selection") {
+                selectedIDs = []
+            }
+            .disabled(model.isWorking)
+            Button("Remove Selected…", role: .destructive) {
+                requestBulkRemoval()
+            }
+            .disabled(!canBulkRemove)
+            .help(bulkRemoveHelp)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var canBulkRemove: Bool {
+        !model.isWorking
+            && !selectedWallpapers.contains { model.activeAerialAssetIDs.contains($0.id) }
+    }
+
+    private var bulkRemoveHelp: String {
+        if model.isWorking {
+            return "Wait for the current operation to finish"
+        }
+        if selectedWallpapers.contains(where: { model.activeAerialAssetIDs.contains($0.id) }) {
+            return "One of the selected wallpapers is currently active — choose a different wallpaper first"
+        }
+        return "Remove the selected wallpapers"
+    }
+
+    private func requestBulkRemoval() {
+        pendingBulkRemoval = selectedWallpapers
+        showingBulkRemoveConfirmation = true
+    }
+
+    private func confirmBulkRemoval() {
+        let wallpapers = pendingBulkRemoval
+        pendingBulkRemoval = []
+        selectedIDs = []
+        guard !wallpapers.isEmpty else { return }
+        model.remove(wallpapers)
     }
 
     private func operationBanner(_ label: String) -> some View {
@@ -168,12 +239,12 @@ struct LibraryPane: View {
                     ForEach(filteredWallpapers) { wallpaper in
                         WallpaperCard(
                             wallpaper: wallpaper,
-                            isSelected: selectedID == wallpaper.id,
+                            isSelected: selectedIDs.contains(wallpaper.id),
                             isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
                             isWorking: model.isWorking,
                             onSelect: {
                                 guard !model.isWorking else { return }
-                                selectedID = selectedID == wallpaper.id ? nil : wallpaper.id
+                                select(wallpaper)
                             },
                             onDoubleClick: { openPreview(wallpaper) },
                             onPreview: { openPreview(wallpaper) },
@@ -206,9 +277,27 @@ struct LibraryPane: View {
         if !searchText.isEmpty {
             searchText = ""
         }
-        selectedID = id
+        selectedIDs = [id]
         highlightTarget = id
         model.pendingLibraryHighlightID = nil
+    }
+
+    /// Plain clicks keep single-selection semantics; Command- and Shift-click
+    /// extend the selection so several wallpapers can be removed at once.
+    private func select(_ wallpaper: ManagedWallpaper) {
+        let modifiers = NSEvent.modifierFlags
+        let extendsSelection = modifiers.contains(.command) || modifiers.contains(.shift)
+        if extendsSelection {
+            if selectedIDs.contains(wallpaper.id) {
+                selectedIDs.remove(wallpaper.id)
+            } else {
+                selectedIDs.insert(wallpaper.id)
+            }
+        } else if selectedIDs == [wallpaper.id] {
+            selectedIDs = []
+        } else {
+            selectedIDs = [wallpaper.id]
+        }
     }
 
     private var emptyLibrary: some View {
@@ -236,7 +325,7 @@ struct LibraryPane: View {
     }
 
     private func openPreview(_ wallpaper: ManagedWallpaper) {
-        selectedID = wallpaper.id
+        selectedIDs = [wallpaper.id]
         previewWallpaper = wallpaper
     }
 

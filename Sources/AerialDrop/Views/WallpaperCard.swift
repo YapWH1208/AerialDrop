@@ -41,6 +41,13 @@ struct WallpaperCard: View {
             .simultaneousGesture(
                 TapGesture(count: 2).onEnded(onDoubleClick)
             )
+            // Delete on the focused card opens the same confirmation as the
+            // card menu; the responder chain keeps text fields (search) safe.
+            .onDeleteCommand {
+                if actionAvailability.canRemove {
+                    onRemove()
+                }
+            }
 
             if showsHoverControls {
                 hoverControls

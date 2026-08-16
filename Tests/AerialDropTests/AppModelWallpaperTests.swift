@@ -354,6 +354,56 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
+    func testBulkRemoveRemovesOnlyTheSelectedWallpapers() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0100")
+        let second = makeWallpaper(id: "C0D3X-0101")
+        let third = makeWallpaper(id: "C0D3X-0102")
+        try installManagedWallpapers([first, second, third], in: home)
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+        XCTAssertEqual(model.wallpapers.count, 3)
+
+        await model.removeWallpapers([first, second])
+
+        XCTAssertEqual(model.wallpapers.map(\.id), [third.id])
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertNil(model.activeAlert)
+        XCTAssertFalse(model.isWorking)
+    }
+
+    func testBulkRemoveRefusesAnActiveWallpaperWithoutRemovingAnything() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0110")
+        let second = makeWallpaper(id: "C0D3X-0111")
+        try installManagedWallpapers([first, second], in: home)
+        let service = FakeWallpaperService(activeIDs: [first.id])
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        await model.removeWallpapers([first, second])
+
+        XCTAssertEqual(model.wallpapers.count, 2)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpapers")
+        XCTAssertEqual(model.activeAlert?.message, AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription)
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testBulkRemoveClearsThePendingHighlightForRemovedWallpapers() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0120")
+        let second = makeWallpaper(id: "C0D3X-0121")
+        try installManagedWallpapers([first, second], in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+        model.pendingLibraryHighlightID = first.id
+
+        await model.removeWallpapers([first])
+
+        XCTAssertNil(model.pendingLibraryHighlightID)
+    }
+
     func testRemoveAllDoesNotTreatAnAppleAerialAsManaged() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0008")
         let service = FakeWallpaperService(activeIDs: ["APPLE-AERIAL"])
@@ -453,6 +503,25 @@ final class AppModelWallpaperTests: XCTestCase {
             try? FileManager.default.removeItem(at: temporaryHome)
         }
         return temporaryHome
+    }
+
+    /// Installs several managed wallpapers into one manifest (the single-item
+    /// helper resets the manifest on every call, so it cannot build a set).
+    private func installManagedWallpapers(_ wallpapers: [ManagedWallpaper], in home: URL) throws {
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        try store.prepareDirectories()
+        try installEmptyManifest(in: home)
+        for wallpaper in wallpapers {
+            try Data("video".utf8).write(to: paths.videoURL(for: wallpaper.id))
+            try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: wallpaper.id))
+            try store.addWallpaper(
+                id: wallpaper.id,
+                title: wallpaper.title,
+                width: Int(wallpaper.resolution?.width ?? 0),
+                height: Int(wallpaper.resolution?.height ?? 0)
+            )
+        }
     }
 
     private func installManagedWallpaper(_ wallpaper: ManagedWallpaper, in home: URL) throws {

@@ -311,6 +311,12 @@ final class AppModel {
         }
     }
 
+    func remove(_ wallpapers: [ManagedWallpaper]) {
+        Task {
+            await removeWallpapers(wallpapers)
+        }
+    }
+
     func removeWallpaper(_ wallpaper: ManagedWallpaper) async {
         isWorking = true
         operationLabel = "Removing “\(wallpaper.title)”…"
@@ -340,6 +346,50 @@ final class AppModel {
     func removeAll() {
         Task {
             await removeAllWallpapers()
+        }
+    }
+
+    /// Removes several wallpapers in one confirmed operation. Each removal is
+    /// its own backed-up manifest mutation; a failure partway through keeps
+    /// the already-removed items removed and still refreshes the catalogue.
+    func removeWallpapers(_ wallpapers: [ManagedWallpaper]) async {
+        let ids = Set(wallpapers.map(\.id))
+        guard !ids.isEmpty else { return }
+        isWorking = true
+        operationLabel = "Removing \(ids.count) wallpapers…"
+        defer {
+            isWorking = false
+            operationLabel = nil
+        }
+        do {
+            refreshActiveSelectionForRemoval()
+            guard activeAerialAssetIDs.isDisjoint(with: ids) else {
+                throw AerialDropError.activeWallpaperCannotBeRemoved
+            }
+            var firstError: Error?
+            for id in ids.sorted() {
+                do {
+                    try manifestStore.removeWallpaper(id: id)
+                } catch {
+                    firstError = firstError ?? error
+                }
+            }
+            if let highlight = pendingLibraryHighlightID, ids.contains(highlight) {
+                pendingLibraryHighlightID = nil
+            }
+            await systemService.refresh()
+            await reload()
+            if let firstError {
+                activeAlert = AppAlert(
+                    title: "Couldn’t Remove Wallpapers",
+                    message: firstError.localizedDescription
+                )
+            }
+        } catch {
+            activeAlert = AppAlert(
+                title: "Couldn’t Remove Wallpapers",
+                message: error.localizedDescription
+            )
         }
     }
 
