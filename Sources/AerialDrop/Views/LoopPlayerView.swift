@@ -19,8 +19,11 @@ struct LoopPlayerView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PlayerNSView, context: Context) {
-        nsView.onPlaybackStateChange = onPlaybackStateChange
+        // Assign after update: a URL change runs teardown inside update, and
+        // teardown clears the stored callback for hygiene; the new item's
+        // KVO reports are delivered asynchronously, after this assignment.
         nsView.update(url: url, isPlaying: isPlaying)
+        nsView.onPlaybackStateChange = onPlaybackStateChange
     }
 
     static func dismantleNSView(_ nsView: PlayerNSView, coordinator: Void) {
@@ -79,6 +82,7 @@ final class PlayerNSView: NSView {
         currentURL = nil
         currentItem = nil
         lastReportedState = nil
+        onPlaybackStateChange = nil
     }
 
     private func load(url: URL, isPlaying: Bool) {
