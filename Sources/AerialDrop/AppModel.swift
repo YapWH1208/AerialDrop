@@ -377,9 +377,11 @@ final class AppModel {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
             }
             var firstError: Error?
+            var removedCount = 0
             for id in ids.sorted() {
                 do {
                     try manifestStore.removeWallpaper(id: id)
+                    removedCount += 1
                 } catch {
                     firstError = firstError ?? error
                 }
@@ -390,9 +392,11 @@ final class AppModel {
             await systemService.refresh()
             await reload()
             if let firstError {
+                // State exactly how far the bulk removal got so the outcome
+                // never contradicts the confirmed "Remove N" promise.
                 activeAlert = AppAlert(
                     title: "Couldn’t Remove Wallpapers",
-                    message: firstError.localizedDescription
+                    message: "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError.localizedDescription)"
                 )
             }
         } catch {

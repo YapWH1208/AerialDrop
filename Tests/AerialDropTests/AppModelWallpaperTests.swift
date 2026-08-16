@@ -390,6 +390,26 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
+    func testBulkRemoveReportsPartialFailureCounts() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0130")
+        let second = makeWallpaper(id: "C0D3X-0131")
+        try installManagedWallpapers([first, second], in: home)
+        // An entry whose manifest record has vanished underneath the app:
+        // its removal throws wallpaperNotFound while the others succeed.
+        let ghost = makeWallpaper(id: "C0D3X-0132")
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        await model.removeWallpapers([first, second, ghost])
+
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpapers")
+        XCTAssertEqual(model.activeAlert?.message.contains("Removed 2 of 3 wallpapers"), true)
+        XCTAssertEqual(service.refreshCallCount, 1)
+    }
+
     func testBulkRemoveClearsThePendingHighlightForRemovedWallpapers() async throws {
         let home = makeTemporaryHome()
         let first = makeWallpaper(id: "C0D3X-0120")
