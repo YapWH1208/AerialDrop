@@ -44,6 +44,7 @@ final class AppModel {
     private let videoProcessor = VideoProcessor()
     private let systemService: any WallpaperServicing
     private let automaticActivationEnabled: () -> Bool
+    private let preferencesDefaults: UserDefaults
 
     init(
         paths: WallpaperPaths = WallpaperPaths(),
@@ -51,7 +52,8 @@ final class AppModel {
         automaticallyReload: Bool = true,
         automaticActivationEnabled: @escaping () -> Bool = {
             AppPreferences.isSetWallpaperAfterImportEnabled()
-        }
+        },
+        preferencesDefaults: UserDefaults = .standard
     ) {
         self.paths = paths
         manifestStore = ManifestStore(paths: paths)
@@ -59,6 +61,7 @@ final class AppModel {
             selectionStore: WallpaperSelectionStore(paths: paths)
         )
         self.automaticActivationEnabled = automaticActivationEnabled
+        self.preferencesDefaults = preferencesDefaults
         if automaticallyReload {
             Task { await reload() }
         }
@@ -120,8 +123,10 @@ final class AppModel {
         selectedVideo = url
         importOutcome = nil
         cropOffset = 0.5
-        conversionQuality = .standard
-        outputHeightCap = nil
+        // Seed from the most recent import so repeated importers keep their
+        // quality/resolution choices; crop stays per-video (content-specific).
+        conversionQuality = AppPreferences.lastConversionQuality(defaults: preferencesDefaults) ?? .standard
+        outputHeightCap = AppPreferences.lastOutputHeightCap(defaults: preferencesDefaults)
         sourceResolution = nil
         sourceDuration = nil
         isSelectedVideoValid = false
@@ -166,6 +171,9 @@ final class AppModel {
             if transformedSize.width.isFinite, transformedSize.height.isFinite,
                transformedSize.width > 0, transformedSize.height > 0 {
                 sourceResolution = transformedSize
+                // A remembered cap that this source would not downscale shows
+                // no picker selection; fall back to Original for it.
+                outputHeightCap = applicableHeightCap(outputHeightCap, sourceSize: transformedSize)
             }
         }
     }
@@ -182,6 +190,11 @@ final class AppModel {
             alertMessage = AerialDropError.invalidTitle.localizedDescription
             return
         }
+
+        // Remember the choices this import commits to, so the next video
+        // starts from them.
+        AppPreferences.setLastConversionQuality(conversionQuality, defaults: preferencesDefaults)
+        AppPreferences.setLastOutputHeightCap(outputHeightCap, defaults: preferencesDefaults)
 
         importTask?.cancel()
         importGeneration += 1

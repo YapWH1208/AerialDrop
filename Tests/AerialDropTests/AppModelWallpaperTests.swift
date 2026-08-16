@@ -74,6 +74,31 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.selectedVideo, url)
     }
 
+    func testChoosingANewSourceSeedsRememberedConversionChoices() throws {
+        let suiteName = "AerialDropSeedingTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        AppPreferences.setLastConversionQuality(.maximum, defaults: defaults)
+        AppPreferences.setLastOutputHeightCap(1440, defaults: defaults)
+        let model = makeModel(service: FakeWallpaperService(), preferencesDefaults: defaults)
+
+        model.chooseVideo(URL(fileURLWithPath: "/tmp/beach.mp4"))
+
+        XCTAssertEqual(model.conversionQuality, .maximum)
+        XCTAssertEqual(model.outputHeightCap, 1440)
+        // Crop stays per-video.
+        XCTAssertEqual(model.cropOffset, 0.5)
+    }
+
+    func testChoosingANewSourceWithoutRememberedChoicesFallsBackToDefaults() {
+        let model = makeModel(service: FakeWallpaperService())
+
+        model.chooseVideo(URL(fileURLWithPath: "/tmp/beach.mp4"))
+
+        XCTAssertEqual(model.conversionQuality, .standard)
+        XCTAssertNil(model.outputHeightCap)
+    }
+
     func testDisplayProgressIsMonotonicAcrossEveryStageTransition() {
         let model = makeModel(service: FakeWallpaperService())
 
@@ -358,14 +383,16 @@ final class AppModelWallpaperTests: XCTestCase {
     private func makeModel(
         service: FakeWallpaperService,
         home: URL? = nil,
-        automaticActivationEnabled: @escaping () -> Bool = { true }
+        automaticActivationEnabled: @escaping () -> Bool = { true },
+        preferencesDefaults: UserDefaults = UserDefaults.standard
     ) -> AppModel {
         let temporaryHome = home ?? makeTemporaryHome()
         return AppModel(
             paths: WallpaperPaths(homeDirectory: temporaryHome),
             systemService: service,
             automaticallyReload: false,
-            automaticActivationEnabled: automaticActivationEnabled
+            automaticActivationEnabled: automaticActivationEnabled,
+            preferencesDefaults: preferencesDefaults
         )
     }
 

@@ -98,6 +98,14 @@ func loopDescription(sourceDuration: Double?) -> String {
     return "Whole video, repeated to fill 1:20"
 }
 
+/// A remembered height cap only applies when it actually downscales the
+/// source's natural 16:9 window; a cap that would encode identically to
+/// "Original" must fall back to Original so the picker shows a real selection.
+func applicableHeightCap(_ cap: Int?, sourceSize: CGSize) -> Int? {
+    guard let cap, CGFloat(cap) < naturalWindowHeight(sourceSize: sourceSize) else { return nil }
+    return cap
+}
+
 /// True when the source is at least 21:9 — the threshold where crop controls
 /// become useful. Sub-21:9 sources crop trivially, so the UI hides them.
 func isUltrawide(_ size: CGSize) -> Bool {
