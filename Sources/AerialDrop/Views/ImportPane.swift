@@ -87,6 +87,7 @@ struct ImportPane: View {
                             cropOffset: $model.cropOffset,
                             sourceResolution: model.sourceResolution,
                             outputSummary: encodedOutputSummary,
+                            loopSummary: loopSummary,
                             duplicateTitle: duplicateTitle
                         )
                         .disabled(model.isWorking)
@@ -120,6 +121,13 @@ struct ImportPane: View {
             $0.title.localizedCaseInsensitiveCompare(clean) == .orderedSame
         }) else { return nil }
         return clean
+    }
+
+    /// Always-visible statement of the 80-second loop contract (trimmed for
+    /// long sources, repeated for short ones), so the encode the user is about
+    /// to run matches their expectations before it starts.
+    private var loopSummary: String {
+        loopDescription(sourceDuration: model.sourceDuration)
     }
 
     private var encodedOutputSummary: String? {
@@ -284,6 +292,7 @@ private struct ImportSettingsView: View {
 
     let sourceResolution: CGSize?
     let outputSummary: String?
+    let loopSummary: String
     let duplicateTitle: String?
 
     @FocusState private var nameIsFocused: Bool
@@ -326,6 +335,11 @@ private struct ImportSettingsView: View {
                         settingLabel("Output")
                         Text(outputSummary)
                     }
+                }
+
+                GridRow {
+                    settingLabel("Loop")
+                    Text(loopSummary)
                 }
 
                 if isUltrawideSource {

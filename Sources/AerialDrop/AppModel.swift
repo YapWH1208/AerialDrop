@@ -22,6 +22,7 @@ final class AppModel {
     var conversionQuality: ConversionOptions.Quality = .standard
     var outputHeightCap: Int? = nil
     var sourceResolution: CGSize?
+    var sourceDuration: Double?
     var activeAerialAssetIDs: Set<String> = []
     var activationFailure: ManagedWallpaper?
     var activationFailureMessage: String?
@@ -122,6 +123,7 @@ final class AppModel {
         conversionQuality = .standard
         outputHeightCap = nil
         sourceResolution = nil
+        sourceDuration = nil
         isSelectedVideoValid = false
         Task {
             let access = url.startAccessingSecurityScopedResource()
@@ -146,6 +148,10 @@ final class AppModel {
             // validation — the import pipeline loads the same track metadata
             // again and surfaces its own errors there.
             let asset = AVURLAsset(url: url)
+            if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
+                guard version == selectionVersion else { return }
+                sourceDuration = seconds
+            }
             guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
             guard let naturalSize = try? await track.load(.naturalSize) else { return }
             guard let preferredTransform = try? await track.load(.preferredTransform) else { return }
