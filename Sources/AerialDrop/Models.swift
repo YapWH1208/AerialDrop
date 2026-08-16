@@ -14,6 +14,9 @@ struct ManagedWallpaper: Identifiable, Hashable {
     let videoURL: URL
     let thumbnailURL: URL
     var resolution: CGSize? = nil
+    /// Import order from the manifest (higher = added more recently), used
+    /// for the Library's "Recently Added" sort. Nil for entries without it.
+    var preferredOrder: Int? = nil
 
     var videoExists: Bool {
         FileManager.default.fileExists(atPath: videoURL.path)

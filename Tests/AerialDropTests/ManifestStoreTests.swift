@@ -193,6 +193,22 @@ final class ManifestStoreTests: XCTestCase {
         }
     }
 
+    func testImportedWallpapersExposeImportOrder() throws {
+        let firstID = "12121212-3434-4567-8AAA-9999999999A1"
+        try Data("video".utf8).write(to: paths.videoURL(for: firstID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: firstID))
+        try store.addWallpaper(id: firstID, title: "First")
+        let secondID = "12121212-3434-4567-8AAA-9999999999A2"
+        try Data("video".utf8).write(to: paths.videoURL(for: secondID))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: secondID))
+        try store.addWallpaper(id: secondID, title: "Second")
+
+        let wallpapers = try store.importedWallpapers()
+
+        XCTAssertEqual(wallpapers.first { $0.id == firstID }?.preferredOrder, 0)
+        XCTAssertEqual(wallpapers.first { $0.id == secondID }?.preferredOrder, 1)
+    }
+
     func testRestoreBackupReturnsManagedStateAndPreservesForeignData() throws {
         let firstID = "12121212-3434-4567-8AAA-999999999991"
         try Data("video".utf8).write(to: paths.videoURL(for: firstID))

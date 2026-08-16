@@ -49,12 +49,15 @@ struct ManifestStore {
                 return nil
             }()
 
+            let preferredOrder = (asset["preferredOrder"] as? NSNumber)?.intValue
+
             return ManagedWallpaper(
                 id: id,
                 title: title,
                 videoURL: paths.videoURL(for: id),
                 thumbnailURL: paths.thumbnailURL(for: id),
-                resolution: resolution
+                resolution: resolution,
+                preferredOrder: preferredOrder
             )
         }
         .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }

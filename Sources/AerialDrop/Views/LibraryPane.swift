@@ -1,7 +1,13 @@
 import AppKit
 import SwiftUI
 
+enum LibrarySortOrder: String, CaseIterable {
+    case title
+    case recentlyAdded
+}
+
 struct LibraryPane: View {
+    static let sortOrderKey = "librarySortOrder"
     let onImport: () -> Void
     let onDropVideo: (URL) -> Void
 
@@ -19,14 +25,32 @@ struct LibraryPane: View {
     @State private var showingRenameAlert = false
     @State private var highlightTarget: String?
     @State private var dropTargeted = false
+    @AppStorage(LibraryPane.sortOrderKey) private var sortOrder = LibrarySortOrder.title
 
     private let wallpaperColumns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 20)
     ]
 
     private var filteredWallpapers: [ManagedWallpaper] {
-        guard !searchText.isEmpty else { return model.wallpapers }
-        return model.wallpapers.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        let base: [ManagedWallpaper]
+        if searchText.isEmpty {
+            base = model.wallpapers
+        } else {
+            base = model.wallpapers.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        }
+        switch sortOrder {
+        case .title:
+            return base
+        case .recentlyAdded:
+            return base.sorted { lhs, rhs in
+                let lhsOrder = lhs.preferredOrder ?? Int.min
+                let rhsOrder = rhs.preferredOrder ?? Int.min
+                if lhsOrder != rhsOrder {
+                    return lhsOrder > rhsOrder
+                }
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+        }
     }
 
     var body: some View {
@@ -159,6 +183,16 @@ struct LibraryPane: View {
                     }
                 }
                 .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Picker("Sort", selection: $sortOrder) {
+                            Text("Title").tag(LibrarySortOrder.title)
+                            Text("Recently Added").tag(LibrarySortOrder.recentlyAdded)
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(model.wallpapers.count < 2)
+                    }
+                }
             }
         }
     }
