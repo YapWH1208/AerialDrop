@@ -95,7 +95,7 @@ struct LibraryPane: View {
                 .disabled(!canRename)
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This updates the name shown in System Settings and AerialDrop.")
+            renameMessage
         }
         .sheet(item: $previewWallpaper) { wallpaper in
             WallpaperPreviewView(
@@ -322,6 +322,27 @@ struct LibraryPane: View {
         guard let renameTarget, !model.isWorking else { return false }
         let cleanTitle = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         return !cleanTitle.isEmpty && cleanTitle != renameTarget.title
+    }
+
+    /// Mirrors the import pane's duplicate-name warning so both naming paths
+    /// share one policy: warn, but permit.
+    private var renameDuplicateTitle: String? {
+        guard let target = renameTarget else { return nil }
+        let clean = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        let collides = model.wallpapers.contains {
+            $0.id != target.id
+                && $0.title.localizedCaseInsensitiveCompare(clean) == .orderedSame
+        }
+        return collides ? clean : nil
+    }
+
+    private var renameMessage: Text {
+        var message = "This updates the name shown in System Settings and AerialDrop."
+        if let duplicate = renameDuplicateTitle {
+            message += "\n\nA wallpaper named “\(duplicate)” already exists."
+        }
+        return Text(message)
     }
 
     private func openPreview(_ wallpaper: ManagedWallpaper) {
