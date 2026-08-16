@@ -21,6 +21,11 @@ version before evaluating native playback.
    mask and controls stay in sync. Confirm the toolbar shows **Replace Video…** and
    **Import Wallpaper** after selection, then replace the source and verify the preview
    follows it. Navigate to Library and confirm **Continue Import** returns to the draft.
+   With the disclosure collapsed, confirm the Wallpaper Details section always shows
+   a **Loop** row: “First 1:20 of the source, looped” for sources longer than 80 s,
+   “Whole video, repeated to fill 1:20” for shorter ones. With a portrait or 4:3
+   source, confirm the caption “The 16:9 wallpaper keeps the vertical center of the
+   frame” appears under the preview.
 4. Confirm the inline **Set as wallpaper after importing** toggle defaults to on,
    explains that activation covers all Spaces and displays, and retains its value
    after relaunch. Turn it off and confirm the copy says the desktop will not change.
@@ -50,6 +55,10 @@ version before evaluating native playback.
 2. Confirm a restore is refused with nothing changed when the catalogue contains foreign changes newer than the backup (e.g. an Apple Aerial was added in System Settings after the backup).
 3. After removing a wallpaper, restoring the latest backup brings its entry back marked Video missing (its video file was deleted by the removal) and removing it again is permitted.
 4. During an import, press Command-Q and confirm a quit confirmation appears. Keep Importing resumes; Quit Anyway quits, and the next launch removes leftover .AerialDrop- temp files from the videos folder.
+5. Import a video with an unsupported codec wrapped in a .mov container and confirm
+   the alert is titled after the workflow (**Couldn’t Import the Video**) and its
+   message explains the H.264/HEVC conversion step. Run Maintenance → Validate Current
+   Catalogue and confirm a **Catalogue Valid** success alert, not a generic one.
 5. Confirm the Import pane shows the encoded resolution and an estimated file size before importing, and that quality/resolution changes update the estimate live.
 6. Confirm the Import progress shows an estimated time remaining during the encode stage.
 7. Confirm a warning appears when the wallpaper name matches an existing wallpaper.
@@ -65,6 +74,25 @@ version before evaluating native playback.
 5. Drag an MP4/MOV onto the Library pane and confirm it opens in the Import flow with a drop highlight; non-video drops are ignored.
 6. Choose a video, rename it, then choose a different video; confirm the name field follows the new file.
 7. For an ultrawide source, drag the crop slider between presets and confirm no crop segment is highlighted while the position is between presets, and the preview mask matches the slider.
+8. Focus a wallpaper card with the keyboard and press Delete: the existing removal
+   confirmation appears. Press Delete while typing in the search field and confirm
+   nothing is removed.
+9. Command- or Shift-click several cards: a selection banner appears with
+   **Remove Selected…**; confirm the dialog names the count, removes exactly the
+   selected wallpapers, and is disabled (with help) when one of them is active.
+10. Rename a wallpaper to another wallpaper’s title and confirm the duplicate-name
+    warning appears in the rename alert.
+11. Switch the Library sort between **Title** and **Recently Added**: the newest
+    imports appear first in Recently Added, and the choice survives a relaunch.
+12. On the onboarding screen (missing catalogue), confirm **Open Wallpaper Settings**
+    shows the same photo icon as the toolbar’s Wallpaper Settings button.
+13. Open the Settings window and confirm the AerialDrop version and build number are
+    shown at the bottom.
+14. Open a wallpaper preview on a slow disk and confirm a loading indicator appears
+    before the loop starts; move the installed video away mid-session and confirm the
+    preview explains the failure instead of showing a dead player.
+15. With an unreadable selection store (test account), confirm the Library shows the
+    “Active status may be out of date” note while removal still proceeds.
 
 ## Native activation and playback
 
