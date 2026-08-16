@@ -37,6 +37,7 @@ final class PlayerNSView: NSView {
     private var looper: AVPlayerLooper?
     private var currentURL: URL?
     private var currentItem: AVPlayerItem?
+    private var currentItemObservation: NSKeyValueObservation?
     private var statusObservation: NSKeyValueObservation?
     private var lastReportedState: LoopPlaybackState?
 
@@ -72,6 +73,8 @@ final class PlayerNSView: NSView {
     }
 
     func teardown() {
+        currentItemObservation?.invalidate()
+        currentItemObservation = nil
         statusObservation?.invalidate()
         statusObservation = nil
         looper?.disableLooping()
@@ -87,24 +90,44 @@ final class PlayerNSView: NSView {
 
     private func load(url: URL, isPlaying: Bool) {
         teardown()
-        let item = AVPlayerItem(asset: AVURLAsset(url: url))
+        let template = AVPlayerItem(asset: AVURLAsset(url: url))
         let queuePlayer = AVQueuePlayer()
-        let looper = AVPlayerLooper(player: queuePlayer, templateItem: item)
+        let looper = AVPlayerLooper(player: queuePlayer, templateItem: template)
         self.player = queuePlayer
         self.looper = looper
         currentURL = url
-        currentItem = item
         playerLayer.player = queuePlayer
-        observeItemStatus(of: item)
+        observeCurrentItem(of: queuePlayer, fallback: template)
         report(.loading)
         updatePlayback(isPlaying: isPlaying)
     }
 
-    /// Status changes are observed where registered (the main run loop) but
-    /// the hop keeps the strict-concurrency contract explicit. The observed
-    /// item is captured so a torn-down item's late callback cannot overwrite
-    /// the state of the item that replaced it (fast preview switching).
-    private func observeItemStatus(of item: AVPlayerItem) {
+    /// AVPlayerLooper plays replicas of the template item, so the queue's
+    /// currentItem — not the template — is what actually renders. Observe the
+    /// player's currentItem and rebind the status observation every time the
+    /// looper advances to a new replica, so a failure of the item genuinely on
+    /// screen is what surfaces. Falls back to the template until the looper
+    /// inserts its first replica (currentItem is nil during that window).
+    ///
+    /// Changes are observed where registered (the main run loop) but the hop
+    /// keeps the strict-concurrency contract explicit. Identity guards keep a
+    /// torn-down player's or item's late callback from overwriting the state
+    /// of what replaced it (fast preview switching).
+    private func observeCurrentItem(of player: AVQueuePlayer, fallback: AVPlayerItem) {
+        currentItemObservation = player.observe(\.currentItem, options: [.initial, .new]) { [weak self] observedPlayer, _ in
+            guard let self else { return }
+            Task { @MainActor in
+                guard self.player === observedPlayer else { return }
+                self.bindStatusObservation(to: observedPlayer.currentItem ?? fallback)
+            }
+        }
+    }
+
+    private func bindStatusObservation(to item: AVPlayerItem) {
+        guard item !== currentItem else { return }
+        statusObservation?.invalidate()
+        statusObservation = nil
+        currentItem = item
         statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] observed, _ in
             let state: LoopPlaybackState
             switch observed.status {

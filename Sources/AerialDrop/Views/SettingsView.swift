@@ -14,7 +14,7 @@ struct SettingsView: View {
 
             // Shown regardless of bundling: unbundled swift-run launches have
             // no About panel version to consult.
-            Text("AerialDrop (AppVersion.shortVersion) ((AppVersion.buildNumber))")
+            Text("AerialDrop \(AppVersion.shortVersion) (\(AppVersion.buildNumber))")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
