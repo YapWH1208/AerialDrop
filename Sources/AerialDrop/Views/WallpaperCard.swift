@@ -84,6 +84,7 @@ struct WallpaperCard: View {
                         .font(.headline)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .help(wallpaper.title)
 
                     Spacer(minLength: 4)
 

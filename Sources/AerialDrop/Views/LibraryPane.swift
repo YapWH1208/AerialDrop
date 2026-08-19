@@ -9,6 +9,7 @@ struct LibraryPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedIDs: Set<String> = []
+    @State private var selectionAnchorID: String?
     @State private var searchText = ""
     @State private var previewWallpaper: ManagedWallpaper?
     @State private var pendingRemoval: ManagedWallpaper?
@@ -77,9 +78,19 @@ struct LibraryPane: View {
         }
         .onAppear {
             applyPendingHighlight()
+            normalizeSelection()
         }
         .onChange(of: model.pendingLibraryHighlightID) { _, _ in
             applyPendingHighlight()
+        }
+        .onChange(of: model.wallpapers) { _, _ in
+            normalizeSelection()
+        }
+        .onChange(of: searchText) { _, _ in
+            normalizeSelection()
+        }
+        .onChange(of: sortOrder) { _, _ in
+            normalizeSelection(resetAnchor: true)
         }
         .confirmationDialog(
             removeDialogTitle,
@@ -234,6 +245,7 @@ struct LibraryPane: View {
             Spacer()
             Button("Clear Selection") {
                 selectedIDs = []
+                selectionAnchorID = nil
             }
             .disabled(model.isWorking)
             Button("Remove Selected…", role: .destructive) {
@@ -311,6 +323,7 @@ struct LibraryPane: View {
         let wallpapers = pendingBulkRemoval
         cancelBulkRemoval()
         selectedIDs = []
+        selectionAnchorID = nil
         guard !wallpapers.isEmpty else { return }
         model.remove(
             wallpapers,
@@ -380,26 +393,46 @@ struct LibraryPane: View {
             searchText = ""
         }
         selectedIDs = [id]
+        selectionAnchorID = id
         highlightTarget = id
         model.pendingLibraryHighlightID = nil
     }
 
-    /// Plain clicks keep single-selection semantics; Command- and Shift-click
-    /// extend the selection so several wallpapers can be removed at once.
+    /// Applies conventional macOS collection selection semantics in the
+    /// current filtered/sorted order.
     private func select(_ wallpaper: ManagedWallpaper) {
-        let modifiers = NSEvent.modifierFlags
-        let extendsSelection = modifiers.contains(.command) || modifiers.contains(.shift)
-        if extendsSelection {
-            if selectedIDs.contains(wallpaper.id) {
-                selectedIDs.remove(wallpaper.id)
-            } else {
-                selectedIDs.insert(wallpaper.id)
-            }
-        } else if selectedIDs == [wallpaper.id] {
-            selectedIDs = []
-        } else {
-            selectedIDs = [wallpaper.id]
+        let eventModifiers = NSEvent.modifierFlags
+        var modifiers: LibrarySelectionModifiers = []
+        if eventModifiers.contains(.command) {
+            modifiers.insert(.command)
         }
+        if eventModifiers.contains(.shift) {
+            modifiers.insert(.shift)
+        }
+        let result = updatingLibrarySelection(
+            LibrarySelectionState(
+                selectedIDs: selectedIDs,
+                anchorID: selectionAnchorID
+            ),
+            clickedID: wallpaper.id,
+            visibleIDs: filteredWallpapers.map(\.id),
+            modifiers: modifiers
+        )
+        selectedIDs = result.selectedIDs
+        selectionAnchorID = result.anchorID
+    }
+
+    private func normalizeSelection(resetAnchor: Bool = false) {
+        let result = normalizingLibrarySelection(
+            LibrarySelectionState(
+                selectedIDs: selectedIDs,
+                anchorID: selectionAnchorID
+            ),
+            visibleIDs: filteredWallpapers.map(\.id),
+            resetAnchor: resetAnchor
+        )
+        selectedIDs = result.selectedIDs
+        selectionAnchorID = result.anchorID
     }
 
     private var emptyLibrary: some View {
@@ -472,6 +505,7 @@ struct LibraryPane: View {
 
     private func openPreview(_ wallpaper: ManagedWallpaper) {
         selectedIDs = [wallpaper.id]
+        selectionAnchorID = wallpaper.id
         previewWallpaper = wallpaper
     }
 

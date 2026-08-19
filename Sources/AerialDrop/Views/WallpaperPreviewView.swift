@@ -43,8 +43,8 @@ struct WallpaperPreviewView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(wallpaper.title)
                     .font(.title3)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
 
                 if let resolution = wallpaper.resolution {
                     Text("\(Int(resolution.width)) × \(Int(resolution.height)) · 80-second loop")
