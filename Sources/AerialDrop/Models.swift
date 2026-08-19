@@ -158,6 +158,7 @@ enum AerialDropError: LocalizedError {
     case nativeVideoNotMain10(Int)
     case nativeVideoNotFullRange
     case main10EncodingUnavailable
+    case insufficientImportStorage(requiredBytes: Int64, availableBytes: Int64)
     case manifestChangedDuringOperation
     case foreignManifestDataChanged(String)
     case missingWallpaperSelectionStore(URL)
@@ -216,6 +217,16 @@ enum AerialDropError: LocalizedError {
             return "The native Aerial export is limited-range video. Tahoe custom Aerial playback requires full-range 10-bit HEVC."
         case .main10EncodingUnavailable:
             return "This Mac could not initialize the HEVC Main10 encoder required for reliable Tahoe Aerial playback."
+        case .insufficientImportStorage(let requiredBytes, let availableBytes):
+            let required = ByteCountFormatter.string(
+                fromByteCount: requiredBytes,
+                countStyle: .file
+            )
+            let available = ByteCountFormatter.string(
+                fromByteCount: availableBytes,
+                countStyle: .file
+            )
+            return "Import needs about \(required) of free space while AerialDrop builds the wallpaper, but only \(available) is available. Free up space or choose a lower quality or resolution, then try again."
         case .manifestChangedDuringOperation:
             return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close System Settings and any other wallpaper app, then try again."
         case .foreignManifestDataChanged(let description):

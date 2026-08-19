@@ -85,6 +85,38 @@ func bitrateBps(quality: ConversionOptions.Quality, renderHeight: Int) -> Int {
     }
 }
 
+/// Estimated encoded bytes for the fixed 80-second native Aerial loop. The
+/// estimate intentionally uses the same bitrate bucket as the encoder; the
+/// container's short-lived overhead is covered by the working-space reserve.
+func estimatedAerialOutputBytes(
+    sourceSize: CGSize,
+    options: ConversionOptions
+) -> Int64 {
+    let outputSize = encodedOutputSize(
+        sourceSize: sourceSize,
+        outputHeightCap: options.outputHeightCap
+    )
+    let bitsPerSecond = Int64(
+        bitrateBps(
+            quality: options.quality,
+            renderHeight: Int(outputSize.height)
+        )
+    )
+    return bitsPerSecond * 80 / 8
+}
+
+/// Peak free space required before encoding begins. Short sources briefly
+/// keep both the encoded segment and its repeated final movie, so reserve two
+/// output-sized files plus 128 MiB for container variance, thumbnails, and
+/// catalogue backups.
+func requiredImportStorageBytes(
+    sourceSize: CGSize,
+    options: ConversionOptions
+) -> Int64 {
+    estimatedAerialOutputBytes(sourceSize: sourceSize, options: options) * 2
+        + 128 * 1_024 * 1_024
+}
+
 /// Human-readable statement of the fixed 80-second loop contract, shown in
 /// the Import pane before the user commits to an encode. Sources longer than
 /// the loop are trimmed to their first ~80 seconds; shorter ones repeat.

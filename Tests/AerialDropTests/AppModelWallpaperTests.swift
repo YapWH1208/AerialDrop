@@ -150,6 +150,71 @@ final class AppModelWallpaperTests: XCTestCase {
         }
     }
 
+    func testImportStoragePreflightAllowsSufficientAndUnavailableCapacity() throws {
+        let sourceSize = CGSize(width: 3_840, height: 2_160)
+        let options = ConversionOptions(quality: .maximum)
+        let requiredBytes = requiredImportStorageBytes(
+            sourceSize: sourceSize,
+            options: options
+        )
+        var checkedURL: URL?
+        let sufficientModel = makeModel(
+            service: FakeWallpaperService(),
+            availableCapacityProvider: { url in
+                checkedURL = url
+                return requiredBytes
+            }
+        )
+
+        XCTAssertNoThrow(
+            try sufficientModel.requireImportStorageCapacity(
+                sourceSize: sourceSize,
+                options: options
+            )
+        )
+        XCTAssertEqual(checkedURL?.lastPathComponent, "videos")
+
+        let unknownModel = makeModel(
+            service: FakeWallpaperService(),
+            availableCapacityProvider: { _ in nil }
+        )
+        XCTAssertNoThrow(
+            try unknownModel.requireImportStorageCapacity(
+                sourceSize: sourceSize,
+                options: options
+            )
+        )
+    }
+
+    func testImportStoragePreflightReportsRequiredAndAvailableCapacity() {
+        let sourceSize = CGSize(width: 3_840, height: 2_160)
+        let options = ConversionOptions(quality: .maximum)
+        let requiredBytes = requiredImportStorageBytes(
+            sourceSize: sourceSize,
+            options: options
+        )
+        let availableBytes = requiredBytes - 1
+        let model = makeModel(
+            service: FakeWallpaperService(),
+            availableCapacityProvider: { _ in availableBytes }
+        )
+
+        XCTAssertThrowsError(
+            try model.requireImportStorageCapacity(
+                sourceSize: sourceSize,
+                options: options
+            )
+        ) { error in
+            guard let aerialError = error as? AerialDropError,
+                  case .insufficientImportStorage(let actualRequired, let actualAvailable) = aerialError else {
+                return XCTFail("Expected insufficientImportStorage, got \(error)")
+            }
+            XCTAssertEqual(actualRequired, requiredBytes)
+            XCTAssertEqual(actualAvailable, availableBytes)
+            XCTAssertTrue(error.localizedDescription.contains("lower quality or resolution"))
+        }
+    }
+
     func testManualActivationRefreshesTheActiveAerialID() async {
         let service = FakeWallpaperService()
         let model = makeModel(service: service)
@@ -675,7 +740,8 @@ final class AppModelWallpaperTests: XCTestCase {
         service: FakeWallpaperService,
         home: URL? = nil,
         automaticActivationEnabled: @escaping () -> Bool = { true },
-        preferencesDefaults: UserDefaults = UserDefaults.standard
+        preferencesDefaults: UserDefaults = UserDefaults.standard,
+        availableCapacityProvider: @escaping (URL) -> Int64? = { _ in nil }
     ) -> AppModel {
         let temporaryHome = home ?? makeTemporaryHome()
         return AppModel(
@@ -683,7 +749,8 @@ final class AppModelWallpaperTests: XCTestCase {
             systemService: service,
             automaticallyReload: false,
             automaticActivationEnabled: automaticActivationEnabled,
-            preferencesDefaults: preferencesDefaults
+            preferencesDefaults: preferencesDefaults,
+            availableCapacityProvider: availableCapacityProvider
         )
     }
 

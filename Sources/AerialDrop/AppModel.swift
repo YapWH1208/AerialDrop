@@ -49,6 +49,7 @@ final class AppModel {
     private let systemService: any WallpaperServicing
     private let automaticActivationEnabled: () -> Bool
     private let preferencesDefaults: UserDefaults
+    private let availableCapacityProvider: (URL) -> Int64?
 
     init(
         paths: WallpaperPaths = WallpaperPaths(),
@@ -57,7 +58,20 @@ final class AppModel {
         automaticActivationEnabled: @escaping () -> Bool = {
             AppPreferences.isSetWallpaperAfterImportEnabled()
         },
-        preferencesDefaults: UserDefaults = .standard
+        preferencesDefaults: UserDefaults = .standard,
+        availableCapacityProvider: @escaping (URL) -> Int64? = { url in
+            let values = try? url.resourceValues(forKeys: [
+                .volumeAvailableCapacityForImportantUsageKey,
+                .volumeAvailableCapacityKey
+            ])
+            if let important = values?.volumeAvailableCapacityForImportantUsage {
+                return important
+            }
+            if let available = values?.volumeAvailableCapacity {
+                return Int64(available)
+            }
+            return nil
+        }
     ) {
         self.paths = paths
         manifestStore = ManifestStore(paths: paths)
@@ -66,6 +80,7 @@ final class AppModel {
         )
         self.automaticActivationEnabled = automaticActivationEnabled
         self.preferencesDefaults = preferencesDefaults
+        self.availableCapacityProvider = availableCapacityProvider
         if automaticallyReload {
             Task { await reload() }
         }
@@ -211,6 +226,11 @@ final class AppModel {
         // starts from them.
         AppPreferences.setLastConversionQuality(conversionQuality, defaults: preferencesDefaults)
         AppPreferences.setLastOutputHeightCap(outputHeightCap, defaults: preferencesDefaults)
+        let options = ConversionOptions(
+            cropOffset: cropOffset,
+            outputHeightCap: outputHeightCap,
+            quality: conversionQuality
+        )
 
         importTask?.cancel()
         importGeneration += 1
@@ -239,16 +259,23 @@ final class AppModel {
                 try manifestStore.requireManifest()
                 try manifestStore.prepareDirectories()
 
+                let importSourceSize: CGSize
+                if let sourceResolution {
+                    importSourceSize = sourceResolution
+                } else {
+                    importSourceSize = try await videoProcessor.sourceDisplaySize(for: source)
+                }
+                try requireImportStorageCapacity(
+                    sourceSize: importSourceSize,
+                    options: options
+                )
+
                 stage = .processingVideo
                 encodeStartedAt = Date()
                 let encodedSize = try await videoProcessor.makeNativeMOV(
                     from: source,
                     destination: videoDestination,
-                    options: ConversionOptions(
-                        cropOffset: cropOffset,
-                        outputHeightCap: outputHeightCap,
-                        quality: conversionQuality
-                    )
+                    options: options
                 ) { fraction in
                     Task { @MainActor in
                         self.importProgress = fraction
@@ -296,6 +323,29 @@ final class AppModel {
                     message: error.localizedDescription
                 )
             }
+        }
+    }
+
+    /// Fails before encoding when the destination volume cannot hold the
+    /// pipeline's conservative peak working set. If macOS cannot report a
+    /// capacity value, import proceeds and the encoder retains its existing
+    /// actionable failure path.
+    func requireImportStorageCapacity(
+        sourceSize: CGSize,
+        options: ConversionOptions
+    ) throws {
+        let requiredBytes = requiredImportStorageBytes(
+            sourceSize: sourceSize,
+            options: options
+        )
+        guard let availableBytes = availableCapacityProvider(paths.videos) else {
+            return
+        }
+        guard availableBytes >= requiredBytes else {
+            throw AerialDropError.insufficientImportStorage(
+                requiredBytes: requiredBytes,
+                availableBytes: max(0, availableBytes)
+            )
         }
     }
 
