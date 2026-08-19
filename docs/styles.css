@@ -474,6 +474,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
 }
 
 /* Terminal */
@@ -484,6 +485,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   background: var(--term-bg);
   box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   overflow: hidden;
+  min-width: 0;
 }
 
 .terminal__bar {
@@ -517,6 +519,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   font-size: 13.5px;
   line-height: 1.75;
   color: var(--term-text);
+  min-width: 0;
 }
 
 .term-line {
@@ -526,6 +529,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .term-prompt {
@@ -538,6 +542,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   white-space: pre-wrap;
   word-break: break-all;
   min-height: 1.6em;
+  min-width: 0;
 }
 
 .term-copy {
@@ -719,6 +724,10 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   flex-wrap: wrap;
 }
 
+.section__head--row > * {
+  min-width: 0;
+}
+
 .section__head h2 {
   font-size: clamp(1.9rem, 3.4vw, 2.6rem);
   letter-spacing: -0.025em;
@@ -734,12 +743,14 @@ html[data-theme="dark"] .icon-btn .icon--moon {
 }
 
 .platform-chip {
-  flex: none;
+  flex: 0 1 auto;
+  max-width: 100%;
   padding: 7px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   font-size: 13px;
   color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
 .platform-chip .ok {
@@ -821,6 +832,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   background: var(--bg-elev);
   padding: 10px;
   gap: 4px;
+  min-width: 0;
 }
 
 .method {
@@ -879,6 +891,13 @@ html[data-theme="dark"] .icon-btn .icon--moon {
 
 .installer__panel {
   padding: 34px 36px 40px;
+  min-width: 0;
+}
+
+.panel,
+.panel .step,
+.step__content {
+  min-width: 0;
 }
 
 .panel__head {
@@ -958,6 +977,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   line-height: 1.6;
   color: var(--term-text);
   scrollbar-width: thin;
+  min-width: 0;
 }
 
 .cmd__copy {
@@ -1002,6 +1022,13 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   color: var(--text-dim);
   font-size: 13.5px;
   margin-top: 12px;
+}
+
+.expect code,
+.step__note code,
+.panel__head code,
+.step-panel code {
+  overflow-wrap: anywhere;
 }
 
 .expect + .cmd {
@@ -1068,11 +1095,16 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   align-items: start;
 }
 
+.pipeline > * {
+  min-width: 0;
+}
+
 .stepper {
   list-style: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .stepper__node {
@@ -1142,6 +1174,7 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   background: var(--bg-elev);
   padding: 34px 36px;
   box-shadow: var(--shadow);
+  min-width: 0;
 }
 
 .step-panel h3 {
@@ -1526,6 +1559,7 @@ html.js .reveal.in {
     border-bottom: 1px solid var(--line);
     overflow-x: auto;
     padding: 8px;
+    max-width: 100%;
   }
 
   .method {
@@ -1546,6 +1580,7 @@ html.js .reveal.in {
     flex-direction: row;
     overflow-x: auto;
     padding-bottom: 4px;
+    max-width: 100%;
   }
 
   .stepper__node {

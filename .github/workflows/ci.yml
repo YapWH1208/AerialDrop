@@ -16,6 +16,9 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      - name: Verify website release fallback
+        run: ./Scripts/check-docs-version.sh
+
       - name: Build (debug)
         run: swift build
 
