@@ -26,6 +26,10 @@ version before evaluating native playback.
    “Whole video, repeated to fill 1:20” for shorter ones. With a portrait or 4:3
    source, confirm the caption “The 16:9 wallpaper keeps the vertical center of the
    frame” appears under the preview.
+   With a fixture whose still-frame generation fails, confirm the preview ends at
+   **Preview Unavailable**, announces the failure with VoiceOver, and offers
+   **Retry Preview** and **Replace Video…**. Confirm a source that passed validation
+   can still be imported while its still preview is unavailable.
 4. Confirm the inline **Set as wallpaper after importing** toggle defaults to on,
    explains that activation covers all Spaces and displays, and retains its value
    after relaunch. Turn it off and confirm the copy says the desktop will not change.
@@ -59,11 +63,16 @@ version before evaluating native playback.
    the alert is titled after the workflow (**Couldn’t Import the Video**) and its
    message explains the H.264/HEVC conversion step. Run Maintenance → Validate Current
    Catalogue and confirm a **Catalogue Valid** success alert, not a generic one.
-5. Confirm the Import pane shows the encoded resolution and an estimated file size before importing, and that quality/resolution changes update the estimate live.
-6. Confirm the Import progress shows an estimated time remaining during the encode stage.
-7. Confirm a warning appears when the wallpaper name matches an existing wallpaper.
-8. After an import completes, View in Library selects and scrolls to the new wallpaper.
-9. During Set as Wallpaper, Remove, Remove All, and Restore Latest Backup, confirm a progress banner with a label stays visible until the operation finishes (both in the Library grid and the preview sheet).
+6. Confirm the Import pane shows the encoded resolution and an estimated file size before importing, and that quality/resolution changes update the estimate live.
+7. In a disposable Tahoe VM or test volume with less free space than the displayed
+   import requires, start an import. Confirm AerialDrop stops before **Building an
+   80-second native HEVC Aerial stream**, reports the required and available space,
+   and recommends freeing space or lowering quality/resolution. Confirm lowering a
+   setting enough to satisfy the requirement permits a retry.
+8. Confirm the Import progress shows an estimated time remaining during the encode stage.
+9. Confirm a warning appears when the wallpaper name matches an existing wallpaper.
+10. After an import completes, View in Library selects and scrolls to the new wallpaper.
+11. During Set as Wallpaper, Remove, Remove All, and Restore Latest Backup, confirm a progress banner with a label stays visible until the operation finishes (both in the Library grid and the preview sheet).
 
 ## Import and Library polish
 
@@ -71,15 +80,22 @@ version before evaluating native playback.
 2. With a fade-in-from-black source, confirm the Import preview shows a later, visible frame instead of a black box.
 3. Confirm the completion card offers Open Wallpaper Settings alongside Import Another and View in Library.
 4. Confirm the toolbar's Wallpaper Settings button shows a wallpaper icon (not a gear) and still opens System Settings -> Wallpaper.
-5. Drag an MP4/MOV onto the Library pane and confirm it opens in the Import flow with a drop highlight; non-video drops are ignored.
+5. Drag an MP4/MOV onto the Library pane and confirm the neutral drop highlight says
+   **Drop an MP4 or MOV video** and opens the file in the Import flow. Drop another
+   file type and confirm an immediate **Couldn’t Use This File** alert explains that
+   an MP4 or MOV is required.
 6. Choose a video, rename it, then choose a different video; confirm the name field follows the new file.
 7. For an ultrawide source, drag the crop slider between presets and confirm no crop segment is highlighted while the position is between presets, and the preview mask matches the slider.
 8. Focus a wallpaper card with the keyboard and press Delete: the existing removal
    confirmation appears. Press Delete while typing in the search field and confirm
    nothing is removed.
-9. Command- or Shift-click several cards: a selection banner appears with
-   **Remove Selected…**; confirm the dialog names the count, removes exactly the
-   selected wallpapers, and is disabled (with help) when one of them is active.
+9. Plain-click a card, Command-click nonadjacent cards, then Shift-click a later card.
+   Confirm plain click replaces the selection, Command-click toggles one card, and
+   Shift-click selects the inclusive visible range from the anchor. Confirm
+   Command-Shift adds a range. Change search/sort and verify hidden selections and
+   stale anchors do not affect the next range. The selection banner should offer
+   **Remove Selected…**; confirm its dialog names the count, removes exactly the
+   selected wallpapers, and is disabled (with help) when one is known to be active.
 10. Rename a wallpaper to another wallpaper’s title and confirm the duplicate-name
     warning appears in the rename alert.
 11. Switch the Library sort between **Title** and **Recently Added**: the newest
@@ -92,7 +108,20 @@ version before evaluating native playback.
     before the loop starts; move the installed video away mid-session and confirm the
     preview explains the failure instead of showing a dead player.
 15. With an unreadable selection store (test account), confirm the Library shows the
-    “Active status may be out of date” note while removal still proceeds.
+    “Active status may be out of date” note. Start single, selected, and remove-all
+    operations. Each must explain that the active wallpaper cannot be verified and
+    offer **Check Again**, **Open Wallpaper Settings**, **Remove Anyway**, and a safe
+    keep/cancel action. Confirm no deletion occurs without **Remove Anyway**. Restore
+    readability with a managed wallpaper active and confirm removal is blocked even
+    after the earlier acknowledgement.
+16. Give a wallpaper a title long enough to truncate in its card. Confirm hovering the
+    title reveals the full native Help text, VoiceOver reads the full card name, and
+    the preview-sheet title wraps without truncation.
+17. With several wallpapers visible, switch away from AerialDrop and return. Confirm
+    the grid and scroll position remain on screen while **Refreshing catalogue…** is
+    shown. In a disposable test account with a deliberately unavailable test
+    catalogue, confirm the last loaded grid remains visible, a failure banner offers
+    **Try Again**, and restoring access lets retry clear the banner.
 
 ## Native activation and playback
 
@@ -135,3 +164,18 @@ Expected:
   verified native Aerial `Type = linked` records for the selected AerialDrop
   asset. A recoverable binary backup exists under `Store/AerialDropBackups` for
   each activation attempt.
+
+## Website installation flow
+
+1. Run `Scripts/check-docs-version.sh` and confirm every static/no-JS release fallback
+   matches `AppVersion.shortVersion`.
+2. Serve `docs/` locally and inspect the page at 320, 390, 768, and 1440 CSS pixels.
+   Confirm the document itself never scrolls horizontally. Long terminal commands,
+   the install-method rail, and the stepper may scroll inside their own regions, and
+   their Copy/action controls must remain reachable.
+3. At 320 and 390 pixels, open the mobile menu and reach **Install** by keyboard.
+   In the installer, use Left/Right arrows to change methods and confirm the active
+   tab, focus, panel, and Copy command stay synchronized.
+4. Block the GitHub release request or disable JavaScript. Confirm the page still
+   presents the current bundled release version and valid download/install commands,
+   with no stale version token in visible copy.
