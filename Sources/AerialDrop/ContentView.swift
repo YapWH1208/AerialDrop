@@ -98,8 +98,26 @@ struct ContentView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button(confirmationConfirmTitle, role: confirmationRole) { performConfirmation() }
-            Button("Cancel", role: .cancel) { confirmation = nil }
+            switch confirmation {
+            case .removeAll(let requiresAcknowledgement):
+                if requiresAcknowledgement {
+                    Button("Check Again") { retryRemoveAllPreparation() }
+                    Button("Open Wallpaper Settings") {
+                        confirmation = nil
+                        model.openWallpaperSettings()
+                    }
+                    Button("Remove Anyway", role: .destructive) {
+                        performConfirmation(allowingUnverifiedSelection: true)
+                    }
+                } else {
+                    Button("Remove All", role: .destructive) { performConfirmation() }
+                }
+            case .restore:
+                Button("Restore Backup") { performConfirmation() }
+            case nil:
+                EmptyView()
+            }
+            Button(confirmationCancelTitle, role: .cancel) { confirmation = nil }
         } message: {
             Text(confirmationMessage)
         }
@@ -266,12 +284,12 @@ struct ContentView: View {
             .help("Replace the current catalogue with the newest AerialDrop backup")
             Divider()
             Button("Remove All AerialDrop Wallpapers", role: .destructive) {
-                confirmation = .removeAll
+                requestRemoveAll()
             }
             .disabled(
                 model.wallpapers.isEmpty
                     || model.isWorking
-                    || model.hasActiveManagedWallpaper
+                    || (model.hasActiveManagedWallpaper && !model.isSelectionStatusUnknown)
             )
             .help(removeAllHelp)
         }
@@ -280,16 +298,21 @@ struct ContentView: View {
     }
 
     private var removeAllHelp: String {
-        if model.hasActiveManagedWallpaper {
+        if model.hasActiveManagedWallpaper && !model.isSelectionStatusUnknown {
             return "Choose a different wallpaper before removing all AerialDrop wallpapers"
+        }
+        if model.isSelectionStatusUnknown {
+            return "Check the active wallpaper before removing every AerialDrop wallpaper"
         }
         return "Remove every AerialDrop wallpaper"
     }
 
     private var confirmationTitle: String {
         switch confirmation {
-        case .removeAll:
-            "Remove every AerialDrop wallpaper?"
+        case .removeAll(let requiresAcknowledgement):
+            requiresAcknowledgement
+                ? "Remove without checking which wallpaper is active?"
+                : "Remove every AerialDrop wallpaper?"
         case .restore(let info):
             "Restore the backup from \(info.date.formatted(date: .abbreviated, time: .shortened))?"
         case nil:
@@ -297,26 +320,14 @@ struct ContentView: View {
         }
     }
 
-    private var confirmationConfirmTitle: String {
-        switch confirmation {
-        case .removeAll: "Remove All"
-        case .restore: "Restore Backup"
-        case nil: ""
-        }
-    }
-
-    private var confirmationRole: ButtonRole? {
-        switch confirmation {
-        case .removeAll: .destructive
-        case .restore: nil
-        case nil: nil
-        }
-    }
-
     private var confirmationMessage: String {
         switch confirmation {
-        case .removeAll:
-            "This removes every AerialDrop entry and its copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first."
+        case .removeAll(let requiresAcknowledgement):
+            if requiresAcknowledgement {
+                "AerialDrop can’t verify which wallpaper is active. Removing an active wallpaper could leave macOS pointing to missing files. Check again, choose another wallpaper in Wallpaper Settings, or remove anyway."
+            } else {
+                "This removes every AerialDrop entry and its copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first."
+            }
         case .restore(let info):
             "This replaces the current Aerial catalogue with the backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation)). The current catalogue is backed up first. Restoring is refused if the catalogue changed since the backup. Wallpapers whose video files were deleted since the backup will appear as “Video missing” and can be removed."
         case nil:
@@ -324,10 +335,39 @@ struct ContentView: View {
         }
     }
 
-    private func performConfirmation() {
+    private var confirmationCancelTitle: String {
+        switch confirmation {
+        case .removeAll: "Keep Wallpapers"
+        case .restore: "Keep Current Catalogue"
+        case nil: "Cancel"
+        }
+    }
+
+    private func requestRemoveAll() {
+        let ids = Set(model.wallpapers.map(\.id))
+        switch model.removalReadiness(for: ids) {
+        case .verifiedInactive:
+            confirmation = .removeAll(requiresAcknowledgement: false)
+        case .verifiedActive:
+            confirmation = nil
+            model.reportActiveWallpaperRemovalBlock()
+        case .unknown:
+            confirmation = .removeAll(requiresAcknowledgement: true)
+        }
+    }
+
+    private func retryRemoveAllPreparation() {
+        confirmation = nil
+        Task {
+            await Task.yield()
+            requestRemoveAll()
+        }
+    }
+
+    private func performConfirmation(allowingUnverifiedSelection: Bool = false) {
         switch confirmation {
         case .removeAll:
-            model.removeAll()
+            model.removeAll(allowingUnverifiedSelection: allowingUnverifiedSelection)
         case .restore:
             Task { await model.restoreLatestBackup() }
         case nil:
@@ -339,7 +379,7 @@ struct ContentView: View {
 
 /// The single confirmation dialog covers the maintenance flows that need one.
 private enum ConfirmationKind: Identifiable {
-    case removeAll
+    case removeAll(requiresAcknowledgement: Bool)
     case restore(ManifestStore.BackupInfo)
 
     var id: String {

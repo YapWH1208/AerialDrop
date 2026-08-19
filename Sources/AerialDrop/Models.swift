@@ -58,6 +58,14 @@ enum CatalogueState: Equatable {
     case unavailable(String)
 }
 
+/// Result of reading macOS's private wallpaper-selection store immediately
+/// before a destructive action is presented or executed.
+enum RemovalReadiness: Equatable {
+    case verifiedInactive
+    case verifiedActive
+    case unknown
+}
+
 enum ImportActivationResult: Equatable {
     case activatedEverywhere
     case installedOnly
@@ -158,6 +166,7 @@ enum AerialDropError: LocalizedError {
     case foreignWallpaperSelectionDataChanged(String)
     case wallpaperSelectionVerificationFailed(String)
     case activeWallpaperCannotBeRemoved
+    case wallpaperSelectionUnknownForRemoval
     case backupRestoreRejected(String)
 
     var errorDescription: String? {
@@ -223,6 +232,8 @@ enum AerialDropError: LocalizedError {
             return "AerialDrop wrote the wallpaper selection, but macOS did not confirm the expected Aerial (\(expectedID)). Your backup was kept and no automatic restore was attempted."
         case .activeWallpaperCannotBeRemoved:
             return "Choose another wallpaper before removing the AerialDrop wallpaper that is currently active."
+        case .wallpaperSelectionUnknownForRemoval:
+            return "AerialDrop couldn’t verify which wallpaper is active. Check again, open Wallpaper Settings, or explicitly choose Remove Anyway before continuing."
         case .backupRestoreRejected(let reason):
             return "The backup could not be restored. \(reason) Nothing was changed."
         }
