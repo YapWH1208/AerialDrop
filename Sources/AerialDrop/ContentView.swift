@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -30,7 +31,10 @@ struct ContentView: View {
             .navigationTitle("AerialDrop")
             .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 240)
         } detail: {
-            destinationView
+            VStack(spacing: 0) {
+                catalogueRefreshBanner
+                destinationView
+            }
         }
         .tint(AerialTheme.accent)
         .toolbar {
@@ -38,9 +42,9 @@ struct ContentView: View {
 
             ToolbarItemGroup(placement: .secondaryAction) {
                 Button("Reload Catalogue", systemImage: "arrow.clockwise") {
-                    Task { await model.reload() }
+                    Task { await model.refreshCataloguePreservingContent() }
                 }
-                .disabled(model.isWorking)
+                .disabled(model.isWorking || model.catalogueRefreshState == .refreshing)
 
                 Button("Wallpaper Settings", systemImage: "photo") {
                     model.openWallpaperSettings()
@@ -81,7 +85,14 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, !model.isWorking else { return }
-            Task { await model.reload() }
+            Task { await model.refreshCataloguePreservingContent() }
+        }
+        .onChange(of: model.catalogueRefreshState) { _, state in
+            if case .failed = state {
+                AccessibilityNotification.Announcement(
+                    "Couldn’t refresh the catalogue. The last loaded wallpapers are still shown."
+                ).post()
+            }
         }
         .onChange(of: model.showingFileImporter) { _, showing in
             guard showing else { return }
@@ -163,6 +174,48 @@ struct ContentView: View {
         case .importVideo:
             ImportPane(onViewLibrary: { destination = .library })
                 .navigationTitle("Import Wallpaper")
+        }
+    }
+
+    @ViewBuilder
+    private var catalogueRefreshBanner: some View {
+        switch model.catalogueRefreshState {
+        case .idle:
+            EmptyView()
+        case .refreshing:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Refreshing catalogue…")
+                    .font(.callout)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.quaternary.opacity(0.6))
+            .accessibilityElement(children: .combine)
+        case .failed(let message):
+            HStack(spacing: 10) {
+                Label("Couldn’t refresh catalogue", systemImage: "exclamationmark.triangle")
+                    .font(.callout.weight(.medium))
+
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .help(message)
+
+                Spacer()
+
+                Button("Try Again", systemImage: "arrow.clockwise") {
+                    Task { await model.refreshCataloguePreservingContent() }
+                }
+                .disabled(model.isWorking)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.quaternary.opacity(0.6))
+            .accessibilityElement(children: .contain)
         }
     }
 

@@ -63,6 +63,70 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testForegroundRefreshReplacesReadyContentWithoutLoadingState() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0300")
+        let second = makeWallpaper(id: "C0D3X-0301")
+        try installManagedWallpaper(first, in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+        XCTAssertEqual(model.wallpapers.map(\.id), [first.id])
+
+        try installManagedWallpapers([first, second], in: home)
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertEqual(Set(model.wallpapers.map(\.id)), Set([first.id, second.id]))
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+    }
+
+    func testForegroundRefreshKeepsLastKnownContentOnCatalogueFailure() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "C0D3X-0302")
+        try installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+
+        let paths = WallpaperPaths(homeDirectory: home)
+        try Data("not-json".utf8).write(to: paths.manifest, options: .atomic)
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        guard case .failed(let message) = model.catalogueRefreshState else {
+            return XCTFail("Expected a failed foreground refresh state")
+        }
+        XCTAssertTrue(message.contains("expected format"))
+
+        try installManagedWallpaper(wallpaper, in: home)
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+    }
+
+    func testForegroundRefreshUpdatesSelectionStatusIndependently() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let service = FakeWallpaperService(activeIDs: ["FIRST-AERIAL"])
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        service.activeIDs = ["SECOND-AERIAL"]
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.activeAerialAssetIDs, ["SECOND-AERIAL"])
+        XCTAssertFalse(model.isSelectionStatusUnknown)
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+
+        service.selectionReadError = TestError.storeUnreadable
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.activeAerialAssetIDs, ["SECOND-AERIAL"])
+        XCTAssertTrue(model.isSelectionStatusUnknown)
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+    }
+
     func testChoosingANewSourceReplacesTheNameWithTheNewFileStem() {
         let model = makeModel(service: FakeWallpaperService())
         model.title = "Custom Name"

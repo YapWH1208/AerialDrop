@@ -11,6 +11,7 @@ final class AppModel {
     var title = ""
     var wallpapers: [ManagedWallpaper] = []
     var catalogueState: CatalogueState = .loading
+    var catalogueRefreshState: CatalogueRefreshState = .idle
     var stage: ImportStage = .idle
     var isWorking = false
     var activeAlert: AppAlert?
@@ -506,6 +507,7 @@ final class AppModel {
 
     func reload() async {
         sweepOrphanedTempSegments()
+        catalogueRefreshState = .idle
         catalogueState = .loading
         do {
             try manifestStore.requireManifest()
@@ -520,6 +522,48 @@ final class AppModel {
             isSelectionStatusUnknown = false
         } catch {
             isSelectionStatusUnknown = true
+        }
+    }
+
+    /// Refreshes a catalogue that is already on screen without replacing it
+    /// with the blocking loading or unavailable states. A failed foreground
+    /// read keeps the last known content and exposes a retryable status.
+    func refreshCataloguePreservingContent() async {
+        guard !isWorking else { return }
+        guard catalogueRefreshState != .refreshing else { return }
+        guard catalogueState == .ready else {
+            await reload()
+            return
+        }
+
+        sweepOrphanedTempSegments()
+        catalogueRefreshState = .refreshing
+        // Give SwiftUI a render opportunity before the small synchronous
+        // private-catalogue read so progress is perceptible on slower disks.
+        await Task.yield()
+        guard catalogueRefreshState == .refreshing else { return }
+
+        let refreshError: Error?
+        do {
+            try manifestStore.requireManifest()
+            let refreshedWallpapers = try manifestStore.importedWallpapers()
+            wallpapers = refreshedWallpapers
+            refreshError = nil
+        } catch {
+            refreshError = error
+        }
+
+        do {
+            try refreshActiveSelection()
+            isSelectionStatusUnknown = false
+        } catch {
+            isSelectionStatusUnknown = true
+        }
+
+        if let refreshError {
+            catalogueRefreshState = .failed(refreshError.localizedDescription)
+        } else {
+            catalogueRefreshState = .idle
         }
     }
 

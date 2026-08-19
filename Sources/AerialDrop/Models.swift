@@ -65,6 +65,12 @@ enum CatalogueState: Equatable {
     case unavailable(String)
 }
 
+enum CatalogueRefreshState: Equatable {
+    case idle
+    case refreshing
+    case failed(String)
+}
+
 /// Result of reading macOS's private wallpaper-selection store immediately
 /// before a destructive action is presented or executed.
 enum RemovalReadiness: Equatable {
