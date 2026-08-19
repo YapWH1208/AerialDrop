@@ -253,7 +253,9 @@ private struct ImportSourceView: View {
             VideoPreview(
                 url: url,
                 resolution: resolution,
-                cropOffset: cropOffset
+                cropOffset: cropOffset,
+                isDisabled: isDisabled,
+                onReplace: onChoose
             )
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .frame(maxWidth: .infinity)

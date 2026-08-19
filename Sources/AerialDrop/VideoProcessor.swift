@@ -153,8 +153,7 @@ struct VideoProcessor: Sendable {
     private let nativeKeyFrameIntervalDuration = 1.9
 
     func validate(source: URL) async throws {
-        let ext = source.pathExtension.lowercased()
-        guard ext == "mp4" || ext == "mov" else {
+        guard isSupportedImportVideo(source) else {
             throw AerialDropError.unsupportedFile
         }
 

@@ -47,7 +47,7 @@ struct LibraryPane: View {
                     .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
                     .padding(12)
                     .overlay {
-                        Label("Drop to import as wallpaper", systemImage: "plus.circle")
+                        Label("Drop an MP4 or MOV video", systemImage: "film")
                             .font(.headline)
                             .padding(10)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -56,9 +56,14 @@ struct LibraryPane: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard model.catalogueState == .ready, !model.isWorking, let first = urls.first else { return false }
-            // Mirror VideoProcessor.validate: only movie files enter the import flow.
-            let ext = first.pathExtension.lowercased()
-            guard ext == "mp4" || ext == "mov" else { return false }
+            guard isSupportedImportVideo(first) else {
+                dropTargeted = false
+                model.activeAlert = AppAlert(
+                    title: "Couldn’t Use This File",
+                    message: AerialDropError.unsupportedFile.localizedDescription
+                )
+                return false
+            }
             onDropVideo(first)
             return true
         } isTargeted: { targeted in

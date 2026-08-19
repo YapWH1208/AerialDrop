@@ -52,6 +52,13 @@ struct ManagedWallpaper: Identifiable, Hashable {
     }
 }
 
+/// File-type gate shared by picker/drop entry points and the processor's
+/// defensive validation. Codec validation still happens asynchronously.
+func isSupportedImportVideo(_ url: URL) -> Bool {
+    let fileExtension = url.pathExtension.lowercased()
+    return fileExtension == "mp4" || fileExtension == "mov"
+}
+
 enum CatalogueState: Equatable {
     case loading
     case ready
