@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.6
+
+- Import now preflights free space: it stops **before** encoding when the destination volume can't hold the pipeline's peak working set, and explains the required versus available space — freeing up space or lowering quality/resolution lets you retry. If macOS can't report a capacity value, import proceeds with the existing encoder fallback.
+- Refreshing the catalogue no longer blanks the library. A **Refreshing catalogue…** banner keeps the last-loaded grid on screen (including your scroll position), and a **Couldn’t refresh catalogue** banner offers **Try Again** instead of dropping to the unavailable state.
+- Removal is safer when the current wallpaper selection can't be verified. Single, selected, and Remove-All operations now require an explicit **Remove Anyway** (with **Check Again** and **Open Wallpaper Settings** alternatives) before deleting, and the active-wallpaper check re-runs at confirmation time so a selection change in between can't slip past the guard.
+- Library selection now matches macOS conventions: plain-click replaces, Command-click toggles one wallpaper, Shift-click selects the inclusive visible range from an anchor, and Command-Shift adds that range. Hidden selections and stale anchors are normalized when you search or re-sort.
+- The Import preview now reports loading, ready, and failed states: a source that can't produce a still frame shows **Preview Unavailable** with **Retry Preview** and **Replace Video…** yet can still be imported once validation succeeds. Dropping a non-video file explains immediately that an MP4 or MOV is required.
+- Hardened the website's release fallback and mobile layout: a CI step (Scripts/check-docs-version.sh) verifies every static/no-JS version token matches the app version, and the docs no longer scroll horizontally on narrow screens.
+- Polish: a truncated wallpaper title reveals its full text via the hover Help tooltip and to assistive tech, and the preview sheet wraps long titles instead of truncating them.
+
 ## 1.1.5
 
 - The Import pane now states the fixed 80-second loop contract before encoding — long sources show **First 1:20 of the source, looped** and shorter sources show **Whole video, repeated to fill 1:20**.
