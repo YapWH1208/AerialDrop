@@ -52,10 +52,31 @@ struct ManagedWallpaper: Identifiable, Hashable {
     }
 }
 
+/// File-type gate shared by picker/drop entry points and the processor's
+/// defensive validation. Codec validation still happens asynchronously.
+func isSupportedImportVideo(_ url: URL) -> Bool {
+    let fileExtension = url.pathExtension.lowercased()
+    return fileExtension == "mp4" || fileExtension == "mov"
+}
+
 enum CatalogueState: Equatable {
     case loading
     case ready
     case unavailable(String)
+}
+
+enum CatalogueRefreshState: Equatable {
+    case idle
+    case refreshing
+    case failed(String)
+}
+
+/// Result of reading macOS's private wallpaper-selection store immediately
+/// before a destructive action is presented or executed.
+enum RemovalReadiness: Equatable {
+    case verifiedInactive
+    case verifiedActive
+    case unknown
 }
 
 enum ImportActivationResult: Equatable {
@@ -150,6 +171,7 @@ enum AerialDropError: LocalizedError {
     case nativeVideoNotMain10(Int)
     case nativeVideoNotFullRange
     case main10EncodingUnavailable
+    case insufficientImportStorage(requiredBytes: Int64, availableBytes: Int64)
     case manifestChangedDuringOperation
     case foreignManifestDataChanged(String)
     case missingWallpaperSelectionStore(URL)
@@ -158,6 +180,7 @@ enum AerialDropError: LocalizedError {
     case foreignWallpaperSelectionDataChanged(String)
     case wallpaperSelectionVerificationFailed(String)
     case activeWallpaperCannotBeRemoved
+    case wallpaperSelectionUnknownForRemoval
     case backupRestoreRejected(String)
 
     var errorDescription: String? {
@@ -207,6 +230,16 @@ enum AerialDropError: LocalizedError {
             return "The native Aerial export is limited-range video. Tahoe custom Aerial playback requires full-range 10-bit HEVC."
         case .main10EncodingUnavailable:
             return "This Mac could not initialize the HEVC Main10 encoder required for reliable Tahoe Aerial playback."
+        case .insufficientImportStorage(let requiredBytes, let availableBytes):
+            let required = ByteCountFormatter.string(
+                fromByteCount: requiredBytes,
+                countStyle: .file
+            )
+            let available = ByteCountFormatter.string(
+                fromByteCount: availableBytes,
+                countStyle: .file
+            )
+            return "Import needs about \(required) of free space while AerialDrop builds the wallpaper, but only \(available) is available. Free up space or choose a lower quality or resolution, then try again."
         case .manifestChangedDuringOperation:
             return "The Aerial catalogue changed while AerialDrop was working. Nothing else was overwritten. Close System Settings and any other wallpaper app, then try again."
         case .foreignManifestDataChanged(let description):
@@ -223,6 +256,8 @@ enum AerialDropError: LocalizedError {
             return "AerialDrop wrote the wallpaper selection, but macOS did not confirm the expected Aerial (\(expectedID)). Your backup was kept and no automatic restore was attempted."
         case .activeWallpaperCannotBeRemoved:
             return "Choose another wallpaper before removing the AerialDrop wallpaper that is currently active."
+        case .wallpaperSelectionUnknownForRemoval:
+            return "AerialDrop couldn’t verify which wallpaper is active. Check again, open Wallpaper Settings, or explicitly choose Remove Anyway before continuing."
         case .backupRestoreRejected(let reason):
             return "The backup could not be restored. \(reason) Nothing was changed."
         }

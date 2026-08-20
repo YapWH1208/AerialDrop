@@ -132,9 +132,19 @@ struct ImportPane: View {
 
     private var encodedOutputSummary: String? {
         guard let source = model.sourceResolution else { return nil }
-        let size = encodedOutputSize(sourceSize: source, outputHeightCap: model.outputHeightCap)
-        let bitrate = bitrateBps(quality: model.conversionQuality, renderHeight: Int(size.height))
-        let megabytes = Int(Double(bitrate) * 80.0 / 8.0 / 1_000_000)
+        let options = ConversionOptions(
+            cropOffset: model.cropOffset,
+            outputHeightCap: model.outputHeightCap,
+            quality: model.conversionQuality
+        )
+        let size = encodedOutputSize(
+            sourceSize: source,
+            outputHeightCap: options.outputHeightCap
+        )
+        let megabytes = estimatedAerialOutputBytes(
+            sourceSize: source,
+            options: options
+        ) / 1_000_000
         return "\(Int(size.width)) × \(Int(size.height)) · est. \(megabytes) MB"
     }
 
@@ -243,7 +253,9 @@ private struct ImportSourceView: View {
             VideoPreview(
                 url: url,
                 resolution: resolution,
-                cropOffset: cropOffset
+                cropOffset: cropOffset,
+                isDisabled: isDisabled,
+                onReplace: onChoose
             )
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .frame(maxWidth: .infinity)

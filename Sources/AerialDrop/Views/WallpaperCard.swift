@@ -5,6 +5,7 @@ struct WallpaperCard: View {
     let wallpaper: ManagedWallpaper
     let isSelected: Bool
     let isActive: Bool
+    let isSelectionStatusUnknown: Bool
     let isWorking: Bool
     let onSelect: () -> Void
     let onDoubleClick: () -> Void
@@ -83,6 +84,7 @@ struct WallpaperCard: View {
                         .font(.headline)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .help(wallpaper.title)
 
                     Spacer(minLength: 4)
 
@@ -203,6 +205,7 @@ struct WallpaperCard: View {
         WallpaperActionAvailability(
             wallpaper: wallpaper,
             isActive: isActive,
+            isSelectionStatusUnknown: isSelectionStatusUnknown,
             isWorking: isWorking
         )
     }

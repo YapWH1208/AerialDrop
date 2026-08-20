@@ -1,6 +1,7 @@
 struct WallpaperActionAvailability {
     let wallpaper: ManagedWallpaper
     let isActive: Bool
+    let isSelectionStatusUnknown: Bool
     let isWorking: Bool
 
     var canSetAsWallpaper: Bool {
@@ -12,7 +13,7 @@ struct WallpaperActionAvailability {
     }
 
     var canRemove: Bool {
-        !isActive && !isWorking
+        (!isActive || isSelectionStatusUnknown) && !isWorking
     }
 
     var setWallpaperHelp: String {
@@ -33,6 +34,9 @@ struct WallpaperActionAvailability {
     }
 
     var removeHelp: String {
+        if isSelectionStatusUnknown {
+            return "Check the active wallpaper before removal"
+        }
         if isActive {
             return "Choose a different wallpaper before removing this one"
         }

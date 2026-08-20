@@ -11,6 +11,7 @@ final class AppModel {
     var title = ""
     var wallpapers: [ManagedWallpaper] = []
     var catalogueState: CatalogueState = .loading
+    var catalogueRefreshState: CatalogueRefreshState = .idle
     var stage: ImportStage = .idle
     var isWorking = false
     var activeAlert: AppAlert?
@@ -25,8 +26,8 @@ final class AppModel {
     var sourceDuration: Double?
     var activeAerialAssetIDs: Set<String> = []
     /// True when the wallpaper selection store could not be read, so Active
-    /// badges may be out of date. Removal stays permissive (an unreadable
-    /// store means no selection can be verified) — this only adds honesty.
+    /// badges may be out of date. Destructive actions require an explicit
+    /// acknowledgement while this is true.
     var isSelectionStatusUnknown = false
     var activationFailure: ManagedWallpaper?
     var activationFailureMessage: String?
@@ -49,6 +50,7 @@ final class AppModel {
     private let systemService: any WallpaperServicing
     private let automaticActivationEnabled: () -> Bool
     private let preferencesDefaults: UserDefaults
+    private let availableCapacityProvider: (URL) -> Int64?
 
     init(
         paths: WallpaperPaths = WallpaperPaths(),
@@ -57,7 +59,20 @@ final class AppModel {
         automaticActivationEnabled: @escaping () -> Bool = {
             AppPreferences.isSetWallpaperAfterImportEnabled()
         },
-        preferencesDefaults: UserDefaults = .standard
+        preferencesDefaults: UserDefaults = .standard,
+        availableCapacityProvider: @escaping (URL) -> Int64? = { url in
+            let values = try? url.resourceValues(forKeys: [
+                .volumeAvailableCapacityForImportantUsageKey,
+                .volumeAvailableCapacityKey
+            ])
+            if let important = values?.volumeAvailableCapacityForImportantUsage {
+                return important
+            }
+            if let available = values?.volumeAvailableCapacity {
+                return Int64(available)
+            }
+            return nil
+        }
     ) {
         self.paths = paths
         manifestStore = ManifestStore(paths: paths)
@@ -66,6 +81,7 @@ final class AppModel {
         )
         self.automaticActivationEnabled = automaticActivationEnabled
         self.preferencesDefaults = preferencesDefaults
+        self.availableCapacityProvider = availableCapacityProvider
         if automaticallyReload {
             Task { await reload() }
         }
@@ -211,6 +227,11 @@ final class AppModel {
         // starts from them.
         AppPreferences.setLastConversionQuality(conversionQuality, defaults: preferencesDefaults)
         AppPreferences.setLastOutputHeightCap(outputHeightCap, defaults: preferencesDefaults)
+        let options = ConversionOptions(
+            cropOffset: cropOffset,
+            outputHeightCap: outputHeightCap,
+            quality: conversionQuality
+        )
 
         importTask?.cancel()
         importGeneration += 1
@@ -239,16 +260,23 @@ final class AppModel {
                 try manifestStore.requireManifest()
                 try manifestStore.prepareDirectories()
 
+                let importSourceSize: CGSize
+                if let sourceResolution {
+                    importSourceSize = sourceResolution
+                } else {
+                    importSourceSize = try await videoProcessor.sourceDisplaySize(for: source)
+                }
+                try requireImportStorageCapacity(
+                    sourceSize: importSourceSize,
+                    options: options
+                )
+
                 stage = .processingVideo
                 encodeStartedAt = Date()
                 let encodedSize = try await videoProcessor.makeNativeMOV(
                     from: source,
                     destination: videoDestination,
-                    options: ConversionOptions(
-                        cropOffset: cropOffset,
-                        outputHeightCap: outputHeightCap,
-                        quality: conversionQuality
-                    )
+                    options: options
                 ) { fraction in
                     Task { @MainActor in
                         self.importProgress = fraction
@@ -299,6 +327,29 @@ final class AppModel {
         }
     }
 
+    /// Fails before encoding when the destination volume cannot hold the
+    /// pipeline's conservative peak working set. If macOS cannot report a
+    /// capacity value, import proceeds and the encoder retains its existing
+    /// actionable failure path.
+    func requireImportStorageCapacity(
+        sourceSize: CGSize,
+        options: ConversionOptions
+    ) throws {
+        let requiredBytes = requiredImportStorageBytes(
+            sourceSize: sourceSize,
+            options: options
+        )
+        guard let availableBytes = availableCapacityProvider(paths.videos) else {
+            return
+        }
+        guard availableBytes >= requiredBytes else {
+            throw AerialDropError.insufficientImportStorage(
+                requiredBytes: requiredBytes,
+                availableBytes: max(0, availableBytes)
+            )
+        }
+    }
+
     func rename(_ wallpaper: ManagedWallpaper, to newTitle: String) {
         let cleanTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, cleanTitle != wallpaper.title else { return }
@@ -315,19 +366,34 @@ final class AppModel {
         }
     }
 
-    func remove(_ wallpaper: ManagedWallpaper) {
+    func remove(
+        _ wallpaper: ManagedWallpaper,
+        allowingUnverifiedSelection: Bool = false
+    ) {
         Task {
-            await removeWallpaper(wallpaper)
+            await removeWallpaper(
+                wallpaper,
+                allowingUnverifiedSelection: allowingUnverifiedSelection
+            )
         }
     }
 
-    func remove(_ wallpapers: [ManagedWallpaper]) {
+    func remove(
+        _ wallpapers: [ManagedWallpaper],
+        allowingUnverifiedSelection: Bool = false
+    ) {
         Task {
-            await removeWallpapers(wallpapers)
+            await removeWallpapers(
+                wallpapers,
+                allowingUnverifiedSelection: allowingUnverifiedSelection
+            )
         }
     }
 
-    func removeWallpaper(_ wallpaper: ManagedWallpaper) async {
+    func removeWallpaper(
+        _ wallpaper: ManagedWallpaper,
+        allowingUnverifiedSelection: Bool = false
+    ) async {
         isWorking = true
         operationLabel = "Removing “\(wallpaper.title)”…"
         defer {
@@ -335,10 +401,10 @@ final class AppModel {
             operationLabel = nil
         }
         do {
-            refreshActiveSelectionForRemoval()
-            guard !activeAerialAssetIDs.contains(wallpaper.id) else {
-                throw AerialDropError.activeWallpaperCannotBeRemoved
-            }
+            try requireRemovalReadiness(
+                for: [wallpaper.id],
+                allowingUnverifiedSelection: allowingUnverifiedSelection
+            )
             if pendingLibraryHighlightID == wallpaper.id {
                 pendingLibraryHighlightID = nil
             }
@@ -353,16 +419,21 @@ final class AppModel {
         }
     }
 
-    func removeAll() {
+    func removeAll(allowingUnverifiedSelection: Bool = false) {
         Task {
-            await removeAllWallpapers()
+            await removeAllWallpapers(
+                allowingUnverifiedSelection: allowingUnverifiedSelection
+            )
         }
     }
 
     /// Removes several wallpapers in one confirmed operation. Each removal is
     /// its own backed-up manifest mutation; a failure partway through keeps
     /// the already-removed items removed and still refreshes the catalogue.
-    func removeWallpapers(_ wallpapers: [ManagedWallpaper]) async {
+    func removeWallpapers(
+        _ wallpapers: [ManagedWallpaper],
+        allowingUnverifiedSelection: Bool = false
+    ) async {
         let ids = Set(wallpapers.map(\.id))
         guard !ids.isEmpty else { return }
         isWorking = true
@@ -372,10 +443,10 @@ final class AppModel {
             operationLabel = nil
         }
         do {
-            refreshActiveSelectionForRemoval()
-            guard activeAerialAssetIDs.isDisjoint(with: ids) else {
-                throw AerialDropError.activeWallpaperCannotBeRemoved
-            }
+            try requireRemovalReadiness(
+                for: ids,
+                allowingUnverifiedSelection: allowingUnverifiedSelection
+            )
             var firstError: Error?
             var removedCount = 0
             for id in ids.sorted() {
@@ -407,7 +478,9 @@ final class AppModel {
         }
     }
 
-    func removeAllWallpapers() async {
+    func removeAllWallpapers(
+        allowingUnverifiedSelection: Bool = false
+    ) async {
         isWorking = true
         operationLabel = "Removing all AerialDrop wallpapers…"
         defer {
@@ -415,12 +488,12 @@ final class AppModel {
             operationLabel = nil
         }
         do {
-            refreshActiveSelectionForRemoval()
-            pendingLibraryHighlightID = nil
             let managedIDs = Set(try manifestStore.importedWallpapers().map(\.id))
-            guard activeAerialAssetIDs.isDisjoint(with: managedIDs) else {
-                throw AerialDropError.activeWallpaperCannotBeRemoved
-            }
+            try requireRemovalReadiness(
+                for: managedIDs,
+                allowingUnverifiedSelection: allowingUnverifiedSelection
+            )
+            pendingLibraryHighlightID = nil
             try manifestStore.removeAllManaged()
             await systemService.refresh()
             await reload()
@@ -434,6 +507,7 @@ final class AppModel {
 
     func reload() async {
         sweepOrphanedTempSegments()
+        catalogueRefreshState = .idle
         catalogueState = .loading
         do {
             try manifestStore.requireManifest()
@@ -448,6 +522,48 @@ final class AppModel {
             isSelectionStatusUnknown = false
         } catch {
             isSelectionStatusUnknown = true
+        }
+    }
+
+    /// Refreshes a catalogue that is already on screen without replacing it
+    /// with the blocking loading or unavailable states. A failed foreground
+    /// read keeps the last known content and exposes a retryable status.
+    func refreshCataloguePreservingContent() async {
+        guard !isWorking else { return }
+        guard catalogueRefreshState != .refreshing else { return }
+        guard catalogueState == .ready else {
+            await reload()
+            return
+        }
+
+        sweepOrphanedTempSegments()
+        catalogueRefreshState = .refreshing
+        // Give SwiftUI a render opportunity before the small synchronous
+        // private-catalogue read so progress is perceptible on slower disks.
+        await Task.yield()
+        guard catalogueRefreshState == .refreshing else { return }
+
+        let refreshError: Error?
+        do {
+            try manifestStore.requireManifest()
+            let refreshedWallpapers = try manifestStore.importedWallpapers()
+            wallpapers = refreshedWallpapers
+            refreshError = nil
+        } catch {
+            refreshError = error
+        }
+
+        do {
+            try refreshActiveSelection()
+            isSelectionStatusUnknown = false
+        } catch {
+            isSelectionStatusUnknown = true
+        }
+
+        if let refreshError {
+            catalogueRefreshState = .failed(refreshError.localizedDescription)
+        } else {
+            catalogueRefreshState = .idle
         }
     }
 
@@ -530,11 +646,45 @@ final class AppModel {
         activeAerialAssetIDs = try systemService.activeAerialAssetIDs()
     }
 
-    /// Removal must not be blocked by an unreadable selection store: an
-    /// unreadable store means no selection can be verified, so there is
-    /// nothing to leave dangling. Activation keeps the strict variant above.
-    private func refreshActiveSelectionForRemoval() {
-        activeAerialAssetIDs = (try? systemService.activeAerialAssetIDs()) ?? []
+    /// Refreshes the selection immediately before removal UI is presented.
+    /// Callers use the result to distinguish a safe confirmation from the
+    /// stronger acknowledgement required when the private store is unreadable.
+    func removalReadiness(for wallpaperIDs: Set<String>) -> RemovalReadiness {
+        do {
+            try refreshActiveSelection()
+            isSelectionStatusUnknown = false
+            return activeAerialAssetIDs.isDisjoint(with: wallpaperIDs)
+                ? .verifiedInactive
+                : .verifiedActive
+        } catch {
+            isSelectionStatusUnknown = true
+            return .unknown
+        }
+    }
+
+    func reportActiveWallpaperRemovalBlock() {
+        activeAlert = AppAlert(
+            title: "Can’t Remove Active Wallpaper",
+            message: AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription
+        )
+    }
+
+    /// Rechecks at execution time so a selection change between presentation
+    /// and confirmation cannot bypass the active-wallpaper guard.
+    private func requireRemovalReadiness(
+        for wallpaperIDs: Set<String>,
+        allowingUnverifiedSelection: Bool
+    ) throws {
+        switch removalReadiness(for: wallpaperIDs) {
+        case .verifiedInactive:
+            return
+        case .verifiedActive:
+            throw AerialDropError.activeWallpaperCannotBeRemoved
+        case .unknown:
+            guard allowingUnverifiedSelection else {
+                throw AerialDropError.wallpaperSelectionUnknownForRemoval
+            }
+        }
     }
 
     func dismissActivationFailure() {

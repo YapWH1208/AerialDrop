@@ -153,8 +153,7 @@ struct VideoProcessor: Sendable {
     private let nativeKeyFrameIntervalDuration = 1.9
 
     func validate(source: URL) async throws {
-        let ext = source.pathExtension.lowercased()
-        guard ext == "mp4" || ext == "mov" else {
+        guard isSupportedImportVideo(source) else {
             throw AerialDropError.unsupportedFile
         }
 
@@ -192,6 +191,27 @@ struct VideoProcessor: Sendable {
             return nil
         }
         return available.seconds
+    }
+
+    /// Loads the transformed display dimensions used by the encoder. Import
+    /// storage preflight calls this when best-effort UI metadata has not
+    /// finished loading yet, so capacity checks still use the real output row.
+    func sourceDisplaySize(for source: URL) async throws -> CGSize {
+        let asset = AVURLAsset(url: source)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw AerialDropError.noVideoTrack
+        }
+        let naturalSize = try await track.load(.naturalSize)
+        let preferredTransform = try await track.load(.preferredTransform)
+        let size = VideoGeometry.displaySize(
+            naturalSize: naturalSize,
+            preferredTransform: preferredTransform
+        )
+        guard size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0 else {
+            throw AerialDropError.noVideoTrack
+        }
+        return size
     }
 
     /// Encodes one normalized source loop, then repeats that already-encoded segment

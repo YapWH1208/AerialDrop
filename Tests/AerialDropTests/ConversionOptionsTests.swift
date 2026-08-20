@@ -72,6 +72,56 @@ final class ConversionOptionsTests: XCTestCase {
         XCTAssertEqual(bitrateBps(quality: .standard, renderHeight: 1199), 8_000_000) // <1200 → 1080 row
     }
 
+    func testEstimatedAerialOutputBytesUsesTheEncoderBitrateAndFixedDuration() {
+        XCTAssertEqual(
+            estimatedAerialOutputBytes(
+                sourceSize: CGSize(width: 1_920, height: 1_080),
+                options: ConversionOptions(quality: .standard)
+            ),
+            80_000_000
+        )
+        XCTAssertEqual(
+            estimatedAerialOutputBytes(
+                sourceSize: CGSize(width: 3_840, height: 2_160),
+                options: ConversionOptions(quality: .maximum)
+            ),
+            480_000_000
+        )
+    }
+
+    func testRequiredImportStorageCoversTwoOutputsAndFixedHeadroom() {
+        let source = CGSize(width: 1_920, height: 1_080)
+        let options = ConversionOptions(quality: .standard)
+        let outputBytes = estimatedAerialOutputBytes(
+            sourceSize: source,
+            options: options
+        )
+
+        XCTAssertEqual(
+            requiredImportStorageBytes(sourceSize: source, options: options),
+            outputBytes * 2 + 128 * 1_024 * 1_024
+        )
+    }
+
+    func testStorageEstimateUsesTheClampedOutputHeight() {
+        let source = CGSize(width: 3_840, height: 2_160)
+
+        XCTAssertEqual(
+            estimatedAerialOutputBytes(
+                sourceSize: source,
+                options: ConversionOptions(outputHeightCap: 1_080, quality: .standard)
+            ),
+            80_000_000
+        )
+        XCTAssertEqual(
+            estimatedAerialOutputBytes(
+                sourceSize: source,
+                options: ConversionOptions(outputHeightCap: nil, quality: .standard)
+            ),
+            200_000_000
+        )
+    }
+
     func testClampedOutputHeightNeverUpscales() {
         XCTAssertEqual(clampedOutputHeight(nil, sourceHeight: 1440), 1440)
         XCTAssertEqual(clampedOutputHeight(nil, sourceHeight: 4320), 2160) // existing 4K cap

@@ -6,53 +6,81 @@ struct VideoPreview: View {
     let url: URL
     var resolution: CGSize? = nil
     var cropOffset: Double? = nil
+    var isDisabled = false
+    let onReplace: () -> Void
 
-    @State private var frame: NSImage?
+    @State private var state: PreviewState = .loading
     @State private var duration: Double?
     @State private var fileSize: Int64?
+    @State private var loadAttempt = 0
 
     var body: some View {
         ZStack {
-            if let frame {
+            Rectangle().fill(.quaternary.opacity(0.6))
+
+            switch state {
+            case .loading:
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading preview…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            case .ready(let frame):
                 Image(nsImage: frame)
                     .resizable()
                     .scaledToFit()
-            } else {
-                Rectangle().fill(.quaternary.opacity(0.6))
-                ProgressView()
-                    .controlSize(.small)
+            case .failed:
+                ContentUnavailableView {
+                    Label("Preview Unavailable", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("AerialDrop couldn’t generate a still preview. You can still import the video after validation succeeds.")
+                } actions: {
+                    Button("Retry Preview", systemImage: "arrow.clockwise") {
+                        loadAttempt += 1
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("Replace Video…", systemImage: "arrow.triangle.2.circlepath", action: onReplace)
+                }
+                .disabled(isDisabled)
             }
         }
         .background(Color.black)
         .overlay(alignment: .bottomTrailing) {
-            HStack(spacing: 6) {
-                if let resolution {
-                    Label("\(Int(resolution.width))×\(Int(resolution.height))", systemImage: "rectangle.inset.filled")
+            if resolution != nil || (duration != nil && fileSize != nil) {
+                HStack(spacing: 6) {
+                    if let resolution {
+                        Label("\(Int(resolution.width))×\(Int(resolution.height))", systemImage: "rectangle.inset.filled")
+                    }
+                    if let duration, let fileSize {
+                        Label(timeString(duration), systemImage: "clock")
+                        Label(fileSize.formatted(.byteCount(style: .file)), systemImage: "internaldrive")
+                    }
                 }
-                if let duration, let fileSize {
-                    Label(timeString(duration), systemImage: "clock")
-                    Label(fileSize.formatted(.byteCount(style: .file)), systemImage: "internaldrive")
-                }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(.regularMaterial, in: Capsule())
+                .padding(8)
             }
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(.regularMaterial, in: Capsule())
-            .padding(8)
         }
         .overlay {
-            if let cropOffset, let resolution, hasCropWindow(resolution) {
+            if case .ready = state,
+               let cropOffset, let resolution, hasCropWindow(resolution) {
                 CropMask(cropOffset: cropOffset, resolution: resolution)
             }
         }
-        .task(id: url) {
+        .task(id: LoadRequest(url: url, attempt: loadAttempt)) {
             await load()
         }
     }
 
     @MainActor
     private func load() async {
-        frame = nil
+        state = .loading
         duration = nil
         fileSize = nil
 
@@ -85,19 +113,27 @@ struct VideoPreview: View {
             guard let result = try? await generator.image(at: time) else { continue }
             let image = NSImage(cgImage: result.image, size: .zero)
             if Self.isMeaningfullyVisible(result.image) {
-                frame = image
+                state = .ready(image)
                 return
             }
             if fallback == nil {
                 fallback = image
             }
         }
-        frame = fallback
+        guard !Task.isCancelled else { return }
+        if let fallback {
+            state = .ready(fallback)
+        } else {
+            state = .failed
+            AccessibilityNotification.Announcement(
+                "Preview unavailable. Retry the preview or replace the video."
+            ).post()
+        }
     }
 
     /// True when a frame has enough non-dark pixels to represent the video
     /// (a fade-in-from-black or first-frame-black source fails this).
-    static func isMeaningfullyVisible(_ image: CGImage) -> Bool {
+    nonisolated static func isMeaningfullyVisible(_ image: CGImage) -> Bool {
         let bitmap = NSBitmapImageRep(cgImage: image)
         let stepX = max(1, bitmap.pixelsWide / 10)
         let stepY = max(1, bitmap.pixelsHigh / 10)
@@ -126,5 +162,18 @@ struct VideoPreview: View {
 
     private func timeString(_ seconds: Double) -> String {
         Duration.seconds(seconds).formatted(.time(pattern: .minuteSecond))
+    }
+}
+
+private extension VideoPreview {
+    enum PreviewState {
+        case loading
+        case ready(NSImage)
+        case failed
+    }
+
+    struct LoadRequest: Hashable {
+        let url: URL
+        let attempt: Int
     }
 }

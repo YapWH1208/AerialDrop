@@ -81,4 +81,14 @@ final class VideoPreviewTests: XCTestCase {
         NSGraphicsContext.restoreGraphicsState()
         XCTAssertFalse(VideoPreview.isMeaningfullyVisible(rep.cgImage!))
     }
+
+    func testSupportedImportVideoRecognizesMP4AndMOVCaseInsensitively() {
+        XCTAssertTrue(isSupportedImportVideo(URL(fileURLWithPath: "/tmp/aerial.mp4")))
+        XCTAssertTrue(isSupportedImportVideo(URL(fileURLWithPath: "/tmp/aerial.MOV")))
+    }
+
+    func testSupportedImportVideoRejectsOtherFileTypes() {
+        XCTAssertFalse(isSupportedImportVideo(URL(fileURLWithPath: "/tmp/aerial.mkv")))
+        XCTAssertFalse(isSupportedImportVideo(URL(fileURLWithPath: "/tmp/aerial")))
+    }
 }

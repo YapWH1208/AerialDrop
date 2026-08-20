@@ -9,12 +9,15 @@ struct LibraryPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedIDs: Set<String> = []
+    @State private var selectionAnchorID: String?
     @State private var searchText = ""
     @State private var previewWallpaper: ManagedWallpaper?
     @State private var pendingRemoval: ManagedWallpaper?
     @State private var pendingBulkRemoval: [ManagedWallpaper] = []
     @State private var showingBulkRemoveConfirmation = false
     @State private var showingRemoveConfirmation = false
+    @State private var singleRemovalRequiresAcknowledgement = false
+    @State private var bulkRemovalRequiresAcknowledgement = false
     @State private var renameTarget: ManagedWallpaper?
     @State private var renameText = ""
     @State private var showingRenameAlert = false
@@ -45,7 +48,7 @@ struct LibraryPane: View {
                     .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
                     .padding(12)
                     .overlay {
-                        Label("Drop to import as wallpaper", systemImage: "plus.circle")
+                        Label("Drop an MP4 or MOV video", systemImage: "film")
                             .font(.headline)
                             .padding(10)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -54,9 +57,14 @@ struct LibraryPane: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard model.catalogueState == .ready, !model.isWorking, let first = urls.first else { return false }
-            // Mirror VideoProcessor.validate: only movie files enter the import flow.
-            let ext = first.pathExtension.lowercased()
-            guard ext == "mp4" || ext == "mov" else { return false }
+            guard isSupportedImportVideo(first) else {
+                dropTargeted = false
+                model.activeAlert = AppAlert(
+                    title: "Couldn’t Use This File",
+                    message: AerialDropError.unsupportedFile.localizedDescription
+                )
+                return false
+            }
             onDropVideo(first)
             return true
         } isTargeted: { targeted in
@@ -70,29 +78,63 @@ struct LibraryPane: View {
         }
         .onAppear {
             applyPendingHighlight()
+            normalizeSelection()
         }
         .onChange(of: model.pendingLibraryHighlightID) { _, _ in
             applyPendingHighlight()
+        }
+        .onChange(of: model.wallpapers) { _, _ in
+            normalizeSelection()
+        }
+        .onChange(of: searchText) { _, _ in
+            normalizeSelection()
+        }
+        .onChange(of: sortOrder) { _, _ in
+            normalizeSelection(resetAnchor: true)
         }
         .confirmationDialog(
             removeDialogTitle,
             isPresented: $showingRemoveConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Remove", role: .destructive) { confirmRemoval() }
-            Button("Cancel", role: .cancel) { }
+            if singleRemovalRequiresAcknowledgement {
+                Button("Check Again") { retryRemovalPreparation() }
+                Button("Open Wallpaper Settings") {
+                    cancelRemoval()
+                    model.openWallpaperSettings()
+                }
+                Button("Remove Anyway", role: .destructive) {
+                    confirmRemoval(allowingUnverifiedSelection: true)
+                }
+            } else {
+                Button("Remove Wallpaper", role: .destructive) { confirmRemoval() }
+            }
+            Button("Keep Wallpaper", role: .cancel) { cancelRemoval() }
         } message: {
-            Text("This removes the wallpaper and its copied video and thumbnail files. Your original source video is untouched — import it again to restore it. A catalogue backup is created first.")
+            Text(removeDialogMessage)
         }
         .confirmationDialog(
-            "Remove \(pendingBulkRemoval.count) wallpapers?",
+            bulkRemoveDialogTitle,
             isPresented: $showingBulkRemoveConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Remove \(pendingBulkRemoval.count)", role: .destructive) { confirmBulkRemoval() }
-            Button("Cancel", role: .cancel) { pendingBulkRemoval = [] }
+            if bulkRemovalRequiresAcknowledgement {
+                Button("Check Again") { retryBulkRemovalPreparation() }
+                Button("Open Wallpaper Settings") {
+                    cancelBulkRemoval()
+                    model.openWallpaperSettings()
+                }
+                Button("Remove Anyway", role: .destructive) {
+                    confirmBulkRemoval(allowingUnverifiedSelection: true)
+                }
+            } else {
+                Button("Remove \(pendingBulkRemoval.count) Wallpapers", role: .destructive) {
+                    confirmBulkRemoval()
+                }
+            }
+            Button("Keep Wallpapers", role: .cancel) { cancelBulkRemoval() }
         } message: {
-            Text("This removes the selected wallpapers and their copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first.")
+            Text(bulkRemoveDialogMessage)
         }
         .alert("Rename Wallpaper", isPresented: $showingRenameAlert) {
             TextField("Wallpaper name", text: $renameText)
@@ -108,6 +150,7 @@ struct LibraryPane: View {
             WallpaperPreviewView(
                 wallpaper: wallpaper,
                 isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                isSelectionStatusUnknown: model.isSelectionStatusUnknown,
                 isWorking: model.isWorking,
                 operationLabel: model.operationLabel,
                 onSetWallpaper: { model.setWallpaper(wallpaper) },
@@ -202,6 +245,7 @@ struct LibraryPane: View {
             Spacer()
             Button("Clear Selection") {
                 selectedIDs = []
+                selectionAnchorID = nil
             }
             .disabled(model.isWorking)
             Button("Remove Selected…", role: .destructive) {
@@ -219,12 +263,18 @@ struct LibraryPane: View {
 
     private var canBulkRemove: Bool {
         !model.isWorking
-            && !selectedWallpapers.contains { model.activeAerialAssetIDs.contains($0.id) }
+            && (
+                model.isSelectionStatusUnknown
+                    || !selectedWallpapers.contains { model.activeAerialAssetIDs.contains($0.id) }
+            )
     }
 
     private var bulkRemoveHelp: String {
         if model.isWorking {
             return "Wait for the current operation to finish"
+        }
+        if model.isSelectionStatusUnknown {
+            return "Check the active wallpaper before removing the selected wallpapers"
         }
         if selectedWallpapers.contains(where: { model.activeAerialAssetIDs.contains($0.id) }) {
             return "One of the selected wallpapers is currently active — choose a different wallpaper first"
@@ -233,16 +283,52 @@ struct LibraryPane: View {
     }
 
     private func requestBulkRemoval() {
-        pendingBulkRemoval = selectedWallpapers
-        showingBulkRemoveConfirmation = true
+        prepareBulkRemoval(selectedWallpapers)
     }
 
-    private func confirmBulkRemoval() {
-        let wallpapers = pendingBulkRemoval
-        pendingBulkRemoval = []
-        selectedIDs = []
+    private func prepareBulkRemoval(_ wallpapers: [ManagedWallpaper]) {
         guard !wallpapers.isEmpty else { return }
-        model.remove(wallpapers)
+        let ids = Set(wallpapers.map(\.id))
+        switch model.removalReadiness(for: ids) {
+        case .verifiedInactive:
+            pendingBulkRemoval = wallpapers
+            bulkRemovalRequiresAcknowledgement = false
+            showingBulkRemoveConfirmation = true
+        case .verifiedActive:
+            cancelBulkRemoval()
+            model.reportActiveWallpaperRemovalBlock()
+        case .unknown:
+            pendingBulkRemoval = wallpapers
+            bulkRemovalRequiresAcknowledgement = true
+            showingBulkRemoveConfirmation = true
+        }
+    }
+
+    private func retryBulkRemovalPreparation() {
+        let wallpapers = pendingBulkRemoval
+        showingBulkRemoveConfirmation = false
+        Task {
+            await Task.yield()
+            prepareBulkRemoval(wallpapers)
+        }
+    }
+
+    private func cancelBulkRemoval() {
+        showingBulkRemoveConfirmation = false
+        pendingBulkRemoval = []
+        bulkRemovalRequiresAcknowledgement = false
+    }
+
+    private func confirmBulkRemoval(allowingUnverifiedSelection: Bool = false) {
+        let wallpapers = pendingBulkRemoval
+        cancelBulkRemoval()
+        selectedIDs = []
+        selectionAnchorID = nil
+        guard !wallpapers.isEmpty else { return }
+        model.remove(
+            wallpapers,
+            allowingUnverifiedSelection: allowingUnverifiedSelection
+        )
     }
 
     private func operationBanner(_ label: String) -> some View {
@@ -269,6 +355,7 @@ struct LibraryPane: View {
                             wallpaper: wallpaper,
                             isSelected: selectedIDs.contains(wallpaper.id),
                             isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                            isSelectionStatusUnknown: model.isSelectionStatusUnknown,
                             isWorking: model.isWorking,
                             onSelect: {
                                 guard !model.isWorking else { return }
@@ -306,26 +393,46 @@ struct LibraryPane: View {
             searchText = ""
         }
         selectedIDs = [id]
+        selectionAnchorID = id
         highlightTarget = id
         model.pendingLibraryHighlightID = nil
     }
 
-    /// Plain clicks keep single-selection semantics; Command- and Shift-click
-    /// extend the selection so several wallpapers can be removed at once.
+    /// Applies conventional macOS collection selection semantics in the
+    /// current filtered/sorted order.
     private func select(_ wallpaper: ManagedWallpaper) {
-        let modifiers = NSEvent.modifierFlags
-        let extendsSelection = modifiers.contains(.command) || modifiers.contains(.shift)
-        if extendsSelection {
-            if selectedIDs.contains(wallpaper.id) {
-                selectedIDs.remove(wallpaper.id)
-            } else {
-                selectedIDs.insert(wallpaper.id)
-            }
-        } else if selectedIDs == [wallpaper.id] {
-            selectedIDs = []
-        } else {
-            selectedIDs = [wallpaper.id]
+        let eventModifiers = NSEvent.modifierFlags
+        var modifiers: LibrarySelectionModifiers = []
+        if eventModifiers.contains(.command) {
+            modifiers.insert(.command)
         }
+        if eventModifiers.contains(.shift) {
+            modifiers.insert(.shift)
+        }
+        let result = updatingLibrarySelection(
+            LibrarySelectionState(
+                selectedIDs: selectedIDs,
+                anchorID: selectionAnchorID
+            ),
+            clickedID: wallpaper.id,
+            visibleIDs: filteredWallpapers.map(\.id),
+            modifiers: modifiers
+        )
+        selectedIDs = result.selectedIDs
+        selectionAnchorID = result.anchorID
+    }
+
+    private func normalizeSelection(resetAnchor: Bool = false) {
+        let result = normalizingLibrarySelection(
+            LibrarySelectionState(
+                selectedIDs: selectedIDs,
+                anchorID: selectionAnchorID
+            ),
+            visibleIDs: filteredWallpapers.map(\.id),
+            resetAnchor: resetAnchor
+        )
+        selectedIDs = result.selectedIDs
+        selectionAnchorID = result.anchorID
     }
 
     private var emptyLibrary: some View {
@@ -340,10 +447,33 @@ struct LibraryPane: View {
     }
 
     private var removeDialogTitle: String {
+        if singleRemovalRequiresAcknowledgement {
+            return "Remove without checking which wallpaper is active?"
+        }
         if let name = pendingRemoval?.title {
             return "Remove “\(name)”?"
         }
         return "Remove this wallpaper?"
+    }
+
+    private var removeDialogMessage: String {
+        if singleRemovalRequiresAcknowledgement {
+            return "AerialDrop can’t verify which wallpaper is active. Removing an active wallpaper could leave macOS pointing to missing files. Check again, choose another wallpaper in Wallpaper Settings, or remove anyway."
+        }
+        return "This removes the wallpaper and its copied video and thumbnail files. Your original source video is untouched — import it again to restore it. A catalogue backup is created first."
+    }
+
+    private var bulkRemoveDialogTitle: String {
+        bulkRemovalRequiresAcknowledgement
+            ? "Remove without checking which wallpaper is active?"
+            : "Remove \(pendingBulkRemoval.count) wallpapers?"
+    }
+
+    private var bulkRemoveDialogMessage: String {
+        if bulkRemovalRequiresAcknowledgement {
+            return "AerialDrop can’t verify which wallpaper is active. Removing an active wallpaper could leave macOS pointing to missing files. Check again, choose another wallpaper in Wallpaper Settings, or remove the selected wallpapers anyway."
+        }
+        return "This removes the selected wallpapers and their copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first."
     }
 
     private var canRename: Bool {
@@ -375,6 +505,7 @@ struct LibraryPane: View {
 
     private func openPreview(_ wallpaper: ManagedWallpaper) {
         selectedIDs = [wallpaper.id]
+        selectionAnchorID = wallpaper.id
         previewWallpaper = wallpaper
     }
 
@@ -385,15 +516,51 @@ struct LibraryPane: View {
             requestBulkRemoval()
             return
         }
-        pendingRemoval = wallpaper
-        showingRemoveConfirmation = true
+        prepareRemoval(wallpaper)
     }
 
-    private func confirmRemoval() {
-        if let wallpaper = pendingRemoval {
-            model.remove(wallpaper)
+    private func prepareRemoval(_ wallpaper: ManagedWallpaper) {
+        switch model.removalReadiness(for: [wallpaper.id]) {
+        case .verifiedInactive:
+            pendingRemoval = wallpaper
+            singleRemovalRequiresAcknowledgement = false
+            showingRemoveConfirmation = true
+        case .verifiedActive:
+            cancelRemoval()
+            model.reportActiveWallpaperRemovalBlock()
+        case .unknown:
+            pendingRemoval = wallpaper
+            singleRemovalRequiresAcknowledgement = true
+            showingRemoveConfirmation = true
         }
+    }
+
+    private func retryRemovalPreparation() {
+        let wallpaper = pendingRemoval
+        showingRemoveConfirmation = false
+        Task {
+            await Task.yield()
+            if let wallpaper {
+                prepareRemoval(wallpaper)
+            }
+        }
+    }
+
+    private func cancelRemoval() {
+        showingRemoveConfirmation = false
         pendingRemoval = nil
+        singleRemovalRequiresAcknowledgement = false
+    }
+
+    private func confirmRemoval(allowingUnverifiedSelection: Bool = false) {
+        let wallpaper = pendingRemoval
+        cancelRemoval()
+        if let wallpaper {
+            model.remove(
+                wallpaper,
+                allowingUnverifiedSelection: allowingUnverifiedSelection
+            )
+        }
     }
 
     private func beginRename(_ wallpaper: ManagedWallpaper) {

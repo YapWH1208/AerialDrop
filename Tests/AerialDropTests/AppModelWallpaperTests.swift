@@ -63,6 +63,70 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testForegroundRefreshReplacesReadyContentWithoutLoadingState() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0300")
+        let second = makeWallpaper(id: "C0D3X-0301")
+        try installManagedWallpaper(first, in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+        XCTAssertEqual(model.wallpapers.map(\.id), [first.id])
+
+        try installManagedWallpapers([first, second], in: home)
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertEqual(Set(model.wallpapers.map(\.id)), Set([first.id, second.id]))
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+    }
+
+    func testForegroundRefreshKeepsLastKnownContentOnCatalogueFailure() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "C0D3X-0302")
+        try installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+
+        let paths = WallpaperPaths(homeDirectory: home)
+        try Data("not-json".utf8).write(to: paths.manifest, options: .atomic)
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        guard case .failed(let message) = model.catalogueRefreshState else {
+            return XCTFail("Expected a failed foreground refresh state")
+        }
+        XCTAssertTrue(message.contains("expected format"))
+
+        try installManagedWallpaper(wallpaper, in: home)
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+    }
+
+    func testForegroundRefreshUpdatesSelectionStatusIndependently() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let service = FakeWallpaperService(activeIDs: ["FIRST-AERIAL"])
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        service.activeIDs = ["SECOND-AERIAL"]
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.activeAerialAssetIDs, ["SECOND-AERIAL"])
+        XCTAssertFalse(model.isSelectionStatusUnknown)
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+
+        service.selectionReadError = TestError.storeUnreadable
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.activeAerialAssetIDs, ["SECOND-AERIAL"])
+        XCTAssertTrue(model.isSelectionStatusUnknown)
+        XCTAssertEqual(model.catalogueRefreshState, .idle)
+    }
+
     func testChoosingANewSourceReplacesTheNameWithTheNewFileStem() {
         let model = makeModel(service: FakeWallpaperService())
         model.title = "Custom Name"
@@ -147,6 +211,71 @@ final class AppModelWallpaperTests: XCTestCase {
         ] {
             model.stage = stage
             XCTAssertFalse(model.isImportCancellable, "Expected \(stage) to be non-cancellable")
+        }
+    }
+
+    func testImportStoragePreflightAllowsSufficientAndUnavailableCapacity() throws {
+        let sourceSize = CGSize(width: 3_840, height: 2_160)
+        let options = ConversionOptions(quality: .maximum)
+        let requiredBytes = requiredImportStorageBytes(
+            sourceSize: sourceSize,
+            options: options
+        )
+        var checkedURL: URL?
+        let sufficientModel = makeModel(
+            service: FakeWallpaperService(),
+            availableCapacityProvider: { url in
+                checkedURL = url
+                return requiredBytes
+            }
+        )
+
+        XCTAssertNoThrow(
+            try sufficientModel.requireImportStorageCapacity(
+                sourceSize: sourceSize,
+                options: options
+            )
+        )
+        XCTAssertEqual(checkedURL?.lastPathComponent, "videos")
+
+        let unknownModel = makeModel(
+            service: FakeWallpaperService(),
+            availableCapacityProvider: { _ in nil }
+        )
+        XCTAssertNoThrow(
+            try unknownModel.requireImportStorageCapacity(
+                sourceSize: sourceSize,
+                options: options
+            )
+        )
+    }
+
+    func testImportStoragePreflightReportsRequiredAndAvailableCapacity() {
+        let sourceSize = CGSize(width: 3_840, height: 2_160)
+        let options = ConversionOptions(quality: .maximum)
+        let requiredBytes = requiredImportStorageBytes(
+            sourceSize: sourceSize,
+            options: options
+        )
+        let availableBytes = requiredBytes - 1
+        let model = makeModel(
+            service: FakeWallpaperService(),
+            availableCapacityProvider: { _ in availableBytes }
+        )
+
+        XCTAssertThrowsError(
+            try model.requireImportStorageCapacity(
+                sourceSize: sourceSize,
+                options: options
+            )
+        ) { error in
+            guard let aerialError = error as? AerialDropError,
+                  case .insufficientImportStorage(let actualRequired, let actualAvailable) = aerialError else {
+                return XCTFail("Expected insufficientImportStorage, got \(error)")
+            }
+            XCTAssertEqual(actualRequired, requiredBytes)
+            XCTAssertEqual(actualAvailable, availableBytes)
+            XCTAssertTrue(error.localizedDescription.contains("lower quality or resolution"))
         }
     }
 
@@ -340,6 +469,27 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.hasActiveManagedWallpaper)
     }
 
+    func testUnknownSelectionStatusKeepsRemovalRecoveryReachable() {
+        let wallpaper = makeWallpaper(id: "C0D3X-0013")
+
+        XCTAssertFalse(
+            WallpaperActionAvailability(
+                wallpaper: wallpaper,
+                isActive: true,
+                isSelectionStatusUnknown: false,
+                isWorking: false
+            ).canRemove
+        )
+        XCTAssertTrue(
+            WallpaperActionAvailability(
+                wallpaper: wallpaper,
+                isActive: true,
+                isSelectionStatusUnknown: true,
+                isWorking: false
+            ).canRemove
+        )
+    }
+
     func testRemoveAllBlocksOnlyActiveManagedWallpapers() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0007")
         let service = FakeWallpaperService(activeIDs: [wallpaper.id])
@@ -481,7 +631,54 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertFalse(model.isSelectionStatusUnknown)
     }
 
-    func testRemovalProceedsWhenTheSelectionStoreIsUnreadable() async {
+    func testRemovalReadinessRefreshesTheSelectionBeforeConfirmation() {
+        let wallpaper = makeWallpaper(id: "C0D3X-0010")
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service)
+
+        XCTAssertEqual(
+            model.removalReadiness(for: [wallpaper.id]),
+            .verifiedInactive
+        )
+        XCTAssertFalse(model.isSelectionStatusUnknown)
+
+        service.activeIDs = [wallpaper.id]
+        XCTAssertEqual(
+            model.removalReadiness(for: [wallpaper.id]),
+            .verifiedActive
+        )
+        XCTAssertEqual(model.activeAerialAssetIDs, [wallpaper.id])
+
+        service.selectionReadError = TestError.storeUnreadable
+        XCTAssertEqual(model.removalReadiness(for: [wallpaper.id]), .unknown)
+        XCTAssertTrue(model.isSelectionStatusUnknown)
+    }
+
+    func testRemovalStopsWhenTheSelectionStoreIsUnreadableWithoutAcknowledgement() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0010")
+        let service = FakeWallpaperService()
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+        XCTAssertEqual(model.removalReadiness(for: [wallpaper.id]), .verifiedInactive)
+
+        // Simulate the private store becoming unreadable after the safe dialog
+        // was presented but before its destructive action executes.
+        service.selectionReadError = TestError.storeUnreadable
+
+        await model.removeWallpaper(wallpaper)
+
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Remove Wallpaper")
+        XCTAssertEqual(
+            model.activeAlert?.message,
+            AerialDropError.wallpaperSelectionUnknownForRemoval.localizedDescription
+        )
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRemovalProceedsAfterExplicitUnknownSelectionAcknowledgement() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0010")
         let service = FakeWallpaperService(activeIDs: [wallpaper.id])
         service.selectionReadError = TestError.storeUnreadable
@@ -489,11 +686,70 @@ final class AppModelWallpaperTests: XCTestCase {
         try! installManagedWallpaper(wallpaper, in: home)
         let model = makeModel(service: service, home: home)
 
-        await model.removeWallpaper(wallpaper)
+        await model.removeWallpaper(
+            wallpaper,
+            allowingUnverifiedSelection: true
+        )
 
         XCTAssertNil(model.activeAlert)
         XCTAssertEqual(service.refreshCallCount, 1)
         XCTAssertTrue(model.wallpapers.isEmpty)
+    }
+
+    func testBulkRemovalRequiresUnknownSelectionAcknowledgement() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "C0D3X-0140")
+        let second = makeWallpaper(id: "C0D3X-0141")
+        try installManagedWallpapers([first, second], in: home)
+        let service = FakeWallpaperService()
+        service.selectionReadError = TestError.storeUnreadable
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        await model.removeWallpapers([first, second])
+
+        XCTAssertEqual(model.wallpapers.count, 2)
+        XCTAssertEqual(service.refreshCallCount, 0)
+        XCTAssertEqual(
+            model.activeAlert?.message,
+            AerialDropError.wallpaperSelectionUnknownForRemoval.localizedDescription
+        )
+
+        model.activeAlert = nil
+        await model.removeWallpapers(
+            [first, second],
+            allowingUnverifiedSelection: true
+        )
+
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertNil(model.activeAlert)
+    }
+
+    func testRemoveAllRequiresUnknownSelectionAcknowledgement() async {
+        let wallpaper = makeWallpaper(id: "C0D3X-0142")
+        let home = makeTemporaryHome()
+        try! installManagedWallpaper(wallpaper, in: home)
+        let service = FakeWallpaperService()
+        service.selectionReadError = TestError.storeUnreadable
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        await model.removeAllWallpapers()
+
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        XCTAssertEqual(service.refreshCallCount, 0)
+        XCTAssertEqual(
+            model.activeAlert?.message,
+            AerialDropError.wallpaperSelectionUnknownForRemoval.localizedDescription
+        )
+
+        model.activeAlert = nil
+        await model.removeAllWallpapers(allowingUnverifiedSelection: true)
+
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertNil(model.activeAlert)
     }
 
     func testImportFailureProducesATitledAlert() async throws {
@@ -513,8 +769,10 @@ final class AppModelWallpaperTests: XCTestCase {
         model.title = "Ghost"
 
         model.importSelectedVideo()
-        for _ in 0..<500 where model.activeAlert == nil {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while model.activeAlert == nil, ContinuousClock.now < deadline {
             await Task.yield()
+            try? await Task.sleep(for: .milliseconds(10))
         }
 
         XCTAssertEqual(model.activeAlert?.title, "Couldn’t Import the Video")
@@ -546,7 +804,8 @@ final class AppModelWallpaperTests: XCTestCase {
         service: FakeWallpaperService,
         home: URL? = nil,
         automaticActivationEnabled: @escaping () -> Bool = { true },
-        preferencesDefaults: UserDefaults = UserDefaults.standard
+        preferencesDefaults: UserDefaults = UserDefaults.standard,
+        availableCapacityProvider: @escaping (URL) -> Int64? = { _ in nil }
     ) -> AppModel {
         let temporaryHome = home ?? makeTemporaryHome()
         return AppModel(
@@ -554,7 +813,8 @@ final class AppModelWallpaperTests: XCTestCase {
             systemService: service,
             automaticallyReload: false,
             automaticActivationEnabled: automaticActivationEnabled,
-            preferencesDefaults: preferencesDefaults
+            preferencesDefaults: preferencesDefaults,
+            availableCapacityProvider: availableCapacityProvider
         )
     }
 
