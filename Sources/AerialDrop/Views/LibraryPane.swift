@@ -24,6 +24,7 @@ struct LibraryPane: View {
     @State private var highlightTarget: String?
     @State private var dropTargeted = false
     @State private var gridContentWidth: CGFloat = 0
+    @State private var keyboardNavScrollTarget: String?
     @FocusState private var focusedCardID: String?
     @AppStorage(LibraryPane.sortOrderKey) private var sortOrder = LibrarySortOrder.title
 
@@ -378,16 +379,16 @@ struct LibraryPane: View {
                         .id(wallpaper.id)
                     }
                 }
-                .padding(24)
                 .background(alignment: .leading) {
-                    // Tracks content width so vertical arrow moves can
-                    // estimate the adaptive grid's column count.
+                    // Measures the UNPADDED grid so vertical arrow moves can
+                    // estimate the adaptive column count exactly.
                     GeometryReader { geo in
                         Color.clear
                             .onAppear { gridContentWidth = geo.size.width }
                             .onChange(of: geo.size.width) { _, width in gridContentWidth = width }
                     }
                 }
+                .padding(24)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.wallpapers)
             }
             .onChange(of: highlightTarget) { _, target in
@@ -396,6 +397,15 @@ struct LibraryPane: View {
                     proxy.scrollTo(target, anchor: .center)
                 }
                 highlightTarget = nil
+            }
+            .onChange(of: keyboardNavScrollTarget) { _, target in
+                guard let target else { return }
+                // LazyVGrid instantiates offscreen cards lazily; scrolling to
+                // the destination lets focus actually land (and stay visible).
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(target, anchor: .center)
+                }
+                keyboardNavScrollTarget = nil
             }
         }
     }
@@ -477,6 +487,7 @@ struct LibraryPane: View {
         selectedIDs = result.state.selectedIDs
         selectionAnchorID = result.state.anchorID
         focusedCardID = result.focusedID
+        keyboardNavScrollTarget = result.focusedID
     }
 
     private var emptyLibrary: some View {
