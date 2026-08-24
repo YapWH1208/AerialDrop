@@ -439,7 +439,7 @@ struct LibraryPane: View {
         ContentUnavailableView {
             Label("No AerialDrop Wallpapers", systemImage: "rectangle.stack.badge.plus")
         } description: {
-            Text("Import a video to add it to the native Aerial catalogue.")
+            Text("Choose or drop a video to add it to the native Aerial catalogue.")
         } actions: {
             Button("Import Wallpaper", systemImage: "plus", action: onImport)
                 .buttonStyle(.borderedProminent)
