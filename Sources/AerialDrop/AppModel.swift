@@ -87,12 +87,25 @@ final class AppModel {
         }
     }
 
+    /// Form-level import prerequisites, shared by `canImport` and
+    /// `importBlockerMessage` so the gating and its inline explanation
+    /// cannot drift apart.
+    private enum ImportReadiness {
+        case ready
+        case missingVideo
+        case validating
+        case missingTitle
+    }
+
+    private var importReadiness: ImportReadiness {
+        if selectedVideo == nil { return .missingVideo }
+        if !isSelectedVideoValid { return .validating }
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .missingTitle }
+        return .ready
+    }
+
     var canImport: Bool {
-        catalogueState == .ready
-            && isSelectedVideoValid
-            && selectedVideo != nil
-            && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !isWorking
+        catalogueState == .ready && !isWorking && importReadiness == .ready
     }
 
     /// The current reason Import cannot run, for inline display next to the
@@ -101,16 +114,12 @@ final class AppModel {
     /// already explains the wait.
     var importBlockerMessage: String? {
         guard catalogueState == .ready, !isWorking else { return nil }
-        if selectedVideo == nil {
-            return "Choose a video to configure."
+        switch importReadiness {
+        case .ready: return nil
+        case .missingVideo: return "Choose a video to configure."
+        case .validating: return "Validating the selected video…"
+        case .missingTitle: return "Enter a wallpaper name to enable Import."
         }
-        if !isSelectedVideoValid {
-            return "Validating the selected video…"
-        }
-        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "Enter a wallpaper name to enable Import."
-        }
-        return nil
     }
 
     var hasActiveManagedWallpaper: Bool {
