@@ -23,10 +23,15 @@ struct LibraryPane: View {
     @State private var showingRenameAlert = false
     @State private var highlightTarget: String?
     @State private var dropTargeted = false
+    @State private var gridContentWidth: CGFloat = 0
+    @FocusState private var focusedCardID: String?
     @AppStorage(LibraryPane.sortOrderKey) private var sortOrder = LibrarySortOrder.title
 
+    static let cardMinimumWidth: CGFloat = 220
+    static let cardSpacing: CGFloat = 20
+
     private let wallpaperColumns = [
-        GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 20)
+        GridItem(.adaptive(minimum: Self.cardMinimumWidth, maximum: 320), spacing: Self.cardSpacing)
     ]
 
     private var filteredWallpapers: [ManagedWallpaper] {
@@ -361,17 +366,28 @@ struct LibraryPane: View {
                                 guard !model.isWorking else { return }
                                 select(wallpaper)
                             },
+                            onNavigate: handleArrowKeyNavigation,
                             onDoubleClick: { openPreview(wallpaper) },
                             onPreview: { openPreview(wallpaper) },
                             onSetWallpaper: { model.setWallpaper(wallpaper) },
                             onRename: { beginRename(wallpaper) },
                             onReveal: { model.revealInFinder(wallpaper) },
-                            onRemove: { requestRemoval(wallpaper) }
+                            onRemove: { requestRemoval(wallpaper) },
+                            selectionFocus: $focusedCardID
                         )
                         .id(wallpaper.id)
                     }
                 }
                 .padding(24)
+                .background(alignment: .leading) {
+                    // Tracks content width so vertical arrow moves can
+                    // estimate the adaptive grid's column count.
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { gridContentWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, width in gridContentWidth = width }
+                    }
+                }
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.wallpapers)
             }
             .onChange(of: highlightTarget) { _, target in
@@ -433,6 +449,34 @@ struct LibraryPane: View {
         )
         selectedIDs = result.selectedIDs
         selectionAnchorID = result.anchorID
+        if let focused = focusedCardID,
+           !filteredWallpapers.contains(where: { $0.id == focused }) {
+            focusedCardID = nil
+        }
+    }
+
+    /// Moves selection and keyboard focus for arrow-key events raised by the
+    /// focused card.
+    private func handleArrowKeyNavigation(_ direction: LibraryMoveDirection) {
+        guard !model.isWorking, !filteredWallpapers.isEmpty else { return }
+        let result = movingLibrarySelection(
+            LibrarySelectionState(
+                selectedIDs: selectedIDs,
+                anchorID: selectionAnchorID
+            ),
+            direction: direction,
+            columns: libraryGridColumns(
+                availableWidth: gridContentWidth,
+                minimumItemWidth: Self.cardMinimumWidth,
+                spacing: Self.cardSpacing
+            ),
+            visibleIDs: filteredWallpapers.map(\.id),
+            extending: NSEvent.modifierFlags.contains(.shift)
+        )
+        guard let result else { return }
+        selectedIDs = result.state.selectedIDs
+        selectionAnchorID = result.state.anchorID
+        focusedCardID = result.focusedID
     }
 
     private var emptyLibrary: some View {
