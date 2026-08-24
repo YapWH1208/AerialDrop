@@ -91,8 +91,9 @@ struct LibraryMoveResult: Equatable {
 /// current visible order. Left/right always step ±1; up/down step ±`columns`
 /// (the caller estimates the adaptive grid's column count). A move that would
 /// leave the collection does nothing (no wrap-around), mirroring macOS
-/// collection views. With `extending`, the range from the unchanged anchor to
-/// the destination is added, mirroring shift-click.
+/// collection views. With `extending`, the selection becomes the range from
+/// the unchanged anchor to the destination, mirroring shift-click, so
+/// shift-arrows can contract as well as extend.
 func movingLibrarySelection(
     _ state: LibrarySelectionState,
     direction: LibraryMoveDirection,
@@ -140,9 +141,11 @@ func movingLibrarySelection(
     if extending,
        let anchor = state.anchorID,
        let anchorIndex = visibleIDs.firstIndex(of: anchor) {
+        // Replace with the anchor..destination range so shift-arrows can both
+        // extend and contract, exactly like shift-click.
         let bounds = min(anchorIndex, newIndex)...max(anchorIndex, newIndex)
         newState = LibrarySelectionState(
-            selectedIDs: state.selectedIDs.union(Set(bounds.map { visibleIDs[$0] })),
+            selectedIDs: Set(bounds.map { visibleIDs[$0] }),
             anchorID: anchor
         )
     } else {

@@ -175,6 +175,22 @@ final class LibrarySelectionTests: XCTestCase {
         XCTAssertEqual(result?.focusedID, "D")
     }
 
+    func testShiftArrowReplacesRangeSoItCanContract() {
+        // An extended B…E selection contracts when shift-moving back toward
+        // the anchor, matching shift-click semantics.
+        let result = movingLibrarySelection(
+            LibrarySelectionState(selectedIDs: ["B", "C", "D", "E"], anchorID: "B"),
+            direction: .left,
+            columns: 3,
+            visibleIDs: visibleIDs,
+            extending: true
+        )
+
+        XCTAssertEqual(result?.state.selectedIDs, ["A", "B"])
+        XCTAssertEqual(result?.state.anchorID, "B")
+        XCTAssertEqual(result?.focusedID, "A")
+    }
+
     func testMoveWithoutAPositionSelectsTheNearestEnd() {
         let forward = movingLibrarySelection(
             LibrarySelectionState(),
