@@ -24,9 +24,9 @@ struct AerialDropApp: App {
                 .disabled(model.isWorking || model.catalogueState != .ready)
             }
             CommandGroup(replacing: .help) {
-                Button("AerialDrop Website") { helpURLs.open(helpURLs.website) }
-                Button("Frequently Asked Questions") { helpURLs.open(helpURLs.faq) }
-                Button("Release Notes") { helpURLs.open(helpURLs.releaseNotes) }
+                Button("AerialDrop Website") { HelpURLs.open(HelpURLs.website) }
+                Button("Frequently Asked Questions") { HelpURLs.open(HelpURLs.faq) }
+                Button("Release Notes") { HelpURLs.open(HelpURLs.releaseNotes) }
             }
         }
 
@@ -36,22 +36,21 @@ struct AerialDropApp: App {
     }
 }
 
+/// Documentation destinations surfaced from the app's Help menu.
+private enum HelpURLs {
+    static let website = URL(string: "https://yapwh1208.github.io/AerialDrop/")!
+    static let faq = URL(string: "https://yapwh1208.github.io/AerialDrop/#faq")!
+    static let releaseNotes = URL(string: "https://github.com/YapWH1208/AerialDrop/releases")!
+
+    static func open(_ url: URL) {
+        _ = NSWorkspace.shared.open(url)
+    }
+}
+
 /// Intercepts quit while an import is running so a long encode is not
 /// discarded silently (any partial files are cleaned on the next launch).
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-
-    /// Documentation destinations surfaced from the app's Help menu.
-    enum helpURLs {
-        static let website = URL(string: "https://yapwh1208.github.io/AerialDrop/")!
-        static let faq = URL(string: "https://yapwh1208.github.io/AerialDrop/#faq")!
-        static let releaseNotes = URL(string: "https://github.com/YapWH1208/AerialDrop/releases")!
-
-        static func open(_ url: URL) {
-            _ = NSWorkspace.shared.open(url)
-        }
-    }
-
     weak var model: AppModel?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
