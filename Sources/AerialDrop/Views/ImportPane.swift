@@ -96,6 +96,14 @@ struct ImportPane: View {
                             .disabled(model.isWorking)
                     }
 
+                    if let blocker = model.importBlockerMessage {
+                        // Inline reason so a disabled toolbar Import button
+                        // is never the only explanation.
+                        Label(blocker, systemImage: "exclamationmark.circle")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
                     ImportDetailsView()
                 }
             }

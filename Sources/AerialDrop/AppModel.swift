@@ -95,6 +95,24 @@ final class AppModel {
             && !isWorking
     }
 
+    /// The current reason Import cannot run, for inline display next to the
+    /// form instead of hover-only toolbar help. Nil exactly when importing
+    /// may proceed, or while another surface (catalogue gate, progress UI)
+    /// already explains the wait.
+    var importBlockerMessage: String? {
+        guard catalogueState == .ready, !isWorking else { return nil }
+        if selectedVideo == nil {
+            return "Choose a video to configure."
+        }
+        if !isSelectedVideoValid {
+            return "Validating the selected video…"
+        }
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Enter a wallpaper name to enable Import."
+        }
+        return nil
+    }
+
     var hasActiveManagedWallpaper: Bool {
         wallpapers.contains { activeAerialAssetIDs.contains($0.id) }
     }

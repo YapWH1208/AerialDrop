@@ -21,6 +21,37 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertFalse(model.canImport)
     }
 
+    func testImportBlockerMessagePromptsForMissingTitleThenClears() {
+        let model = makeModel(service: FakeWallpaperService())
+        model.catalogueState = .ready
+        model.selectedVideo = URL(fileURLWithPath: "/tmp/source.mov")
+        model.isSelectedVideoValid = true
+        model.title = "   "
+
+        XCTAssertEqual(model.importBlockerMessage, "Enter a wallpaper name to enable Import.")
+
+        model.title = "Coastline"
+        XCTAssertNil(model.importBlockerMessage)
+    }
+
+    func testImportBlockerMessageCoversMissingVideoValidationAndWaitStates() {
+        let model = makeModel(service: FakeWallpaperService())
+        model.catalogueState = .ready
+
+        XCTAssertEqual(model.importBlockerMessage, "Choose a video to configure.")
+
+        model.selectedVideo = URL(fileURLWithPath: "/tmp/source.mov")
+        XCTAssertEqual(model.importBlockerMessage, "Validating the selected video…")
+
+        model.isSelectedVideoValid = true
+        model.title = "Coastline"
+        XCTAssertNil(model.importBlockerMessage)
+
+        model.title = ""
+        model.isWorking = true
+        XCTAssertNil(model.importBlockerMessage)
+    }
+
     func testReloadReportsMissingCatalogueInsteadOfReadyEmpty() async {
         let model = makeModel(service: FakeWallpaperService())
 
