@@ -20,11 +20,12 @@ struct WallpaperCard: View {
     @State private var image: NSImage?
     @State private var hovering = false
     @FocusState private var selectFocused: Bool
+    @FocusState private var setWallpaperFocused: Bool
     @FocusState private var previewFocused: Bool
     @FocusState private var moreFocused: Bool
 
     private var showsHoverControls: Bool {
-        hovering || selectFocused || previewFocused || moreFocused
+        hovering || selectFocused || setWallpaperFocused || previewFocused || moreFocused
     }
 
     var body: some View {
@@ -163,11 +164,26 @@ struct WallpaperCard: View {
     private var hoverControls: some View {
         GlassEffectContainer(spacing: 6) {
             HStack(spacing: 6) {
-                Button("Preview", systemImage: "play.fill", action: onPreview)
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .focused($previewFocused)
-                    .help("Preview wallpaper")
+                Button(action: onSetWallpaper) {
+                    Label("Set as Wallpaper", systemImage: "desktopcomputer")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .focused($setWallpaperFocused)
+                .disabled(!actionAvailability.canSetAsWallpaper)
+                .accessibilityLabel("Set as Wallpaper")
+                .help(actionAvailability.setWallpaperHelp)
+
+                Button(action: onPreview) {
+                    Label("Preview", systemImage: "play.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .focused($previewFocused)
+                .accessibilityLabel("Preview")
+                .help("Preview wallpaper")
 
                 Menu {
                     cardMenu
