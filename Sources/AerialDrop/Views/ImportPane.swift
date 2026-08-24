@@ -224,7 +224,7 @@ private struct ImportSourceView: View {
                 Text("Choose or drop a video")
                     .font(.headline)
 
-                Text("MP4 or MOV · Your source file is never modified")
+                Text("MP4 or MOV · Framed to 16:9 · Your source file is never modified")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -267,9 +267,9 @@ private struct ImportSourceView: View {
 
             if let resolution, isNarrowerThan16By9(resolution) {
                 // The encode's 16:9 window is always vertically centered and
-                // the pan is horizontal-only; state that instead of leaving
-                // the darkened mask to imply hidden control.
-                Text("The 16:9 wallpaper keeps the vertical center of the frame")
+                // the pan is horizontal-only; state that AND the remedy,
+                // instead of leaving the darkened mask to imply hidden control.
+                Text("Cropped to a centered 16:9 window. Pre-crop the video to 16:9 to control what is kept.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
