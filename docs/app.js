@@ -126,8 +126,8 @@
   /* ---------- Latest release (GitHub API, graceful fallback) ---------- */
   function releaseStatusMessage(err) {
     var msg = err && err.message ? String(err.message) : "";
-    if (/HTTP 4\d\d/.test(msg)) return "GitHub is limiting requests \u2014 commands below still work";
-    if (/HTTP 5\d\d/.test(msg)) return "GitHub is having trouble \u2014 commands below still work";
+    if (/HTTP (403|429)/.test(msg)) return "GitHub is limiting requests \u2014 commands below still work";
+    if (/HTTP [45]\d\d/.test(msg)) return "GitHub request failed \u2014 commands below still work";
     return "Couldn\u2019t reach GitHub \u2014 commands below still work";
   }
   function humanSize(bytes) {
