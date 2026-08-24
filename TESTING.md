@@ -22,10 +22,10 @@ version before evaluating native playback.
    **Import Wallpaper** after selection, then replace the source and verify the preview
    follows it. Navigate to Library and confirm **Continue Import** returns to the draft.
    With the disclosure collapsed, confirm the Wallpaper Details section always shows
-   a **Loop** row: “First 1:20 of the source, looped” for sources longer than 80 s,
-   “Whole video, repeated to fill 1:20” for shorter ones. With a portrait or 4:3
-   source, confirm the caption “The 16:9 wallpaper keeps the vertical center of the
-   frame” appears under the preview.
+   a **Loop** row: “First 80 seconds of the source, looped” for sources longer than 80 s,
+   “Whole video, repeated to fill 80 seconds” for shorter ones. With a portrait or 4:3
+   source, confirm the caption “Cropped to a centered 16:9 window. Pre-crop the video
+   to 16:9 to control what is kept.” appears under the preview.
    With a fixture whose still-frame generation fails, confirm the preview ends at
    **Preview Unavailable**, announces the failure with VoiceOver, and offers
    **Retry Preview** and **Replace Video…**. Confirm a source that passed validation
