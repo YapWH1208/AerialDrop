@@ -23,11 +23,27 @@ struct AerialDropApp: App {
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(model.isWorking || model.catalogueState != .ready)
             }
+            CommandGroup(replacing: .help) {
+                Button("AerialDrop Website") { HelpURLs.open(HelpURLs.website) }
+                Button("Frequently Asked Questions") { HelpURLs.open(HelpURLs.faq) }
+                Button("Release Notes") { HelpURLs.open(HelpURLs.releaseNotes) }
+            }
         }
 
         Settings {
             SettingsView()
         }
+    }
+}
+
+/// Documentation destinations surfaced from the app's Help menu.
+private enum HelpURLs {
+    static let website = URL(string: "https://yapwh1208.github.io/AerialDrop/")!
+    static let faq = URL(string: "https://yapwh1208.github.io/AerialDrop/#faq")!
+    static let releaseNotes = URL(string: "https://github.com/YapWH1208/AerialDrop/releases")!
+
+    static func open(_ url: URL) {
+        _ = NSWorkspace.shared.open(url)
     }
 }
 

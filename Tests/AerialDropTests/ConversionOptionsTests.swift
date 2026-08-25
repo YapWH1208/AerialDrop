@@ -3,13 +3,13 @@ import XCTest
 
 final class ConversionOptionsTests: XCTestCase {
     func testLoopDescriptionStatesTrimForLongSources() {
-        XCTAssertEqual(loopDescription(sourceDuration: 300), "First 1:20 of the source, looped")
-        XCTAssertEqual(loopDescription(sourceDuration: 80), "First 1:20 of the source, looped")
+        XCTAssertEqual(loopDescription(sourceDuration: 300), "First 80 seconds of the source, looped")
+        XCTAssertEqual(loopDescription(sourceDuration: 80), "First 80 seconds of the source, looped")
     }
 
     func testLoopDescriptionStatesRepeatForShortSources() {
-        XCTAssertEqual(loopDescription(sourceDuration: 12), "Whole video, repeated to fill 1:20")
-        XCTAssertEqual(loopDescription(sourceDuration: 79.9), "Whole video, repeated to fill 1:20")
+        XCTAssertEqual(loopDescription(sourceDuration: 12), "Whole video, repeated to fill 80 seconds")
+        XCTAssertEqual(loopDescription(sourceDuration: 79.9), "Whole video, repeated to fill 80 seconds")
     }
 
     func testLoopDescriptionFallsBackWithoutADuration() {

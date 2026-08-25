@@ -23,10 +23,16 @@ struct LibraryPane: View {
     @State private var showingRenameAlert = false
     @State private var highlightTarget: String?
     @State private var dropTargeted = false
+    @State private var gridContentWidth: CGFloat = 0
+    @State private var keyboardNavScrollTarget: String?
+    @FocusState private var focusedCardID: String?
     @AppStorage(LibraryPane.sortOrderKey) private var sortOrder = LibrarySortOrder.title
 
+    static let cardMinimumWidth: CGFloat = 220
+    static let cardSpacing: CGFloat = 20
+
     private let wallpaperColumns = [
-        GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 20)
+        GridItem(.adaptive(minimum: Self.cardMinimumWidth, maximum: 320), spacing: Self.cardSpacing)
     ]
 
     private var filteredWallpapers: [ManagedWallpaper] {
@@ -361,14 +367,25 @@ struct LibraryPane: View {
                                 guard !model.isWorking else { return }
                                 select(wallpaper)
                             },
+                            onNavigate: handleArrowKeyNavigation,
                             onDoubleClick: { openPreview(wallpaper) },
                             onPreview: { openPreview(wallpaper) },
                             onSetWallpaper: { model.setWallpaper(wallpaper) },
                             onRename: { beginRename(wallpaper) },
                             onReveal: { model.revealInFinder(wallpaper) },
-                            onRemove: { requestRemoval(wallpaper) }
+                            onRemove: { requestRemoval(wallpaper) },
+                            selectionFocus: $focusedCardID
                         )
                         .id(wallpaper.id)
+                    }
+                }
+                .background(alignment: .leading) {
+                    // Measures the UNPADDED grid so vertical arrow moves can
+                    // estimate the adaptive column count exactly.
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { gridContentWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, width in gridContentWidth = width }
                     }
                 }
                 .padding(24)
@@ -380,6 +397,15 @@ struct LibraryPane: View {
                     proxy.scrollTo(target, anchor: .center)
                 }
                 highlightTarget = nil
+            }
+            .onChange(of: keyboardNavScrollTarget) { _, target in
+                guard let target else { return }
+                // LazyVGrid instantiates offscreen cards lazily; scrolling to
+                // the destination lets focus actually land (and stay visible).
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(target, anchor: .center)
+                }
+                keyboardNavScrollTarget = nil
             }
         }
     }
@@ -433,13 +459,42 @@ struct LibraryPane: View {
         )
         selectedIDs = result.selectedIDs
         selectionAnchorID = result.anchorID
+        if let focused = focusedCardID,
+           !filteredWallpapers.contains(where: { $0.id == focused }) {
+            focusedCardID = nil
+        }
+    }
+
+    /// Moves selection and keyboard focus for arrow-key events raised by the
+    /// focused card.
+    private func handleArrowKeyNavigation(_ direction: LibraryMoveDirection) {
+        guard !model.isWorking, !filteredWallpapers.isEmpty else { return }
+        let result = movingLibrarySelection(
+            LibrarySelectionState(
+                selectedIDs: selectedIDs,
+                anchorID: selectionAnchorID
+            ),
+            direction: direction,
+            columns: libraryGridColumns(
+                availableWidth: gridContentWidth,
+                minimumItemWidth: Self.cardMinimumWidth,
+                spacing: Self.cardSpacing
+            ),
+            visibleIDs: filteredWallpapers.map(\.id),
+            extending: NSEvent.modifierFlags.contains(.shift)
+        )
+        guard let result else { return }
+        selectedIDs = result.state.selectedIDs
+        selectionAnchorID = result.state.anchorID
+        focusedCardID = result.focusedID
+        keyboardNavScrollTarget = result.focusedID
     }
 
     private var emptyLibrary: some View {
         ContentUnavailableView {
             Label("No AerialDrop Wallpapers", systemImage: "rectangle.stack.badge.plus")
         } description: {
-            Text("Import a video to add it to the native Aerial catalogue.")
+            Text("Choose or drop a video to add it to the native Aerial catalogue.")
         } actions: {
             Button("Import Wallpaper", systemImage: "plus", action: onImport)
                 .buttonStyle(.borderedProminent)

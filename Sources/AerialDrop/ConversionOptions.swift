@@ -125,9 +125,9 @@ func loopDescription(sourceDuration: Double?) -> String {
         return "80-second loop"
     }
     if sourceDuration >= 80 {
-        return "First 1:20 of the source, looped"
+        return "First 80 seconds of the source, looped"
     }
-    return "Whole video, repeated to fill 1:20"
+    return "Whole video, repeated to fill 80 seconds"
 }
 
 /// A remembered height cap only applies when it actually downscales the

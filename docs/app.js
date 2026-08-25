@@ -118,7 +118,18 @@
     });
   });
 
+  /* The hero command must be copyable immediately; only the decorative
+     output lines wait for the typing animation to reveal them. */
+  var heroCopyBtn = $(".term-line--cmd .term-copy");
+  if (heroCopyBtn) heroCopyBtn.classList.add("is-visible");
+
   /* ---------- Latest release (GitHub API, graceful fallback) ---------- */
+  function releaseStatusMessage(err) {
+    var msg = err && err.message ? String(err.message) : "";
+    if (/HTTP (403|429)/.test(msg)) return "GitHub is limiting requests \u2014 commands below still work";
+    if (/HTTP [45]\d\d/.test(msg)) return "GitHub request failed \u2014 commands below still work";
+    return "Couldn\u2019t reach GitHub \u2014 commands below still work";
+  }
   function humanSize(bytes) {
     if (typeof bytes !== "number" || !isFinite(bytes) || bytes <= 0) return "\u2014";
     var units = ["B", "KB", "MB", "GB"], i = 0;
@@ -151,16 +162,16 @@
     fetch(url, controller ? { signal: controller.signal, headers: { Accept: "application/vnd.github+json" } } : {})
       .then(function (res) { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
       .then(function (rel) {
-        var tag = rel.tag_name || "v1.1.6";
+        var tag = rel.tag_name || "v1.1.7";
         var asset = (rel.assets || []).filter(function (a) { return /macOS/i.test(a.name) && /\.zip$/i.test(a.name); })[0];
         var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
         set("releaseSize", humanSize(asset && asset.size));
         applyRelease(tag, asset && asset.browser_download_url);
       })
-      .catch(function () {
+      .catch(function (err) {
         var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
-        set("releaseSize", "unavailable offline");
-        applyRelease("v1.1.6", null);
+        set("releaseSize", releaseStatusMessage(err));
+        applyRelease("v1.1.7", null);
       })
       .then(function () { if (timer) clearTimeout(timer); });
   }
@@ -308,7 +319,15 @@
     });
     if (prevBtn) prevBtn.addEventListener("click", function () { stopAutoplay(); go(current - 1); });
     if (nextBtn) nextBtn.addEventListener("click", function () { stopAutoplay(); go(current + 1); });
-    if (playBtn) playBtn.addEventListener("click", function () { autoplay ? stopAutoplay() : startAutoplay(); });
+    if (playBtn) playBtn.addEventListener("click", function () {
+      if (autoplay) { stopAutoplay(); return; }
+      if (reduced) {
+        /* Reduced Motion never autoplays; each press visibly advances one step. */
+        go(current >= nodes.length - 1 ? 0 : current + 1);
+        return;
+      }
+      startAutoplay();
+    });
     if (document.addEventListener) {
       document.addEventListener("visibilitychange", function () { if (document.hidden) stopAutoplay(); });
     }

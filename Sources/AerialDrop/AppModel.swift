@@ -87,12 +87,39 @@ final class AppModel {
         }
     }
 
+    /// Form-level import prerequisites, shared by `canImport` and
+    /// `importBlockerMessage` so the gating and its inline explanation
+    /// cannot drift apart.
+    private enum ImportReadiness {
+        case ready
+        case missingVideo
+        case validating
+        case missingTitle
+    }
+
+    private var importReadiness: ImportReadiness {
+        if selectedVideo == nil { return .missingVideo }
+        if !isSelectedVideoValid { return .validating }
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .missingTitle }
+        return .ready
+    }
+
     var canImport: Bool {
-        catalogueState == .ready
-            && isSelectedVideoValid
-            && selectedVideo != nil
-            && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !isWorking
+        catalogueState == .ready && !isWorking && importReadiness == .ready
+    }
+
+    /// The current reason Import cannot run, for inline display next to the
+    /// form instead of hover-only toolbar help. Nil exactly when importing
+    /// may proceed, or while another surface (catalogue gate, progress UI)
+    /// already explains the wait.
+    var importBlockerMessage: String? {
+        guard catalogueState == .ready, !isWorking else { return nil }
+        switch importReadiness {
+        case .ready: return nil
+        case .missingVideo: return "Choose a video to configure."
+        case .validating: return "Validating the selected video…"
+        case .missingTitle: return "Enter a wallpaper name to enable Import."
+        }
     }
 
     var hasActiveManagedWallpaper: Bool {

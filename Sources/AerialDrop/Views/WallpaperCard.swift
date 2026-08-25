@@ -8,47 +8,65 @@ struct WallpaperCard: View {
     let isSelectionStatusUnknown: Bool
     let isWorking: Bool
     let onSelect: () -> Void
+    let onNavigate: (LibraryMoveDirection) -> Void
     let onDoubleClick: () -> Void
     let onPreview: () -> Void
     let onSetWallpaper: () -> Void
     let onRename: () -> Void
     let onReveal: () -> Void
     let onRemove: () -> Void
+    /// Parent-owned selection focus so arrow-key navigation can move keyboard
+    /// focus across cards in one shared namespace.
+    @FocusState.Binding var selectionFocus: String?
 
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var image: NSImage?
     @State private var hovering = false
-    @FocusState private var selectFocused: Bool
+    @FocusState private var setWallpaperFocused: Bool
     @FocusState private var previewFocused: Bool
     @FocusState private var moreFocused: Bool
 
     private var showsHoverControls: Bool {
-        hovering || selectFocused || previewFocused || moreFocused
+        hovering || selectionFocus == wallpaper.id || setWallpaperFocused || previewFocused || moreFocused
+    }
+
+    /// Split out of `body` so its long modifier chain type-checks quickly.
+    private var selectionButton: some View {
+        Button(action: onSelect) {
+            cardContent
+        }
+        .buttonStyle(.plain)
+        .focusable()
+        .focused($selectionFocus, equals: wallpaper.id)
+        .accessibilityLabel(wallpaper.title)
+        .accessibilityValue(cardAccessibilityValue)
+        .accessibilityHint("Select this wallpaper. Use the Preview button to play it.")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded(onDoubleClick)
+        )
+        // Delete on the focused card opens the same confirmation as the
+        // card menu; the responder chain keeps text fields (search) safe.
+        .onDeleteCommand {
+            if actionAvailability.canRemove {
+                onRemove()
+            }
+        }
+        .onMoveCommand { direction in
+            switch direction {
+            case .left: onNavigate(.left)
+            case .right: onNavigate(.right)
+            case .up: onNavigate(.up)
+            case .down: onNavigate(.down)
+            @unknown default: break
+            }
+        }
     }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Button(action: onSelect) {
-                cardContent
-            }
-            .buttonStyle(.plain)
-            .focusable()
-            .focused($selectFocused)
-            .accessibilityLabel(wallpaper.title)
-            .accessibilityValue(cardAccessibilityValue)
-            .accessibilityHint("Select this wallpaper. Use the Preview button to play it.")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
-            .simultaneousGesture(
-                TapGesture(count: 2).onEnded(onDoubleClick)
-            )
-            // Delete on the focused card opens the same confirmation as the
-            // card menu; the responder chain keeps text fields (search) safe.
-            .onDeleteCommand {
-                if actionAvailability.canRemove {
-                    onRemove()
-                }
-            }
+            selectionButton
 
             if showsHoverControls {
                 hoverControls
@@ -163,11 +181,26 @@ struct WallpaperCard: View {
     private var hoverControls: some View {
         GlassEffectContainer(spacing: 6) {
             HStack(spacing: 6) {
-                Button("Preview", systemImage: "play.fill", action: onPreview)
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .focused($previewFocused)
-                    .help("Preview wallpaper")
+                Button(action: onSetWallpaper) {
+                    Label("Set as Wallpaper", systemImage: "desktopcomputer")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .focused($setWallpaperFocused)
+                .disabled(!actionAvailability.canSetAsWallpaper)
+                .accessibilityLabel("Set as Wallpaper")
+                .help(actionAvailability.setWallpaperHelp)
+
+                Button(action: onPreview) {
+                    Label("Preview", systemImage: "play.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .focused($previewFocused)
+                .accessibilityLabel("Preview")
+                .help("Preview wallpaper")
 
                 Menu {
                     cardMenu
