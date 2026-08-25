@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.7
+
+- The Library is keyboard-first: arrow keys move the selection card by card (up and down follow the grid's columns), Shift-arrow extends or contracts the range from the anchor just like Shift-click, focus follows the selection with automatic scrolling, and Delete on a focused card opens the removal confirmation.
+- Wallpaper cards put **Set as Wallpaper** directly on the hover controls next to Preview, so applying a wallpaper no longer requires opening the card menu.
+- Import explains why it's disabled inline — choose a video, still validating, or enter a name — instead of leaving a grayed-out toolbar button to guess from, and gating now derives from a single readiness source.
+- Clearer wording throughout: the source picker states videos are framed to 16:9, narrow sources explain the centered crop *and* how to control framing by pre-cropping, the empty library invites you to choose or drop a video, and loop durations consistently say "80 seconds".
+- Added a Help menu linking to the website, FAQ, and release notes.
+- Website polish: the hero command is copyable immediately while decorative output keeps its typing animation (skipped under Reduced Motion), rate-limit messaging appears only when GitHub actually limits the request, and the Reduced Motion slideshow advances one step per press.
+
 ## 1.1.6
 
 - Import now preflights free space: it stops **before** encoding when the destination volume can't hold the pipeline's peak working set, and explains the required versus available space — freeing up space or lowering quality/resolution lets you retry. If macOS can't report a capacity value, import proceeds with the existing encoder fallback.
