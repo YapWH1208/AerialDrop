@@ -459,6 +459,78 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertFalse(model.isWorking)
     }
 
+    func testRestoreRefusesToRemoveActiveWallpaperBeforeBackupOrWrite() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-ACTIVE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let before = try Data(contentsOf: paths.manifest)
+        let backups = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.activeAlert?.title, "Restore Failed")
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path).sorted(), backups.sorted())
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRestoreRefusesRemovalWhenSelectionCannotBeRead() async throws {
+        let home = makeTemporaryHome()
+        try installManagedWallpaper(makeWallpaper(id: "RESTORE-UNKNOWN"), in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let before = try Data(contentsOf: paths.manifest)
+        let service = FakeWallpaperService()
+        service.selectionReadError = TestError.storeUnreadable
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.activeAlert?.title, "Restore Failed")
+        XCTAssertTrue(model.isSelectionStatusUnknown)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRestoreKeepsActiveAssetIncludedInConfirmedBackup() async throws {
+        let home = makeTemporaryHome()
+        let active = makeWallpaper(id: "RESTORE-KEPT")
+        let other = makeWallpaper(id: "RESTORE-OTHER")
+        try installManagedWallpapers([active, other], in: home)
+        let service = FakeWallpaperService(activeIDs: [active.id])
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
+        XCTAssertEqual(model.wallpapers.map(\.id), [active.id])
+        XCTAssertEqual(model.activeAerialAssetIDs, [active.id])
+        XCTAssertEqual(service.refreshCallCount, 1)
+    }
+
+    func testRestoreUsesConfirmedBackupEvenAfterNewerBackupAppears() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "RESTORE-FIRST")
+        try installManagedWallpaper(first, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        try Data("video".utf8).write(to: paths.videoURL(for: "RESTORE-LATER"))
+        try Data("preview".utf8).write(to: paths.thumbnailURL(for: "RESTORE-LATER"))
+        try store.addWallpaper(id: "RESTORE-LATER", title: "Later")
+        XCTAssertNotEqual(store.latestBackup()?.url, confirmed.url)
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup(confirmed)
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 1)
+    }
+
     func testRemovingTheHighlightedWallpaperClearsThePendingHighlight() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0015")
         let service = FakeWallpaperService()

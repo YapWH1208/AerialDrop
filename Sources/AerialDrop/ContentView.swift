@@ -382,7 +382,7 @@ struct ContentView: View {
                 "This removes every AerialDrop entry and its copied video and thumbnail files. Your original source videos are untouched — import them again to restore them. A catalogue backup is created first."
             }
         case .restore(let info):
-            "This replaces the current Aerial catalogue with the backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation)). The current catalogue is backed up first. Restoring is refused if the catalogue changed since the backup. Wallpapers whose video files were deleted since the backup will appear as “Video missing” and can be removed."
+            "This replaces the current Aerial catalogue with the backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation)). The current catalogue is backed up first. Restoring is refused if it would change newer Apple catalogue data or remove a currently active wallpaper. Active status must be verified before a restore can remove entries. Wallpapers whose video files were deleted since the backup will appear as “Video missing” and can be removed."
         case nil:
             ""
         }
@@ -421,8 +421,8 @@ struct ContentView: View {
         switch confirmation {
         case .removeAll:
             model.removeAll(allowingUnverifiedSelection: allowingUnverifiedSelection)
-        case .restore:
-            Task { await model.restoreLatestBackup() }
+        case .restore(let info):
+            Task { await model.restoreLatestBackup(info) }
         case nil:
             break
         }

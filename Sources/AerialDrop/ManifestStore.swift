@@ -76,12 +76,19 @@ struct ManifestStore {
         try validateCandidate(root, preservingForeignEntriesFrom: root)
     }
 
-    /// A restorable catalogue backup: the backup file, its creation date, and
-    /// the operation that produced it.
+    /// A restorable catalogue backup, including the exact bytes selected for confirmation.
     struct BackupInfo: Equatable {
         let url: URL
         let date: Date
         let operation: String
+        let content: Data?
+
+        init(url: URL, date: Date, operation: String) {
+            self.url = url
+            self.date = date
+            self.operation = operation
+            content = try? Data(contentsOf: url)
+        }
     }
 
     /// The newest AerialDrop manifest backup, or nil when none exists.
@@ -95,29 +102,27 @@ struct ManifestStore {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
 
-        let candidates: [(name: String, info: BackupInfo)] = names.compactMap { name in
+        let candidates: [(name: String, url: URL, date: Date, operation: String)] = names.compactMap { name in
             guard name.hasPrefix("entries-"), name.hasSuffix(".json") else { return nil }
             let core = String(name.dropFirst("entries-".count).dropLast(".json".count))
             guard core.count > 20 else { return nil }
             let timestamp = String(core.prefix(19))
             let operation = String(core.dropFirst(20))
             guard let date = formatter.date(from: timestamp) else { return nil }
-            return (name, BackupInfo(
-                url: paths.backups.appending(path: name),
-                date: date,
-                operation: operation
-            ))
+            return (name, paths.backups.appending(path: name), date, operation)
         }
 
-        return candidates
+        let newest = candidates
             .sorted { lhs, rhs in
-                guard lhs.info.date == rhs.info.date else { return lhs.info.date > rhs.info.date }
-                let lhsModified = (try? lhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? lhs.info.date
-                let rhsModified = (try? rhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? rhs.info.date
+                guard lhs.date == rhs.date else { return lhs.date > rhs.date }
+                let lhsModified = (try? lhs.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? lhs.date
+                let rhsModified = (try? rhs.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? rhs.date
                 guard lhsModified == rhsModified else { return lhsModified > rhsModified }
                 return lhs.name > rhs.name
             }
-            .first?.info
+            .first
+        guard let newest else { return nil }
+        return BackupInfo(url: newest.url, date: newest.date, operation: newest.operation)
     }
 
     /// Replaces the current manifest with the backup's content, after backing
@@ -125,14 +130,37 @@ struct ManifestStore {
     /// catalogue data changed since the backup. Managed assets whose installed
     /// files are missing are tolerated — they surface as "Video missing" in
     /// the Library and can be removed there.
-    func restoreBackup(_ info: BackupInfo) throws {
+    /// A nil selection means active status is unknown: restoring may update
+    /// metadata, but must not remove any currently managed catalogue entry.
+    func restoreBackup(
+        _ info: BackupInfo,
+        protectingActiveAssetIDs activeIDs: Set<String>? = []
+    ) throws {
         do {
+            guard let confirmedContent = info.content else {
+                throw AerialDropError.backupRestoreRejected("The selected backup could not be read. Select the backup again and retry.")
+            }
             let backupData = try Data(contentsOf: info.url)
+            guard backupData == confirmedContent else {
+                throw AerialDropError.backupRestoreRejected("The selected backup changed after confirmation. Select the backup again and retry.")
+            }
             let backupRoot = try loadRoot(from: backupData)
             try mutateManifest(operation: "restore", requireManagedFiles: false) { root in
+                try validateBaseManifest(backupRoot)
+                let removedIDs = try managedAssetIDs(in: root)
+                    .subtracting(managedAssetIDs(in: backupRoot))
+                if !removedIDs.isEmpty {
+                    guard let activeIDs else {
+                        throw AerialDropError.wallpaperSelectionUnknownForRestore
+                    }
+                    guard removedIDs.isDisjoint(with: activeIDs) else {
+                        throw AerialDropError.activeWallpaperCannotBeRemovedByRestore
+                    }
+                }
                 root = backupRoot
             }
         } catch let error as AerialDropError {
+            if case .backupRestoreRejected = error { throw error }
             throw AerialDropError.backupRestoreRejected(reason(for: error))
         } catch {
             throw AerialDropError.backupRestoreRejected(error.localizedDescription)
@@ -612,6 +640,17 @@ struct ManifestStore {
             }
             try validateManagedID(id)
         }
+    }
+
+    private func managedAssetIDs(in root: [String: Any]) throws -> Set<String> {
+        guard let assets = root["assets"] as? [[String: Any]] else {
+            throw AerialDropError.malformedManifest("missing top-level assets array")
+        }
+        try validateManagedIDs(in: assets)
+        return Set(assets.compactMap { asset in
+            guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else { return nil }
+            return asset["id"] as? String
+        })
     }
 
     /// Managed IDs become filename components. Safe legacy IDs need not be UUIDs.

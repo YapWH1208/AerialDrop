@@ -751,7 +751,7 @@ final class AppModel {
     /// Replaces the current catalogue with the newest AerialDrop backup. The
     /// restore is refused (with nothing changed) if foreign catalogue data
     /// changed since the backup.
-    func restoreLatestBackup() async {
+    func restoreLatestBackup(_ confirmedBackup: ManifestStore.BackupInfo? = nil) async {
         isWorking = true
         operationLabel = "Restoring catalogue backup…"
         defer {
@@ -759,14 +759,24 @@ final class AppModel {
             operationLabel = nil
         }
         do {
-            guard let info = manifestStore.latestBackup() else {
+            guard let info = confirmedBackup ?? manifestStore.latestBackup() else {
                 activeAlert = AppAlert(
                     title: "No Backups Found",
                     message: "No AerialDrop backups were found."
                 )
                 return
             }
-            try manifestStore.restoreBackup(info)
+            let activeIDs: Set<String>?
+            do {
+                try refreshActiveSelection()
+                isSelectionStatusUnknown = false
+                activeIDs = activeAerialAssetIDs
+            } catch {
+                isSelectionStatusUnknown = true
+                activeIDs = nil
+            }
+            try manifestStore.restoreBackup(info, protectingActiveAssetIDs: activeIDs)
+            await systemService.refresh()
             await reload()
             activeAlert = AppAlert(
                 title: "Catalogue Restored",

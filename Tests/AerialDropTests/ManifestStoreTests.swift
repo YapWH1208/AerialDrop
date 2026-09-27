@@ -298,6 +298,27 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(afterAssets[0]["accessibilityLabel"] as? String, "Changed By Another Tool")
     }
 
+    func testRestoreRejectsChangedConfirmedBackupBeforeWritingCatalogueOrBackup() throws {
+        try installFixtureWallpaper(id: "confirmed-target", title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        // Replace the exact confirmed filename with a different valid snapshot. Without
+        // content identity this would be an otherwise safe, foreign-preserving restore.
+        try currentData.write(to: confirmed.url, options: .atomic)
+        let backupsBefore = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed)) { error in
+            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("changed after confirmation"))
+        }
+
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+        XCTAssertEqual(try Data(contentsOf: confirmed.url), currentData)
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)), Set(backupsBefore))
+    }
+
     func testUnsafeInputIDsAreRejectedBeforeMutationOrDeletion() throws {
         let before = try Data(contentsOf: paths.manifest)
         let sentinel = paths.base.appending(path: "sentinel.mov")
