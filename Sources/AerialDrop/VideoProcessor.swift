@@ -7,6 +7,21 @@ import ImageIO
 import UniformTypeIdentifiers
 import VideoToolbox
 
+/// Tracks successful appends across writer readiness callbacks. Its owner must
+/// serialize access; WriterPump confines this state to its writer queue.
+struct EncodingProgress {
+    private(set) var writtenFrames = 0.0
+    private var lastReported = -1.0
+
+    mutating func recordWrittenFrame(totalFrames: Double) -> Double? {
+        writtenFrames += 1
+        let fraction = min(0.95, writtenFrames / max(totalFrames, 1))
+        guard fraction - lastReported >= 0.01 else { return nil }
+        lastReported = fraction
+        return fraction
+    }
+}
+
 /// Serializes the writer pump: pumps samples from the reader into the writer,
 /// reports encode progress, and resumes the continuation at most once — either
 /// from the writer queue on completion, or from the task-cancellation handler.
@@ -21,6 +36,8 @@ private final class WriterPump: @unchecked Sendable {
     private var done = false
     private var cancelRequested = false
     private var continuation: CheckedContinuation<Void, Error>?
+    // Only accessed by requestMediaDataWhenReady callbacks on `queue`.
+    private var encodingProgress = EncodingProgress()
 
     init(
         reader: AVAssetReader,
@@ -55,8 +72,6 @@ private final class WriterPump: @unchecked Sendable {
 
         input.requestMediaDataWhenReady(on: queue) { [weak self] in
             guard let self else { return }
-            var writtenFrames = 0.0
-            var lastReported = -1.0
             while self.input.isReadyForMoreMediaData {
                 if self.isCancelled() {
                     self.finish(.failure(CancellationError()))
@@ -72,10 +87,7 @@ private final class WriterPump: @unchecked Sendable {
                         )))
                         return
                     }
-                    writtenFrames += 1
-                    let fraction = min(0.95, writtenFrames / max(totalFrames, 1))
-                    if fraction - lastReported >= 0.01 {
-                        lastReported = fraction
+                    if let fraction = self.encodingProgress.recordWrittenFrame(totalFrames: totalFrames) {
                         progress(fraction)
                     }
                     continue
@@ -339,21 +351,12 @@ struct VideoProcessor: Sendable {
         duration: CMTime
     ) -> AVVideoComposition {
         var layerConfiguration = AVVideoCompositionLayerInstruction.Configuration(assetTrack: track)
-        let sourceSize = CGSize(
-            width: max(2, abs(transformedRect.width)),
-            height: max(2, abs(transformedRect.height))
+        let cropTransform = VideoGeometry.renderTransform(
+            preferredTransform: preferredTransform,
+            transformedRect: transformedRect,
+            renderSize: renderSize,
+            pan: pan
         )
-        let scale = max(
-            renderSize.width / sourceSize.width,
-            renderSize.height / sourceSize.height
-        )
-        let offsetX = (renderSize.width - sourceSize.width * scale) / 2 - pan
-        let offsetY = (renderSize.height - sourceSize.height * scale) / 2
-
-        let cropTransform = preferredTransform
-            .translatedBy(x: -transformedRect.minX, y: -transformedRect.minY)
-            .scaledBy(x: scale, y: scale)
-            .translatedBy(x: offsetX, y: offsetY)
         layerConfiguration.setTransform(cropTransform, at: .zero)
 
         var instructionConfiguration = AVVideoCompositionInstruction.Configuration()
