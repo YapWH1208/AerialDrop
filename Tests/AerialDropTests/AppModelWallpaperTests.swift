@@ -94,6 +94,39 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testReloadRejectsStructurallyIncompleteCatalogue() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        try Data("{\"version\":1}".utf8).write(to: paths.manifest)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+
+        await model.reload()
+
+        guard case .unavailable = model.catalogueState else {
+            return XCTFail("A catalogue without assets/categories/count must not be ready")
+        }
+        XCTAssertFalse(model.canImport)
+    }
+
+    func testForegroundRefreshKeepsContentWhenCatalogueStructureIsInvalid() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "C0D3X-STRUCTURE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+        let paths = WallpaperPaths(homeDirectory: home)
+        try Data("{\"version\":1}".utf8).write(to: paths.manifest)
+
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        guard case .failed = model.catalogueRefreshState else {
+            return XCTFail("Invalid structure must be reported as a refresh failure")
+        }
+    }
+
     func testForegroundRefreshReplacesReadyContentWithoutLoadingState() async throws {
         let home = makeTemporaryHome()
         let first = makeWallpaper(id: "C0D3X-0300")
