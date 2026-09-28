@@ -319,6 +319,29 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)), Set(backupsBefore))
     }
 
+    func testRestoreDefaultsToUnknownSelectionWhenBackupRemovesManagedEntry() throws {
+        try installFixtureWallpaper(id: "currently-managed", title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed)) { error in
+            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("couldn’t verify which wallpaper is active"))
+        }
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+            Set(backupsBefore)
+        )
+
+        // An explicit empty set represents a verified-inactive selection.
+        try store.restoreBackup(confirmed, protectingActiveAssetIDs: [])
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+    }
+
     func testUnsafeInputIDsAreRejectedBeforeMutationOrDeletion() throws {
         let before = try Data(contentsOf: paths.manifest)
         let sentinel = paths.base.appending(path: "sentinel.mov")

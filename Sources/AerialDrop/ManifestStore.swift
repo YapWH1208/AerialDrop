@@ -134,7 +134,7 @@ struct ManifestStore {
     /// metadata, but must not remove any currently managed catalogue entry.
     func restoreBackup(
         _ info: BackupInfo,
-        protectingActiveAssetIDs activeIDs: Set<String>? = []
+        protectingActiveAssetIDs activeIDs: Set<String>? = nil
     ) throws {
         do {
             guard let confirmedContent = info.content else {
