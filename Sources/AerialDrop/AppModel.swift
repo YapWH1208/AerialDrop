@@ -46,7 +46,7 @@ final class AppModel {
 
     private let paths: WallpaperPaths
     private let manifestStore: ManifestStore
-    private let videoProcessor = VideoProcessor()
+    private let videoProcessor: any VideoProcessing
     private let systemService: any WallpaperServicing
     private let automaticActivationEnabled: () -> Bool
     private let preferencesDefaults: UserDefaults
@@ -55,6 +55,7 @@ final class AppModel {
     init(
         paths: WallpaperPaths = WallpaperPaths(),
         systemService: (any WallpaperServicing)? = nil,
+        videoProcessor: any VideoProcessing = VideoProcessor(),
         automaticallyReload: Bool = true,
         automaticActivationEnabled: @escaping () -> Bool = {
             AppPreferences.isSetWallpaperAfterImportEnabled()
@@ -79,6 +80,7 @@ final class AppModel {
         self.systemService = systemService ?? SystemWallpaperService(
             selectionStore: WallpaperSelectionStore(paths: paths)
         )
+        self.videoProcessor = videoProcessor
         self.automaticActivationEnabled = automaticActivationEnabled
         self.preferencesDefaults = preferencesDefaults
         self.availableCapacityProvider = availableCapacityProvider
@@ -162,6 +164,7 @@ final class AppModel {
     }
 
     func chooseVideo(_ url: URL) {
+        guard !isWorking else { return }
         selectionVersion += 1
         let version = selectionVersion
         // Always follow the chosen file: a name left over from a previously
@@ -240,7 +243,8 @@ final class AppModel {
     }
 
     func importSelectedVideo() {
-        guard isSelectedVideoValid, let source = selectedVideo else { return }
+        guard !isWorking, catalogueState == .ready,
+              isSelectedVideoValid, let source = selectedVideo else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
             activeAlert = AppAlert(
@@ -259,16 +263,30 @@ final class AppModel {
             outputHeightCap: outputHeightCap,
             quality: conversionQuality
         )
+        let selectedSourceResolution = sourceResolution
+        let shouldActivate = automaticActivationEnabled()
 
-        importTask?.cancel()
+        // Reserve the operation before scheduling its task, and invalidate any late
+        // metadata work still associated with the editable source selection.
+        selectionVersion += 1
         importGeneration += 1
         let generation = importGeneration
+        isWorking = true
+        stage = .validating
+        importProgress = 0
+        importOutcome = nil
+        encodeStartedAt = nil
+        operationLabel = nil
+        showingFileImporter = false
+        dismissActivationFailure()
         importTask = Task {
-            isWorking = true
-            importProgress = 0
-            importOutcome = nil
-            dismissActivationFailure()
-            defer { isWorking = false }
+            defer {
+                if generation == importGeneration {
+                    isWorking = false
+                    importTask = nil
+                    encodeStartedAt = nil
+                }
+            }
 
             let access = source.startAccessingSecurityScopedResource()
             defer { if access { source.stopAccessingSecurityScopedResource() } }
@@ -279,20 +297,23 @@ final class AppModel {
             var manifestInstalled = false
 
             do {
+                try Task.checkCancellation()
                 try requireTahoe()
                 stage = .validating
                 try await videoProcessor.validate(source: source)
+                try Task.checkCancellation()
 
                 stage = .preparingFolders
                 try manifestStore.requireManifest()
                 try manifestStore.prepareDirectories()
 
                 let importSourceSize: CGSize
-                if let sourceResolution {
-                    importSourceSize = sourceResolution
+                if let selectedSourceResolution {
+                    importSourceSize = selectedSourceResolution
                 } else {
                     importSourceSize = try await videoProcessor.sourceDisplaySize(for: source)
                 }
+                try Task.checkCancellation()
                 try requireImportStorageCapacity(
                     sourceSize: importSourceSize,
                     options: options
@@ -306,9 +327,14 @@ final class AppModel {
                     options: options
                 ) { fraction in
                     Task { @MainActor in
-                        self.importProgress = fraction
+                        guard generation == self.importGeneration,
+                              self.isWorking, self.stage == .processingVideo,
+                              self.importTask?.isCancelled == false,
+                              fraction.isFinite else { return }
+                        self.importProgress = max(self.importProgress, min(max(fraction, 0), 0.95))
                     }
                 }
+                try Task.checkCancellation()
 
                 stage = .generatingThumbnail
                 try await videoProcessor.generateThumbnail(from: videoDestination, destination: thumbnailDestination)
@@ -330,13 +356,17 @@ final class AppModel {
                         videoURL: videoDestination,
                         thumbnailURL: thumbnailDestination,
                         resolution: encodedSize
-                    )
+                    ),
+                    automaticallyActivate: shouldActivate
                 )
 
+                guard generation == importGeneration else { return }
                 stage = .finished
                 selectedVideo = nil
                 title = ""
                 isSelectedVideoValid = false
+                sourceResolution = nil
+                sourceDuration = nil
             } catch {
                 if !manifestInstalled {
                     try? FileManager.default.removeItem(at: videoDestination)
@@ -378,9 +408,16 @@ final class AppModel {
     }
 
     func rename(_ wallpaper: ManagedWallpaper, to newTitle: String) {
+        guard !isWorking else { return }
         let cleanTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, cleanTitle != wallpaper.title else { return }
+        isWorking = true
+        operationLabel = "Renaming “\(wallpaper.title)”…"
         Task {
+            defer {
+                isWorking = false
+                operationLabel = nil
+            }
             do {
                 try manifestStore.renameWallpaper(id: wallpaper.id, title: cleanTitle)
                 await reload()
@@ -397,6 +434,7 @@ final class AppModel {
         _ wallpaper: ManagedWallpaper,
         allowingUnverifiedSelection: Bool = false
     ) {
+        guard !isWorking else { return }
         Task {
             await removeWallpaper(
                 wallpaper,
@@ -409,6 +447,7 @@ final class AppModel {
         _ wallpapers: [ManagedWallpaper],
         allowingUnverifiedSelection: Bool = false
     ) {
+        guard !isWorking else { return }
         Task {
             await removeWallpapers(
                 wallpapers,
@@ -421,6 +460,7 @@ final class AppModel {
         _ wallpaper: ManagedWallpaper,
         allowingUnverifiedSelection: Bool = false
     ) async {
+        guard !isWorking else { return }
         isWorking = true
         operationLabel = "Removing “\(wallpaper.title)”…"
         defer {
@@ -447,6 +487,7 @@ final class AppModel {
     }
 
     func removeAll(allowingUnverifiedSelection: Bool = false) {
+        guard !isWorking else { return }
         Task {
             await removeAllWallpapers(
                 allowingUnverifiedSelection: allowingUnverifiedSelection
@@ -461,6 +502,7 @@ final class AppModel {
         _ wallpapers: [ManagedWallpaper],
         allowingUnverifiedSelection: Bool = false
     ) async {
+        guard !isWorking else { return }
         let ids = Set(wallpapers.map(\.id))
         guard !ids.isEmpty else { return }
         isWorking = true
@@ -508,6 +550,7 @@ final class AppModel {
     func removeAllWallpapers(
         allowingUnverifiedSelection: Bool = false
     ) async {
+        guard !isWorking else { return }
         isWorking = true
         operationLabel = "Removing all AerialDrop wallpapers…"
         defer {
@@ -606,6 +649,7 @@ final class AppModel {
     }
 
     func setWallpaper(_ wallpaper: ManagedWallpaper) {
+        guard !isWorking else { return }
         Task {
             await activateWallpaper(wallpaper)
         }
@@ -614,6 +658,7 @@ final class AppModel {
     /// The awaited counterpart to `setWallpaper`, kept internal for focused
     /// model tests while UI callers retain the non-blocking action method.
     func activateWallpaper(_ wallpaper: ManagedWallpaper) async {
+        guard !isWorking else { return }
         isWorking = true
         operationLabel = "Applying “\(wallpaper.title)”…"
         defer {
@@ -636,7 +681,7 @@ final class AppModel {
     }
 
     func retryActivation() {
-        guard let wallpaper = activationFailure else { return }
+        guard !isWorking, let wallpaper = activationFailure else { return }
         dismissActivationFailure()
         setWallpaper(wallpaper)
     }
@@ -644,10 +689,13 @@ final class AppModel {
     /// Applies the default-on post-import choice independently of media work,
     /// making a failed activation recoverable without rolling back installation.
     @discardableResult
-    func applyPostImportWallpaperSetting(to wallpaper: ManagedWallpaper) async -> ImportActivationResult {
+    func applyPostImportWallpaperSetting(
+        to wallpaper: ManagedWallpaper,
+        automaticallyActivate: Bool? = nil
+    ) async -> ImportActivationResult {
         stage = .refreshingSystem
         let activationResult: ImportActivationResult
-        if automaticActivationEnabled() {
+        if automaticallyActivate ?? automaticActivationEnabled() {
             do {
                 try await systemService.activateAerial(assetID: wallpaper.id)
                 dismissActivationFailure()
@@ -752,6 +800,7 @@ final class AppModel {
     /// restore is refused (with nothing changed) if foreign catalogue data
     /// changed since the backup.
     func restoreLatestBackup(_ confirmedBackup: ManifestStore.BackupInfo? = nil) async {
+        guard !isWorking else { return }
         isWorking = true
         operationLabel = "Restoring catalogue backup…"
         defer {

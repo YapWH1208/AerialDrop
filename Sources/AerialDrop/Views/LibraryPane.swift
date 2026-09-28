@@ -498,6 +498,7 @@ struct LibraryPane: View {
         } actions: {
             Button("Import Wallpaper", systemImage: "plus", action: onImport)
                 .buttonStyle(.borderedProminent)
+                .disabled(model.isWorking)
         }
     }
 

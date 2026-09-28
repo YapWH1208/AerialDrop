@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import SwiftUI
 
 struct VideoPreview: View {
@@ -9,16 +8,14 @@ struct VideoPreview: View {
     var isDisabled = false
     let onReplace: () -> Void
 
-    @State private var state: PreviewState = .loading
-    @State private var duration: Double?
-    @State private var fileSize: Int64?
+    @State private var loader = VideoPreviewLoader()
     @State private var loadAttempt = 0
 
     var body: some View {
         ZStack {
             Rectangle().fill(.quaternary.opacity(0.6))
 
-            switch state {
+            switch loader.state {
             case .loading:
                 VStack(spacing: 8) {
                     ProgressView()
@@ -50,12 +47,12 @@ struct VideoPreview: View {
         }
         .background(Color.black)
         .overlay(alignment: .bottomTrailing) {
-            if resolution != nil || (duration != nil && fileSize != nil) {
+            if resolution != nil || (loader.duration != nil && loader.fileSize != nil) {
                 HStack(spacing: 6) {
                     if let resolution {
                         Label("\(Int(resolution.width))×\(Int(resolution.height))", systemImage: "rectangle.inset.filled")
                     }
-                    if let duration, let fileSize {
+                    if let duration = loader.duration, let fileSize = loader.fileSize {
                         Label(timeString(duration), systemImage: "clock")
                         Label(fileSize.formatted(.byteCount(style: .file)), systemImage: "internaldrive")
                     }
@@ -68,66 +65,13 @@ struct VideoPreview: View {
             }
         }
         .overlay {
-            if case .ready = state,
+            if case .ready = loader.state,
                let cropOffset, let resolution, hasCropWindow(resolution) {
                 CropMask(cropOffset: cropOffset, resolution: resolution)
             }
         }
         .task(id: LoadRequest(url: url, attempt: loadAttempt)) {
-            await load()
-        }
-    }
-
-    @MainActor
-    private func load() async {
-        state = .loading
-        duration = nil
-        fileSize = nil
-
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-
-        let asset = AVURLAsset(url: url)
-        if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite {
-            duration = seconds
-        }
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-           let size = attrs[.size] as? NSNumber {
-            fileSize = size.int64Value
-        }
-
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 1280, height: 1280)
-
-        // Sample a few early timestamps and prefer the first frame that is not
-        // (nearly) black, so fade-in sources don't preview as a black box.
-        let durationSeconds = duration ?? 1
-        let candidates = [0.5, 2.0, 5.0].filter { $0 < durationSeconds }
-        let times = candidates.isEmpty
-            ? [min(max(durationSeconds, 0.05), 0.5)]
-            : candidates
-        var fallback: NSImage?
-        for seconds in times {
-            let time = CMTime(seconds: seconds, preferredTimescale: 600)
-            guard let result = try? await generator.image(at: time) else { continue }
-            let image = NSImage(cgImage: result.image, size: .zero)
-            if Self.isMeaningfullyVisible(result.image) {
-                state = .ready(image)
-                return
-            }
-            if fallback == nil {
-                fallback = image
-            }
-        }
-        guard !Task.isCancelled else { return }
-        if let fallback {
-            state = .ready(fallback)
-        } else {
-            state = .failed
-            AccessibilityNotification.Announcement(
-                "Preview unavailable. Retry the preview or replace the video."
-            ).post()
+            await loader.load(url: url)
         }
     }
 
@@ -166,12 +110,6 @@ struct VideoPreview: View {
 }
 
 private extension VideoPreview {
-    enum PreviewState {
-        case loading
-        case ready(NSImage)
-        case failed
-    }
-
     struct LoadRequest: Hashable {
         let url: URL
         let attempt: Int

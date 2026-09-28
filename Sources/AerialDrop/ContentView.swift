@@ -220,6 +220,7 @@ struct ContentView: View {
     }
 
     private func beginImport() {
+        guard !model.isWorking else { return }
         model.showingFileImporter = true
     }
 
