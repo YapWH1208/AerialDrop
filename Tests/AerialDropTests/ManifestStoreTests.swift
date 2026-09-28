@@ -368,7 +368,7 @@ final class ManifestStoreTests: XCTestCase {
         }
     }
 
-    func testRestoreRollsBackIfSelectionChangesAfterFinalValidation() throws {
+    func testRestoreKeepsCommittedCatalogueAndSafetyBackupIfSelectionChangesAfterWrite() throws {
         let id = "became-active-at-commit"
         try installFixtureWallpaper(id: id, title: "Current")
         let confirmed = try XCTUnwrap(store.latestBackup())
@@ -385,14 +385,15 @@ final class ManifestStoreTests: XCTestCase {
             }
             return becameActive ? [id] : []
         })) { error in
-            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
-                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            guard case AerialDropError.backupRestoreCommitted(let reason) = error else {
+                return XCTFail("Expected backupRestoreCommitted, got \(error)")
             }
-            XCTAssertTrue(reason.contains("active wallpaper"))
+            XCTAssertTrue(reason.contains("left the restored catalogue in place"))
+            XCTAssertTrue(reason.contains("safety backup"))
         }
 
         XCTAssertEqual(reads, 4)
-        XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
         let backupsAfter = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
         XCTAssertEqual(backupsAfter.count, backupsBefore.count + 1)
         let addedBackups = backupsAfter.subtracting(backupsBefore)
@@ -404,13 +405,16 @@ final class ManifestStoreTests: XCTestCase {
         )
     }
 
-    func testRestoreDoesNotOverwriteConcurrentManifestDuringRollback() throws {
+    func testRestoreDoesNotOverwriteConcurrentManifestAfterCommit() throws {
         let id = "became-active-with-concurrent-manifest"
         try installFixtureWallpaper(id: id, title: "Current")
         let confirmed = try XCTUnwrap(store.latestBackup())
         let currentData = try Data(contentsOf: paths.manifest)
         let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
-        let concurrentData = Data("concurrent catalogue write".utf8)
+        var concurrentRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: currentData) as? [String: Any])
+        concurrentRoot["concurrentUpdate"] = true
+        let concurrentData = try JSONSerialization.data(withJSONObject: concurrentRoot, options: [.prettyPrinted])
+        let manifestURL = paths.manifest
         var reads = 0
         var becameActive = false
 
@@ -421,14 +425,14 @@ final class ManifestStoreTests: XCTestCase {
                 return []
             }
             if reads == 4 {
-                try concurrentData.write(to: paths.manifest, options: .atomic)
+                try concurrentData.write(to: manifestURL, options: .atomic)
             }
             return becameActive ? [id] : []
         })) { error in
-            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
-                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            guard case AerialDropError.backupRestoreSuperseded(let reason) = error else {
+                return XCTFail("Expected backupRestoreSuperseded, got \(error)")
             }
-            XCTAssertTrue(reason.contains("rollback could not be verified"))
+            XCTAssertTrue(reason.contains("kept the current catalogue untouched"))
         }
 
         XCTAssertEqual(reads, 4)

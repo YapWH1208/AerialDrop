@@ -184,6 +184,9 @@ enum AerialDropError: LocalizedError {
     case activeWallpaperCannotBeRemovedByRestore
     case wallpaperSelectionUnknownForRestore
     case backupRestoreRejected(String)
+    case backupRestoreCommitted(String)
+    case backupRestoreSuperseded(String)
+    case backupRestoreOutcomeUnknown(String)
 
     var errorDescription: String? {
         switch self {
@@ -266,6 +269,12 @@ enum AerialDropError: LocalizedError {
             return "AerialDrop couldn’t verify which wallpaper is active. Open Wallpaper Settings and reload the catalogue before restoring a backup that removes wallpapers."
         case .backupRestoreRejected(let reason):
             return "The backup could not be restored. \(reason) Nothing was changed."
+        case .backupRestoreCommitted(let reason):
+            return "The catalogue restore was written, but AerialDrop couldn’t confirm the active wallpaper. \(reason)"
+        case .backupRestoreSuperseded(let reason):
+            return "The Aerial catalogue changed during restore. \(reason)"
+        case .backupRestoreOutcomeUnknown(let reason):
+            return "The catalogue restore status could not be verified. \(reason)"
         }
     }
 }

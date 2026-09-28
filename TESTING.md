@@ -80,7 +80,14 @@ version before evaluating native playback.
    A backup that omits the currently active AerialDrop wallpaper must also be
    refused. If active status cannot be read, a restore that removes managed
    entries must be refused until status can be verified. A restore that keeps
-   the active entry remains available.
+   the active entry remains available. If an AerialDrop wallpaper becomes
+   active after the restore write, confirm the app retains the committed
+   catalogue and its safety backup, reports that the restore needs attention,
+   and leaves any concurrent catalogue update untouched. If the manifest
+   cannot be read after this check, the app reports an unknown restore status
+   and retains the safety backup. Restoring the newest
+   safety backup should recover the previous catalogue when it still passes
+   the foreign-data checks.
 3. After removing a wallpaper, restoring the latest backup brings its entry back marked Video missing (its video file was deleted by the removal) and removing it again is permitted.
 4. During an import, press Command-Q and confirm a quit confirmation appears. Keep Importing resumes; Quit Anyway quits, and the next launch removes leftover .AerialDrop- temp files from the videos folder.
 5. Import a video with an unsupported codec wrapped in a .mov container and confirm

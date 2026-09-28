@@ -132,8 +132,10 @@ struct ManifestStore {
     /// the Library and can be removed there.
     /// A nil selection reader means active status is unknown: restoring may
     /// update metadata, but must not remove a managed catalogue entry. The
-    /// reader is rechecked around the write, with guarded rollback if selection
-    /// changes during the commit.
+    /// reader is rechecked before and after the write. If post-write validation
+    /// fails, rollback is avoided because an external catalogue writer could
+    /// race it; the current catalogue outcome is reported and the safety backup
+    /// is retained.
     func restoreBackup(
         _ info: BackupInfo,
         protectingActiveAssetIDs activeIDs: (() throws -> Set<String>)? = nil
@@ -176,6 +178,9 @@ struct ManifestStore {
             }
         } catch let error as AerialDropError {
             if case .backupRestoreRejected = error { throw error }
+            if case .backupRestoreCommitted = error { throw error }
+            if case .backupRestoreSuperseded = error { throw error }
+            if case .backupRestoreOutcomeUnknown = error { throw error }
             throw AerialDropError.backupRestoreRejected(reason(for: error))
         } catch {
             throw AerialDropError.backupRestoreRejected(error.localizedDescription)
@@ -494,19 +499,21 @@ struct ManifestStore {
         } catch {
             do {
                 let latestData = try Data(contentsOf: paths.manifest)
-                guard latestData == candidateData else {
-                    throw AerialDropError.manifestChangedDuringOperation
+                if latestData == candidateData {
+                    throw AerialDropError.backupRestoreCommitted(
+                        "AerialDrop left the restored catalogue in place because undoing the write could overwrite a concurrent macOS catalogue update. The safety backup \(backup.lastPathComponent) was retained. Open Wallpaper Settings to check the active wallpaper; the backup remains available if a later restore passes the foreign-data checks."
+                    )
                 }
-                try originalData.write(to: paths.manifest, options: .atomic)
-                guard try Data(contentsOf: paths.manifest) == originalData else {
-                    throw AerialDropError.manifestChangedDuringOperation
-                }
+                throw AerialDropError.backupRestoreSuperseded(
+                    "AerialDrop kept the current catalogue untouched and retained the safety backup \(backup.lastPathComponent). Reload the Library to inspect the current entries."
+                )
+            } catch let outcome as AerialDropError {
+                throw outcome
             } catch {
-                throw AerialDropError.backupRestoreRejected(
-                    "The active wallpaper changed during restore, and rollback could not be verified. A safety backup was retained as \(backup.lastPathComponent)."
+                throw AerialDropError.backupRestoreOutcomeUnknown(
+                    "AerialDrop could not read the catalogue after active-wallpaper verification failed. It did not attempt a rollback that could overwrite a concurrent update. The safety backup \(backup.lastPathComponent) was retained. Reload the catalogue before restoring again."
                 )
             }
-            throw error
         }
 
         let writtenData = try Data(contentsOf: paths.manifest)

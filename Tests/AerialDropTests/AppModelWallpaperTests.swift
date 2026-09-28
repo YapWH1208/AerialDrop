@@ -504,6 +504,106 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
+    func testRestoreRetainsSafetyBackupWhenWallpaperActivatesAfterWrite() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-ACTIVATED-AFTER-WRITE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let previousCatalogue = try Data(contentsOf: paths.manifest)
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 5 {
+                service.activeIDs = [wallpaper.id]
+            }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 6)
+        XCTAssertEqual(model.activeAlert?.title, "Restore Needs Attention")
+        XCTAssertTrue(model.activeAlert?.message.contains("safety backup") == true)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(model.activeAerialAssetIDs, [wallpaper.id])
+        XCTAssertEqual(service.refreshCallCount, 0)
+        let safetyBackup = try XCTUnwrap(model.latestBackupInfo())
+        XCTAssertEqual(safetyBackup.operation, "restore")
+        XCTAssertEqual(try Data(contentsOf: safetyBackup.url), previousCatalogue)
+    }
+
+    func testRestoreReportsConcurrentCatalogueAndReloadsCurrentEntries() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-CONCURRENT-CATALOGUE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let previousCatalogue = try Data(contentsOf: paths.manifest)
+        var concurrentRoot = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: previousCatalogue) as? [String: Any]
+        )
+        concurrentRoot["concurrentUpdate"] = true
+        let concurrentData = try JSONSerialization.data(withJSONObject: concurrentRoot, options: [.prettyPrinted])
+        let manifestURL = paths.manifest
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 5 {
+                service.activeIDs = [wallpaper.id]
+                try? concurrentData.write(to: manifestURL, options: .atomic)
+            }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 6)
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Changed During Restore")
+        XCTAssertTrue(model.activeAlert?.message.contains("kept the current catalogue untouched") == true)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        XCTAssertEqual(model.activeAerialAssetIDs, [wallpaper.id])
+        XCTAssertEqual(try Data(contentsOf: manifestURL), concurrentData)
+        XCTAssertEqual(service.refreshCallCount, 0)
+        let safetyBackup = try XCTUnwrap(model.latestBackupInfo())
+        XCTAssertEqual(safetyBackup.operation, "restore")
+        XCTAssertEqual(try Data(contentsOf: safetyBackup.url), previousCatalogue)
+    }
+
+    func testRestoreReportsUnknownStatusWhenCatalogueDisappearsAfterWrite() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-UNKNOWN-AFTER-WRITE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let previousCatalogue = try Data(contentsOf: paths.manifest)
+        let manifestURL = paths.manifest
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 5 {
+                service.activeIDs = [wallpaper.id]
+                try? FileManager.default.removeItem(at: manifestURL)
+            }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 6)
+        XCTAssertEqual(model.activeAlert?.title, "Restore Status Unknown")
+        XCTAssertTrue(model.activeAlert?.message.contains("safety backup") == true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: manifestURL.path))
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        if case .unavailable = model.catalogueState { } else {
+            XCTFail("Expected catalogue state to be unavailable after its manifest disappeared")
+        }
+        XCTAssertEqual(service.refreshCallCount, 0)
+        let safetyBackup = try XCTUnwrap(model.latestBackupInfo())
+        XCTAssertEqual(safetyBackup.operation, "restore")
+        XCTAssertEqual(try Data(contentsOf: safetyBackup.url), previousCatalogue)
+    }
+
     func testRestoreRefusesRemovalWhenSelectionCannotBeRead() async throws {
         let home = makeTemporaryHome()
         try installManagedWallpaper(makeWallpaper(id: "RESTORE-UNKNOWN"), in: home)

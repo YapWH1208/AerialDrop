@@ -821,14 +821,34 @@ final class AppModel {
             } catch {
                 isSelectionStatusUnknown = true
             }
-            try manifestStore.restoreBackup(info, protectingActiveAssetIDs: {
-                do {
-                    return try self.systemService.activeAerialAssetIDs()
-                } catch {
-                    self.isSelectionStatusUnknown = true
+            do {
+                try manifestStore.restoreBackup(info, protectingActiveAssetIDs: {
+                    do {
+                        return try self.systemService.activeAerialAssetIDs()
+                    } catch {
+                        self.isSelectionStatusUnknown = true
+                        throw error
+                    }
+                })
+            } catch let error as AerialDropError {
+                let attentionTitle: String
+                switch error {
+                case .backupRestoreCommitted:
+                    attentionTitle = "Restore Needs Attention"
+                case .backupRestoreSuperseded:
+                    attentionTitle = "Catalogue Changed During Restore"
+                case .backupRestoreOutcomeUnknown:
+                    attentionTitle = "Restore Status Unknown"
+                default:
                     throw error
                 }
-            })
+                await reload()
+                activeAlert = AppAlert(
+                    title: attentionTitle,
+                    message: error.localizedDescription
+                )
+                return
+            }
             await systemService.refresh()
             await reload()
             activeAlert = AppAlert(
