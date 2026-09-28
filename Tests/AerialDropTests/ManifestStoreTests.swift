@@ -368,6 +368,81 @@ final class ManifestStoreTests: XCTestCase {
         }
     }
 
+    func testRestoreRollsBackIfSelectionChangesAfterFinalValidation() throws {
+        let id = "became-active-at-commit"
+        try installFixtureWallpaper(id: id, title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        var reads = 0
+        var becameActive = false
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed, protectingActiveAssetIDs: {
+            reads += 1
+            if reads == 3 {
+                defer { becameActive = true }
+                return []
+            }
+            return becameActive ? [id] : []
+        })) { error in
+            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("active wallpaper"))
+        }
+
+        XCTAssertEqual(reads, 4)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+        let backupsAfter = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        XCTAssertEqual(backupsAfter.count, backupsBefore.count + 1)
+        let addedBackups = backupsAfter.subtracting(backupsBefore)
+        XCTAssertEqual(addedBackups.count, 1)
+        let safetyBackup = try XCTUnwrap(addedBackups.first)
+        XCTAssertEqual(
+            try Data(contentsOf: paths.backups.appending(path: safetyBackup)),
+            currentData
+        )
+    }
+
+    func testRestoreDoesNotOverwriteConcurrentManifestDuringRollback() throws {
+        let id = "became-active-with-concurrent-manifest"
+        try installFixtureWallpaper(id: id, title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        let concurrentData = Data("concurrent catalogue write".utf8)
+        var reads = 0
+        var becameActive = false
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed, protectingActiveAssetIDs: {
+            reads += 1
+            if reads == 3 {
+                defer { becameActive = true }
+                return []
+            }
+            if reads == 4 {
+                try concurrentData.write(to: paths.manifest, options: .atomic)
+            }
+            return becameActive ? [id] : []
+        })) { error in
+            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("rollback could not be verified"))
+        }
+
+        XCTAssertEqual(reads, 4)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), concurrentData)
+        let backupsAfter = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        XCTAssertEqual(backupsAfter.count, backupsBefore.count + 1)
+        let addedBackups = backupsAfter.subtracting(backupsBefore)
+        let safetyBackup = try XCTUnwrap(addedBackups.first)
+        XCTAssertEqual(
+            try Data(contentsOf: paths.backups.appending(path: safetyBackup)),
+            currentData
+        )
+    }
+
     func testUnsafeInputIDsAreRejectedBeforeMutationOrDeletion() throws {
         let before = try Data(contentsOf: paths.manifest)
         let sentinel = paths.base.appending(path: "sentinel.mov")

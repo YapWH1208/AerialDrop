@@ -132,7 +132,8 @@ struct ManifestStore {
     /// the Library and can be removed there.
     /// A nil selection reader means active status is unknown: restoring may
     /// update metadata, but must not remove a managed catalogue entry. The
-    /// reader is called again immediately before the manifest write.
+    /// reader is rechecked around the write, with guarded rollback if selection
+    /// changes during the commit.
     func restoreBackup(
         _ info: BackupInfo,
         protectingActiveAssetIDs activeIDs: (() throws -> Set<String>)? = nil
@@ -165,7 +166,7 @@ struct ManifestStore {
             try mutateManifest(
                 operation: "restore",
                 requireManagedFiles: false,
-                prewriteValidation: verifyActiveSelection
+                commitValidation: verifyActiveSelection
             ) { root in
                 try validateBaseManifest(backupRoot)
                 removedIDs = try managedAssetIDs(in: root)
@@ -442,7 +443,7 @@ struct ManifestStore {
     private func mutateManifest(
         operation: String,
         requireManagedFiles: Bool = true,
-        prewriteValidation: (() throws -> Void)? = nil,
+        commitValidation: (() throws -> Void)? = nil,
         mutation: (inout [String: Any]) throws -> Void
     ) throws {
         let originalData = try Data(contentsOf: paths.manifest)
@@ -477,17 +478,36 @@ struct ManifestStore {
             throw AerialDropError.manifestChangedDuringOperation
         }
 
-        try prewriteValidation?()
+        try commitValidation?()
         let backup = try backupManifest(data: originalData, operation: operation)
         // Backup creation takes time. Check the selection again after it finishes,
         // and remove only our new backup if the restore has become unsafe.
         do {
-            try prewriteValidation?()
+            try commitValidation?()
         } catch {
             try fileManager.removeItem(at: backup)
             throw error
         }
         try candidateData.write(to: paths.manifest, options: .atomic)
+        do {
+            try commitValidation?()
+        } catch {
+            do {
+                let latestData = try Data(contentsOf: paths.manifest)
+                guard latestData == candidateData else {
+                    throw AerialDropError.manifestChangedDuringOperation
+                }
+                try originalData.write(to: paths.manifest, options: .atomic)
+                guard try Data(contentsOf: paths.manifest) == originalData else {
+                    throw AerialDropError.manifestChangedDuringOperation
+                }
+            } catch {
+                throw AerialDropError.backupRestoreRejected(
+                    "The active wallpaper changed during restore, and rollback could not be verified. A safety backup was retained as \(backup.lastPathComponent)."
+                )
+            }
+            throw error
+        }
 
         let writtenData = try Data(contentsOf: paths.manifest)
         guard writtenData == candidateData else {
