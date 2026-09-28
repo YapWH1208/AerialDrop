@@ -130,11 +130,12 @@ struct ManifestStore {
     /// catalogue data changed since the backup. Managed assets whose installed
     /// files are missing are tolerated — they surface as "Video missing" in
     /// the Library and can be removed there.
-    /// A nil selection means active status is unknown: restoring may update
-    /// metadata, but must not remove any currently managed catalogue entry.
+    /// A nil selection reader means active status is unknown: restoring may
+    /// update metadata, but must not remove a managed catalogue entry. The
+    /// reader is called again immediately before the manifest write.
     func restoreBackup(
         _ info: BackupInfo,
-        protectingActiveAssetIDs activeIDs: Set<String>? = nil
+        protectingActiveAssetIDs activeIDs: (() throws -> Set<String>)? = nil
     ) throws {
         do {
             guard let confirmedContent = info.content else {
@@ -145,18 +146,31 @@ struct ManifestStore {
                 throw AerialDropError.backupRestoreRejected("The selected backup changed after confirmation. Select the backup again and retry.")
             }
             let backupRoot = try loadRoot(from: backupData)
-            try mutateManifest(operation: "restore", requireManagedFiles: false) { root in
-                try validateBaseManifest(backupRoot)
-                let removedIDs = try managedAssetIDs(in: root)
-                    .subtracting(managedAssetIDs(in: backupRoot))
-                if !removedIDs.isEmpty {
-                    guard let activeIDs else {
-                        throw AerialDropError.wallpaperSelectionUnknownForRestore
-                    }
-                    guard removedIDs.isDisjoint(with: activeIDs) else {
-                        throw AerialDropError.activeWallpaperCannotBeRemovedByRestore
-                    }
+            var removedIDs = Set<String>()
+            func verifyActiveSelection() throws {
+                guard !removedIDs.isEmpty else { return }
+                guard let activeIDs else {
+                    throw AerialDropError.wallpaperSelectionUnknownForRestore
                 }
+                let selectedIDs: Set<String>
+                do {
+                    selectedIDs = try activeIDs()
+                } catch {
+                    throw AerialDropError.wallpaperSelectionUnknownForRestore
+                }
+                guard removedIDs.isDisjoint(with: selectedIDs) else {
+                    throw AerialDropError.activeWallpaperCannotBeRemovedByRestore
+                }
+            }
+            try mutateManifest(
+                operation: "restore",
+                requireManagedFiles: false,
+                prewriteValidation: verifyActiveSelection
+            ) { root in
+                try validateBaseManifest(backupRoot)
+                removedIDs = try managedAssetIDs(in: root)
+                    .subtracting(managedAssetIDs(in: backupRoot))
+                try verifyActiveSelection()
                 root = backupRoot
             }
         } catch let error as AerialDropError {
@@ -428,6 +442,7 @@ struct ManifestStore {
     private func mutateManifest(
         operation: String,
         requireManagedFiles: Bool = true,
+        prewriteValidation: (() throws -> Void)? = nil,
         mutation: (inout [String: Any]) throws -> Void
     ) throws {
         let originalData = try Data(contentsOf: paths.manifest)
@@ -462,7 +477,16 @@ struct ManifestStore {
             throw AerialDropError.manifestChangedDuringOperation
         }
 
-        _ = try backupManifest(data: originalData, operation: operation)
+        try prewriteValidation?()
+        let backup = try backupManifest(data: originalData, operation: operation)
+        // Backup creation takes time. Check the selection again after it finishes,
+        // and remove only our new backup if the restore has become unsafe.
+        do {
+            try prewriteValidation?()
+        } catch {
+            try fileManager.removeItem(at: backup)
+            throw error
+        }
         try candidateData.write(to: paths.manifest, options: .atomic)
 
         let writtenData = try Data(contentsOf: paths.manifest)

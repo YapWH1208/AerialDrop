@@ -337,9 +337,35 @@ final class ManifestStoreTests: XCTestCase {
             Set(backupsBefore)
         )
 
-        // An explicit empty set represents a verified-inactive selection.
-        try store.restoreBackup(confirmed, protectingActiveAssetIDs: [])
+        // An explicit reader reports a verified-inactive selection at commit time.
+        try store.restoreBackup(confirmed, protectingActiveAssetIDs: { [] })
         XCTAssertTrue(try store.importedWallpapers().isEmpty)
+    }
+
+    func testRestoreRechecksSelectionBeforeWritingCatalogueOrBackup() throws {
+        let id = "became-active-before-restore"
+        try installFixtureWallpaper(id: id, title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        for activationRead in [2, 3] {
+            var reads = 0
+            XCTAssertThrowsError(try store.restoreBackup(confirmed, protectingActiveAssetIDs: {
+                reads += 1
+                return reads < activationRead ? [] : [id]
+            })) { error in
+                guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                    return XCTFail("Expected backupRestoreRejected, got \(error)")
+                }
+                XCTAssertTrue(reason.contains("active wallpaper"))
+            }
+            XCTAssertEqual(reads, activationRead)
+            XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+            XCTAssertEqual(
+                Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+                backupsBefore
+            )
+        }
     }
 
     func testUnsafeInputIDsAreRejectedBeforeMutationOrDeletion() throws {

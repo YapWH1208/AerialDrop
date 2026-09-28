@@ -815,16 +815,20 @@ final class AppModel {
                 )
                 return
             }
-            let activeIDs: Set<String>?
             do {
                 try refreshActiveSelection()
                 isSelectionStatusUnknown = false
-                activeIDs = activeAerialAssetIDs
             } catch {
                 isSelectionStatusUnknown = true
-                activeIDs = nil
             }
-            try manifestStore.restoreBackup(info, protectingActiveAssetIDs: activeIDs)
+            try manifestStore.restoreBackup(info, protectingActiveAssetIDs: {
+                do {
+                    return try self.systemService.activeAerialAssetIDs()
+                } catch {
+                    self.isSelectionStatusUnknown = true
+                    throw error
+                }
+            })
             await systemService.refresh()
             await reload()
             activeAlert = AppAlert(

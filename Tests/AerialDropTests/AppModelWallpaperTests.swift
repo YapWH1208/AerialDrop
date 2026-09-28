@@ -477,6 +477,33 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
+    func testRestoreRefusesWallpaperActivatedDuringPreparation() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-BECAME-ACTIVE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let before = try Data(contentsOf: paths.manifest)
+        let backups = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 4 { service.activeIDs = [wallpaper.id] }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 4)
+        XCTAssertEqual(model.activeAlert?.title, "Restore Failed")
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+            backups
+        )
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
     func testRestoreRefusesRemovalWhenSelectionCannotBeRead() async throws {
         let home = makeTemporaryHome()
         try installManagedWallpaper(makeWallpaper(id: "RESTORE-UNKNOWN"), in: home)
@@ -1300,6 +1327,7 @@ private final class FakeWallpaperService: WallpaperServicing {
     var activationError: Error?
 
     var selectionReadError: Error?
+    var selectionReadHook: (() -> Void)?
 
     /// Optional test hooks: resumes a continuation as soon as activation starts,
     /// then blocks until the release stream finishes (see the operation-label test).
@@ -1311,6 +1339,7 @@ private final class FakeWallpaperService: WallpaperServicing {
     }
 
     func activeAerialAssetIDs() throws -> Set<String> {
+        selectionReadHook?()
         if let selectionReadError {
             throw selectionReadError
         }
