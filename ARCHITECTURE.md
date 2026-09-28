@@ -24,4 +24,4 @@ Screen saver → Lock Screen → native slowdown → static desktop
 
 There is no app-managed desktop player. AerialDrop may be quit after setup.
 
-`ManifestStore` owns `entries.json`; `WallpaperSelectionStore` separately owns the private `Store/Index.plist` linked-selection format. Unknown store data is preserved, selection writes are backed up, and verification failures deliberately do not auto-restore over newer macOS state.
+`ManifestStore` owns `entries.json`; `WallpaperSelectionStore` separately owns the private `Store/Index.plist` linked-selection format. Unknown store data is preserved, selection writes are backed up, and each global and Space target is verified after activation. Verification failures deliberately do not auto-restore over newer macOS state. Catalogue restore uses the confirmed backup bytes and refuses to remove an active managed entry (or any managed entry when active status is unknown).

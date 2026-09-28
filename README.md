@@ -79,7 +79,7 @@ open -n dist/AerialDrop.app
 
 - Open Aerial Storage Folder
 - Validate Current Catalogue
-- Restore Latest Backup (replaces the catalogue with the newest AerialDrop backup; refused if Apple's catalogue changed since the backup)
+- Restore Latest Backup (uses the backup shown in the confirmation; refused if that backup changes, newer Apple catalogue data would be lost, or a currently active AerialDrop wallpaper would be removed. If active status cannot be checked, a restore that removes wallpapers waits until it can be verified.)
 - Remove All AerialDrop Wallpapers
 
 ## How it works
