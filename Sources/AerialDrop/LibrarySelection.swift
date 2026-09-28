@@ -99,6 +99,7 @@ func movingLibrarySelection(
     direction: LibraryMoveDirection,
     columns: Int,
     visibleIDs: [String],
+    focusedID: String? = nil,
     extending: Bool
 ) -> LibraryMoveResult? {
     guard !visibleIDs.isEmpty else { return nil }
@@ -111,10 +112,12 @@ func movingLibrarySelection(
     case .down: offset = columnStep
     }
 
-    // Base index: the anchor when still visible, otherwise a sole selection,
-    // otherwise the move starts from the nearest end.
+    // The anchor defines a Shift range, but the next arrow starts at keyboard
+    // focus so repeated arrows can extend and then contract that range.
     let baseIndex: Int?
-    if let anchor = state.anchorID, let index = visibleIDs.firstIndex(of: anchor) {
+    if let focusedID, let index = visibleIDs.firstIndex(of: focusedID) {
+        baseIndex = index
+    } else if let anchor = state.anchorID, let index = visibleIDs.firstIndex(of: anchor) {
         baseIndex = index
     } else if state.selectedIDs.count == 1,
               let only = state.selectedIDs.first,
