@@ -176,7 +176,7 @@ final class VideoPreviewLoaderTests: XCTestCase {
 
 /// Intentionally ignores Task cancellation, like an already-running AV callback.
 @MainActor
-private final class PreviewReadGate<Value> {
+private final class PreviewReadGate<Value: Sendable> {
     private var continuation: CheckedContinuation<Value, Never>?
     private var requestWaiter: CheckedContinuation<Void, Never>?
 
