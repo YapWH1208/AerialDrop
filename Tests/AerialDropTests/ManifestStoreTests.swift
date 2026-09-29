@@ -357,7 +357,7 @@ final class ManifestStoreTests: XCTestCase {
                 guard case AerialDropError.backupRestoreRejected(let reason) = error else {
                     return XCTFail("Expected backupRestoreRejected, got \(error)")
                 }
-                XCTAssertTrue(reason.contains("active wallpaper"))
+                XCTAssertTrue(reason.contains("currently active"))
             }
             XCTAssertEqual(reads, activationRead)
             XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
