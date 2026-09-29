@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 struct ManifestStore {
     // Stable IDs let the app find and manage only its own catalogue entries.
@@ -29,7 +30,11 @@ struct ManifestStore {
     func importedWallpapers() throws -> [ManagedWallpaper] {
         guard fileManager.fileExists(atPath: paths.manifest.path) else { return [] }
         let root = try loadRoot(from: Data(contentsOf: paths.manifest))
-        guard let assets = root["assets"] as? [[String: Any]] else { return [] }
+        try validateBaseManifest(root)
+        guard let assets = root["assets"] as? [[String: Any]] else {
+            throw AerialDropError.malformedManifest("missing top-level assets array")
+        }
+        try validateManagedIDs(in: assets)
 
         return assets.compactMap { asset in
             guard
@@ -71,12 +76,19 @@ struct ManifestStore {
         try validateCandidate(root, preservingForeignEntriesFrom: root)
     }
 
-    /// A restorable catalogue backup: the backup file, its creation date, and
-    /// the operation that produced it.
+    /// A restorable catalogue backup, including the exact bytes selected for confirmation.
     struct BackupInfo: Equatable {
         let url: URL
         let date: Date
         let operation: String
+        let content: Data?
+
+        init(url: URL, date: Date, operation: String) {
+            self.url = url
+            self.date = date
+            self.operation = operation
+            content = try? Data(contentsOf: url)
+        }
     }
 
     /// The newest AerialDrop manifest backup, or nil when none exists.
@@ -90,29 +102,27 @@ struct ManifestStore {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
 
-        let candidates: [(name: String, info: BackupInfo)] = names.compactMap { name in
+        let candidates: [(name: String, url: URL, date: Date, operation: String)] = names.compactMap { name in
             guard name.hasPrefix("entries-"), name.hasSuffix(".json") else { return nil }
             let core = String(name.dropFirst("entries-".count).dropLast(".json".count))
             guard core.count > 20 else { return nil }
             let timestamp = String(core.prefix(19))
             let operation = String(core.dropFirst(20))
             guard let date = formatter.date(from: timestamp) else { return nil }
-            return (name, BackupInfo(
-                url: paths.backups.appending(path: name),
-                date: date,
-                operation: operation
-            ))
+            return (name, paths.backups.appending(path: name), date, operation)
         }
 
-        return candidates
+        let newest = candidates
             .sorted { lhs, rhs in
-                guard lhs.info.date == rhs.info.date else { return lhs.info.date > rhs.info.date }
-                let lhsModified = (try? lhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? lhs.info.date
-                let rhsModified = (try? rhs.info.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? rhs.info.date
+                guard lhs.date == rhs.date else { return lhs.date > rhs.date }
+                let lhsModified = (try? lhs.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? lhs.date
+                let rhsModified = (try? rhs.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? rhs.date
                 guard lhsModified == rhsModified else { return lhsModified > rhsModified }
                 return lhs.name > rhs.name
             }
-            .first?.info
+            .first
+        guard let newest else { return nil }
+        return BackupInfo(url: newest.url, date: newest.date, operation: newest.operation)
     }
 
     /// Replaces the current manifest with the backup's content, after backing
@@ -120,14 +130,57 @@ struct ManifestStore {
     /// catalogue data changed since the backup. Managed assets whose installed
     /// files are missing are tolerated — they surface as "Video missing" in
     /// the Library and can be removed there.
-    func restoreBackup(_ info: BackupInfo) throws {
+    /// A nil selection reader means active status is unknown: restoring may
+    /// update metadata, but must not remove a managed catalogue entry. The
+    /// reader is rechecked before and after the write. If post-write validation
+    /// fails, rollback is avoided because an external catalogue writer could
+    /// race it; the current catalogue outcome is reported and the safety backup
+    /// is retained.
+    func restoreBackup(
+        _ info: BackupInfo,
+        protectingActiveAssetIDs activeIDs: (() throws -> Set<String>)? = nil
+    ) throws {
         do {
+            guard let confirmedContent = info.content else {
+                throw AerialDropError.backupRestoreRejected("The selected backup could not be read. Select the backup again and retry.")
+            }
             let backupData = try Data(contentsOf: info.url)
+            guard backupData == confirmedContent else {
+                throw AerialDropError.backupRestoreRejected("The selected backup changed after confirmation. Select the backup again and retry.")
+            }
             let backupRoot = try loadRoot(from: backupData)
-            try mutateManifest(operation: "restore", requireManagedFiles: false) { root in
+            var removedIDs = Set<String>()
+            func verifyActiveSelection() throws {
+                guard !removedIDs.isEmpty else { return }
+                guard let activeIDs else {
+                    throw AerialDropError.wallpaperSelectionUnknownForRestore
+                }
+                let selectedIDs: Set<String>
+                do {
+                    selectedIDs = try activeIDs()
+                } catch {
+                    throw AerialDropError.wallpaperSelectionUnknownForRestore
+                }
+                guard removedIDs.isDisjoint(with: selectedIDs) else {
+                    throw AerialDropError.activeWallpaperCannotBeRemovedByRestore
+                }
+            }
+            try mutateManifest(
+                operation: "restore",
+                requireManagedFiles: false,
+                commitValidation: verifyActiveSelection
+            ) { root in
+                try validateBaseManifest(backupRoot)
+                removedIDs = try managedAssetIDs(in: root)
+                    .subtracting(managedAssetIDs(in: backupRoot))
+                try verifyActiveSelection()
                 root = backupRoot
             }
         } catch let error as AerialDropError {
+            if case .backupRestoreRejected = error { throw error }
+            if case .backupRestoreCommitted = error { throw error }
+            if case .backupRestoreSuperseded = error { throw error }
+            if case .backupRestoreOutcomeUnknown = error { throw error }
             throw AerialDropError.backupRestoreRejected(reason(for: error))
         } catch {
             throw AerialDropError.backupRestoreRejected(error.localizedDescription)
@@ -146,6 +199,7 @@ struct ManifestStore {
     }
 
     func addWallpaper(id: String, title: String, width: Int = 0, height: Int = 0) throws {
+        try validateManagedID(id)
         try requireManifest()
         try prepareDirectories()
 
@@ -184,15 +238,25 @@ struct ManifestStore {
     }
 
     func renameWallpaper(id: String, title: String) throws {
+        try validateManagedID(id)
         try requireManifest()
 
         try mutateManifest(operation: "rename") { root in
             guard var assets = root["assets"] as? [[String: Any]] else {
                 throw AerialDropError.malformedManifest("missing top-level assets array")
             }
+            guard var categories = root["categories"] as? [[String: Any]] else {
+                throw AerialDropError.malformedManifest("missing top-level categories array")
+            }
             guard let index = assets.firstIndex(where: { ($0["id"] as? String) == id }),
                   ((assets[index]["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
                 throw AerialDropError.wallpaperNotFound
+            }
+            // Renaming must not silently drop its own target during normalization.
+            for url in [paths.videoURL(for: id), paths.thumbnailURL(for: id)] {
+                guard fileManager.fileExists(atPath: url.path) else {
+                    throw AerialDropError.installedFileMissing(url)
+                }
             }
 
             var asset = assets[index]
@@ -201,12 +265,27 @@ struct ManifestStore {
             assets[index] = asset
 
             let normalized = normalizeManagedAssets(assets)
+            let remainingIDs = normalized.compactMap { asset -> String? in
+                guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else { return nil }
+                return asset["id"] as? String
+            }
+            let existingRepresentative = categories.first {
+                ($0["id"] as? String) == Self.categoryID
+            }?["representativeAssetID"] as? String
+            let representative = existingRepresentative.flatMap { remainingIDs.contains($0) ? $0 : nil }
+                ?? remainingIDs.first
+            categories.removeAll { ($0["id"] as? String) == Self.categoryID }
+            if let representative {
+                categories.append(makeCategory(representativeAssetID: representative))
+            }
             root["assets"] = normalized
+            root["categories"] = categories
             root["initialAssetCount"] = normalized.count
         }
     }
 
     func removeWallpaper(id: String) throws {
+        try validateManagedID(id)
         try requireManifest()
 
         try mutateManifest(operation: "remove") { root in
@@ -369,11 +448,17 @@ struct ManifestStore {
     private func mutateManifest(
         operation: String,
         requireManagedFiles: Bool = true,
+        commitValidation: (() throws -> Void)? = nil,
         mutation: (inout [String: Any]) throws -> Void
     ) throws {
         let originalData = try Data(contentsOf: paths.manifest)
         let originalRoot = try loadRoot(from: originalData)
         try validateBaseManifest(originalRoot)
+        // Candidate-only validation misses unsafe IDs whose entries are removed or dropped
+        // during normalization. Reject them before any path lookup or catalogue mutation.
+        if let originalAssets = originalRoot["assets"] as? [[String: Any]] {
+            try validateManagedIDs(in: originalAssets)
+        }
 
         var candidateRoot = originalRoot
         try mutation(&candidateRoot)
@@ -398,8 +483,38 @@ struct ManifestStore {
             throw AerialDropError.manifestChangedDuringOperation
         }
 
-        _ = try backupManifest(data: originalData, operation: operation)
+        try commitValidation?()
+        let backup = try backupManifest(data: originalData, operation: operation)
+        // Backup creation takes time. Check the selection again after it finishes,
+        // and remove only our new backup if the restore has become unsafe.
+        do {
+            try commitValidation?()
+        } catch {
+            try fileManager.removeItem(at: backup)
+            throw error
+        }
         try candidateData.write(to: paths.manifest, options: .atomic)
+        do {
+            try commitValidation?()
+        } catch {
+            do {
+                let latestData = try Data(contentsOf: paths.manifest)
+                if latestData == candidateData {
+                    throw AerialDropError.backupRestoreCommitted(
+                        "AerialDrop left the restored catalogue in place because undoing the write could overwrite a concurrent macOS catalogue update. The safety backup \(backup.lastPathComponent) was retained. Open Wallpaper Settings to check the active wallpaper; the backup remains available if a later restore passes the foreign-data checks."
+                    )
+                }
+                throw AerialDropError.backupRestoreSuperseded(
+                    "AerialDrop kept the current catalogue untouched and retained the safety backup \(backup.lastPathComponent). Reload the Library to inspect the current entries."
+                )
+            } catch let outcome as AerialDropError {
+                throw outcome
+            } catch {
+                throw AerialDropError.backupRestoreOutcomeUnknown(
+                    "AerialDrop could not read the catalogue after active-wallpaper verification failed. It did not attempt a rollback that could overwrite a concurrent update. The safety backup \(backup.lastPathComponent) was retained. Reload the catalogue before restoring again."
+                )
+            }
+        }
 
         let writtenData = try Data(contentsOf: paths.manifest)
         guard writtenData == candidateData else {
@@ -427,7 +542,7 @@ struct ManifestStore {
     }
 
     private func validateBaseManifest(_ root: [String: Any]) throws {
-        guard root["assets"] is [[String: Any]] else {
+        guard let assets = root["assets"] as? [[String: Any]] else {
             throw AerialDropError.malformedManifest("missing top-level assets array")
         }
         guard root["categories"] is [[String: Any]] else {
@@ -436,8 +551,13 @@ struct ManifestStore {
         guard root["version"] != nil else {
             throw AerialDropError.malformedManifest("missing top-level version")
         }
-        guard integerValue(root["initialAssetCount"]) != nil else {
+        guard let count = integerValue(root["initialAssetCount"]) else {
             throw AerialDropError.malformedManifest("missing or invalid top-level initialAssetCount")
+        }
+        guard count == assets.count else {
+            throw AerialDropError.malformedManifest(
+                "initialAssetCount must match the assets array count (expected \(assets.count))"
+            )
         }
     }
 
@@ -455,13 +575,6 @@ struct ManifestStore {
             let candidateCategories = candidate["categories"] as? [[String: Any]]
         else {
             throw AerialDropError.malformedManifest("catalogue arrays could not be validated")
-        }
-
-        guard let visibleAssetCount = integerValue(candidate["initialAssetCount"]),
-              visibleAssetCount == candidateAssets.count else {
-            throw AerialDropError.malformedManifest(
-                "initialAssetCount must match the assets array count (expected \(candidateAssets.count))"
-            )
         }
 
         let originalForeignAssets = originalAssets.filter {
@@ -488,13 +601,12 @@ struct ManifestStore {
             description: "non-AerialDrop categories"
         )
 
-        for (key, value) in original
-        where key != "assets" && key != "categories" && key != "initialAssetCount" {
-            guard let candidateValue = candidate[key] else {
-                throw AerialDropError.malformedManifest("top-level key '\(key)' was removed")
-            }
-            try requireSemanticEquality(value, candidateValue, description: "top-level key '\(key)'")
-        }
+        let managedKeys: Set<String> = ["assets", "categories", "initialAssetCount"]
+        try requireSemanticEquality(
+            original.filter { !managedKeys.contains($0.key) },
+            candidate.filter { !managedKeys.contains($0.key) },
+            description: "foreign top-level catalogue data"
+        )
 
         let managedAssets = candidateAssets.filter {
             (($0["categories"] as? [String]) ?? []).contains(Self.categoryID)
@@ -517,6 +629,10 @@ struct ManifestStore {
     }
 
     private func validateManagedAsset(_ asset: [String: Any], requireFiles: Bool = true) throws {
+        guard let id = asset["id"] as? String else {
+            throw AerialDropError.malformedManifest("AerialDrop asset is missing 'id'")
+        }
+        try validateManagedID(id)
         let requiredStrings = [
             "id", "shotID", "localizedNameKey", "accessibilityLabel",
             "previewImage", "url-4K-SDR-240FPS"
@@ -524,8 +640,7 @@ struct ManifestStore {
         for key in requiredStrings where (asset[key] as? String)?.isEmpty != false {
             throw AerialDropError.malformedManifest("AerialDrop asset is missing '\(key)'")
         }
-        guard let id = asset["id"] as? String,
-              (asset["previewImage"] as? String) == paths.thumbnailURL(for: id).absoluteString,
+        guard (asset["previewImage"] as? String) == paths.thumbnailURL(for: id).absoluteString,
               (asset["url-4K-SDR-240FPS"] as? String) == paths.videoURL(for: id).absoluteString
         else {
             throw AerialDropError.malformedManifest("AerialDrop asset paths are invalid")
@@ -564,9 +679,37 @@ struct ManifestStore {
     }
 
     private func integerValue(_ value: Any?) -> Int? {
-        if let int = value as? Int { return int }
-        if let number = value as? NSNumber { return number.intValue }
-        return nil
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        return Int(exactly: number.doubleValue)
+    }
+
+    private func validateManagedIDs(in assets: [[String: Any]]) throws {
+        for asset in assets where ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) {
+            guard let id = asset["id"] as? String else {
+                throw AerialDropError.malformedManifest("AerialDrop asset is missing 'id'")
+            }
+            try validateManagedID(id)
+        }
+    }
+
+    private func managedAssetIDs(in root: [String: Any]) throws -> Set<String> {
+        guard let assets = root["assets"] as? [[String: Any]] else {
+            throw AerialDropError.malformedManifest("missing top-level assets array")
+        }
+        try validateManagedIDs(in: assets)
+        return Set(assets.compactMap { asset in
+            guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else { return nil }
+            return asset["id"] as? String
+        })
+    }
+
+    /// Managed IDs become filename components. Safe legacy IDs need not be UUIDs.
+    private func validateManagedID(_ id: String) throws {
+        guard !id.isEmpty, id != ".", id != "..",
+              !id.contains("/"), !id.contains("\\"), !id.contains("\0") else {
+            throw AerialDropError.malformedManifest("AerialDrop asset ID is not a safe filename component")
+        }
     }
 
     private func requireSemanticEquality(_ lhs: Any, _ rhs: Any, description: String) throws {

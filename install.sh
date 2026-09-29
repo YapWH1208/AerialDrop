@@ -32,7 +32,6 @@ FORCE=0
 
 usage() {
   sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
-  exit 0
 }
 
 # Fetch a GitHub REST API path and print the response body on stdout.
@@ -67,14 +66,55 @@ api_get() {
   return 1
 }
 
+# Read GitHub release JSON from stdin. Match the asset name exactly so another
+# asset's digest cannot be mistaken for the zip's, regardless of JSON layout.
+release_asset_sha() {
+  local expected_asset="$1" release_json count index name digest expected_sha="" matches=0
+  release_json="$(cat)"
+  count="$(printf '%s' "$release_json" | /usr/bin/plutil -extract assets raw -expect array -o - - 2>/dev/null)" || return 1
+  [[ "$count" =~ ^[0-9]+$ ]] || return 1
+
+  for ((index = 0; index < count; index++)); do
+    # The sentinel preserves trailing newlines in JSON names during command
+    # substitution; stripping them could turn a different name into a match.
+    name="$(printf '%s' "$release_json" | /usr/bin/plutil -extract "assets.${index}.name" raw -expect string -n -o - - 2>/dev/null && printf '.')" || return 1
+    name="${name%.}"
+    if [[ "$name" == "$expected_asset" ]]; then
+      ((matches += 1))
+      [[ "$matches" -eq 1 ]] || return 1
+      digest="$(printf '%s' "$release_json" | /usr/bin/plutil -extract "assets.${index}.digest" raw -expect string -n -o - - 2>/dev/null && printf '.')" || return 1
+      digest="${digest%.}"
+      [[ "$digest" =~ ^sha256:([[:xdigit:]]{64})$ ]] || return 1
+      expected_sha="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
+    fi
+  done
+
+  [[ "$matches" -eq 1 ]] || return 1
+  printf '%s\n' "$expected_sha"
+}
+
+# The smoke test sources this file to exercise the production parser without
+# performing network requests or installing an app.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --version) VERSION="${2:-}"; shift 2 ;;
+    --version)
+      if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+        echo "error: --version requires a version" >&2; exit 1
+      fi
+      VERSION="$2"; shift 2 ;;
     --open) OPEN_AFTER=1; shift ;;
     --force) FORCE=1; shift ;;
-    --install-dir) INSTALL_DIR="${2:-}"; shift 2 ;;
-    -h|--help) usage ;;
-    -*) echo "error: unknown option: $1" >&2; usage; exit 1 ;;
+    --install-dir)
+      if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+        echo "error: --install-dir requires a path" >&2; exit 1
+      fi
+      INSTALL_DIR="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "error: unknown option: $1" >&2; usage >&2; exit 1 ;;
     *)
       if [[ -n "$VERSION" ]]; then
         echo "error: unexpected argument: $1" >&2; exit 1
@@ -113,8 +153,10 @@ if [[ -z "$VERSION" ]]; then
     echo "error: could not fetch release info from GitHub (network, rate limit, or API outage)." >&2
     exit 1
   fi
-  VERSION="$(printf '%s' "$API_JSON" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -1)"
-  [[ -n "$VERSION" ]] || { echo "error: could not resolve the latest release" >&2; exit 1; }
+  if ! VERSION="$(printf '%s' "$API_JSON" | /usr/bin/plutil -extract tag_name raw -expect string -o - - 2>/dev/null)" || [[ "$VERSION" != v?* ]]; then
+    echo "error: could not resolve the latest release" >&2; exit 1
+  fi
+  VERSION="${VERSION#v}"
   echo "    Latest release: v${VERSION}"
 else
   VERSION="${VERSION#v}"
@@ -126,20 +168,8 @@ URL="${DL_BASE}/v${VERSION}/${ASSET}"
 echo "    Asset: ${ASSET}"
 
 echo "==> Fetching expected checksum"
-if ! EXPECTED_SHA="$(api_get "repos/${REPO}/releases/tags/v${VERSION}" | awk -v name="$ASSET" '
-  /"name":[ ]*/ { in_asset = index($0, name) > 0 }
-  in_asset && /"digest":[ ]*"sha256:/ {
-    line = $0
-    sub(/^.*sha256:/, "", line)
-    print substr(line, 1, 64)
-    exit
-  }
-')"; then
+if ! EXPECTED_SHA="$(api_get "repos/${REPO}/releases/tags/v${VERSION}" | release_asset_sha "$ASSET")"; then
   echo "error: could not fetch the checksum for ${ASSET} (is v${VERSION} published?)." >&2
-  exit 1
-fi
-if [[ "${#EXPECTED_SHA}" -ne 64 ]]; then
-  echo "error: no sha256 digest found for ${ASSET} in release v${VERSION} (is it published?)." >&2
   exit 1
 fi
 

@@ -183,12 +183,89 @@ final class LibrarySelectionTests: XCTestCase {
             direction: .left,
             columns: 3,
             visibleIDs: visibleIDs,
+            focusedID: "E",
             extending: true
         )
 
-        XCTAssertEqual(result?.state.selectedIDs, ["A", "B"])
+        XCTAssertEqual(result?.state.selectedIDs, ["B", "C", "D"])
         XCTAssertEqual(result?.state.anchorID, "B")
-        XCTAssertEqual(result?.focusedID, "A")
+        XCTAssertEqual(result?.focusedID, "D")
+    }
+
+    func testRepeatedShiftArrowsExtendAndContractFromFocusedCard() {
+        var state = LibrarySelectionState(selectedIDs: ["B"], anchorID: "B")
+        var focus = "B"
+        for (direction, destination, selected): (LibraryMoveDirection, String, Set<String>) in [
+            (.right, "C", ["B", "C"]),
+            (.right, "D", ["B", "C", "D"]),
+            (.right, "E", ["B", "C", "D", "E"]),
+            (.left, "D", ["B", "C", "D"]),
+            (.left, "C", ["B", "C"]),
+            (.left, "B", ["B"])
+        ] {
+            let result = movingLibrarySelection(
+                state,
+                direction: direction,
+                columns: 3,
+                visibleIDs: visibleIDs,
+                focusedID: focus,
+                extending: true
+            )!
+            XCTAssertEqual(result.focusedID, destination)
+            XCTAssertEqual(result.state.selectedIDs, selected)
+            XCTAssertEqual(result.state.anchorID, "B")
+            state = result.state
+            focus = destination
+        }
+    }
+
+    func testPlainAndVerticalMovementUseFocusWhilePreservingShiftAnchor() {
+        let selected = LibrarySelectionState(selectedIDs: ["B", "C", "D", "E"], anchorID: "B")
+        let vertical = movingLibrarySelection(
+            selected,
+            direction: .up,
+            columns: 3,
+            visibleIDs: visibleIDs,
+            focusedID: "E",
+            extending: true
+        )
+        XCTAssertEqual(vertical?.focusedID, "B")
+        XCTAssertEqual(vertical?.state.selectedIDs, ["B"])
+        XCTAssertEqual(vertical?.state.anchorID, "B")
+
+        let plain = movingLibrarySelection(
+            selected,
+            direction: .left,
+            columns: 3,
+            visibleIDs: visibleIDs,
+            focusedID: "E",
+            extending: false
+        )
+        XCTAssertEqual(plain?.focusedID, "D")
+        XCTAssertEqual(plain?.state, LibrarySelectionState(selectedIDs: ["D"], anchorID: "D"))
+    }
+
+    func testStaleFocusFallsBackToVisibleAnchorAndFocusBoundaryDoesNotWrap() {
+        let state = LibrarySelectionState(selectedIDs: ["B"], anchorID: "B")
+        let fallback = movingLibrarySelection(
+            state,
+            direction: .right,
+            columns: 3,
+            visibleIDs: visibleIDs,
+            focusedID: "HIDDEN",
+            extending: false
+        )
+        XCTAssertEqual(fallback?.focusedID, "C")
+
+        let noWrap = movingLibrarySelection(
+            state,
+            direction: .left,
+            columns: 3,
+            visibleIDs: visibleIDs,
+            focusedID: "A",
+            extending: false
+        )
+        XCTAssertNil(noWrap)
     }
 
     func testMoveWithoutAPositionSelectsTheNearestEnd() {

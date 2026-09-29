@@ -1,5 +1,15 @@
 # Testing AerialDrop
 
+## Local checks
+
+On macOS Tahoe 26 with the macOS 26 SDK, Swift 6.2+, and an Xcode installation
+whose license has been accepted, run `swift build`, `swift test`, and
+`swift build -c release`. Run `bash Scripts/test-install.sh` for offline release
+metadata, argument, and mocked-install checks, and
+`Scripts/check-docs-version.sh` for the website's release fallback. The installer
+smoke test uses a temporary directory and never contacts GitHub or installs into
+Applications.
+
 Run this matrix on macOS Tahoe 26 with at least one short and one longer MP4/MOV
 source. Use a separate test account for the setup-required checks; do not move or
 edit a real Aerial catalogue to simulate failure. Reimport sources with this
@@ -29,7 +39,9 @@ version before evaluating native playback.
    With a fixture whose still-frame generation fails, confirm the preview ends at
    **Preview Unavailable**, announces the failure with VoiceOver, and offers
    **Retry Preview** and **Replace Video…**. Confirm a source that passed validation
-   can still be imported while its still preview is unavailable.
+   can still be imported while its still preview is unavailable. Replace a source
+   while its preview is still loading and confirm late metadata or a late still
+   from the old source cannot replace the new preview.
 4. Confirm the inline **Set as wallpaper after importing** toggle defaults to on,
    explains that activation covers all Spaces and displays, and retains its value
    after relaunch. Turn it off and confirm the copy says the desktop will not change.
@@ -41,7 +53,12 @@ version before evaluating native playback.
    Confirm both Escape and the inline/toolbar cancellation actions return to editable
    state without an error alert. At
    **Updating the Aerial manifest** and later, confirm Cancel is absent and the UI
-   states that installation is finishing and cannot be cancelled.
+   states that installation is finishing and cannot be cancelled. During the
+   first import, switch to the empty Library: its import action must be disabled.
+   Returning to Import, pressing Import again or dropping a second source must
+   not replace the running source or its committed crop, quality, resolution,
+   name, and activation choice. Cancel, retry, and confirm old encode progress
+   callbacks cannot change the new attempt's progress.
 7. With automatic activation enabled, confirm completion says the wallpaper was
    imported and activated everywhere. With it disabled, confirm completion says
    the wallpaper was installed without changing the current wallpaper. In both
@@ -56,7 +73,21 @@ version before evaluating native playback.
 ## Maintenance and recovery
 
 1. With a managed wallpaper present, open Maintenance -> Restore Latest Backup. Confirm the confirmation shows the backup's date and operation, and that restoring replaces the catalogue (success alert) while the foreign Apple entries stay intact.
+   If a newer backup appears after confirmation, the original confirmed backup
+   must still be used. If that confirmed file changes, restoration must fail
+   without writing a new manifest or backup.
 2. Confirm a restore is refused with nothing changed when the catalogue contains foreign changes newer than the backup (e.g. an Apple Aerial was added in System Settings after the backup).
+   A backup that omits the currently active AerialDrop wallpaper must also be
+   refused. If active status cannot be read, a restore that removes managed
+   entries must be refused until status can be verified. A restore that keeps
+   the active entry remains available. If an AerialDrop wallpaper becomes
+   active after the restore write, confirm the app retains the committed
+   catalogue and its safety backup, reports that the restore needs attention,
+   and leaves any concurrent catalogue update untouched. If the manifest
+   cannot be read after this check, the app reports an unknown restore status
+   and retains the safety backup. Restoring the newest
+   safety backup should recover the previous catalogue when it still passes
+   the foreign-data checks.
 3. After removing a wallpaper, restoring the latest backup brings its entry back marked Video missing (its video file was deleted by the removal) and removing it again is permitted.
 4. During an import, press Command-Q and confirm a quit confirmation appears. Keep Importing resumes; Quit Anyway quits, and the next launch removes leftover .AerialDrop- temp files from the videos folder.
 5. Import a video with an unsupported codec wrapped in a .mov container and confirm
@@ -70,6 +101,8 @@ version before evaluating native playback.
    and recommends freeing space or lowering quality/resolution. Confirm lowering a
    setting enough to satisfy the requirement permits a retry.
 8. Confirm the Import progress shows an estimated time remaining during the encode stage.
+   It must advance monotonically even if encoding pauses and resumes under
+   writer backpressure.
 9. Confirm a warning appears when the wallpaper name matches an existing wallpaper.
 10. After an import completes, View in Library selects and scrolls to the new wallpaper.
 11. During Set as Wallpaper, Remove, Remove All, and Restore Latest Backup, confirm a progress banner with a label stays visible until the operation finishes (both in the Library grid and the preview sheet).
@@ -77,6 +110,10 @@ version before evaluating native playback.
 ## Import and Library polish
 
 1. Confirm the import progress bar never moves backward across stages (the encode start does not drop below the previous stage, and the thumbnail stage continues from a higher value).
+   Import portrait recordings rotated 90° in both directions, an upside-down
+   recording, a mirrored recording, and a downscaled ultrawide source with the
+   crop at left, center, and right. Confirm the encoded frame fills the output
+   without displaced black bands and the preview's crop matches it.
 2. With a fade-in-from-black source, confirm the Import preview shows a later, visible frame instead of a black box.
 3. Confirm the completion card offers Open Wallpaper Settings alongside Import Another and View in Library.
 4. Confirm the toolbar's Wallpaper Settings button shows a wallpaper icon (not a gear) and still opens System Settings -> Wallpaper.
@@ -96,6 +133,10 @@ version before evaluating native playback.
    stale anchors do not affect the next range. The selection banner should offer
    **Remove Selected…**; confirm its dialog names the count, removes exactly the
    selected wallpapers, and is disabled (with help) when one is known to be active.
+   With keyboard focus on a card, press Shift-Right repeatedly and then
+   Shift-Left; the range should grow and contract from the focused end while
+   keeping the original anchor. Repeat vertically and after filtering, and
+   confirm arrow keys do not wrap past the first or last visible card.
 10. Rename a wallpaper to another wallpaper’s title and confirm the duplicate-name
     warning appears in the rename alert.
 11. Switch the Library sort between **Title** and **Recently Added**: the newest
@@ -150,6 +191,9 @@ version before evaluating native playback.
 6. Repeat activation with multiple Spaces and displays. Lock and unlock several
    times, quit with Command-Q, relaunch, then reboot and confirm the selected
    Aerial remains usable.
+   In a disposable test account, change just one Space or display back to a
+   different wallpaper immediately after activation; AerialDrop must report
+   activation failure rather than claiming it applied everywhere.
 
 Expected:
 
@@ -166,6 +210,10 @@ Expected:
   each activation attempt.
 
 ## Website installation flow
+
+Run `bash Scripts/test-install.sh` first. It exercises compact and pretty
+release JSON, exact asset names, invalid digests and installer arguments, and
+two local mocked installs without downloading a release or touching Applications.
 
 1. Run `Scripts/check-docs-version.sh` and confirm every static/no-JS release fallback
    matches `AppVersion.shortVersion`.

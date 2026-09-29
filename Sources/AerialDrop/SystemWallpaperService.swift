@@ -24,11 +24,9 @@ struct SystemWallpaperService: WallpaperServicing {
     }
 
     func activateAerial(assetID: String) async throws {
-        try selectionStore.apply(assetID: assetID)
+        let requiredSpaceIDs = try selectionStore.apply(assetID: assetID)
         await refresh()
-        guard try selectionStore.activeAerialAssetIDs() == Set([assetID]) else {
-            throw AerialDropError.wallpaperSelectionVerificationFailed(assetID)
-        }
+        try selectionStore.verifyAerialSelection(assetID: assetID, requiringSpaceIDs: requiredSpaceIDs)
     }
 
     /// Reloads the Aerial catalogue after a manifest update.

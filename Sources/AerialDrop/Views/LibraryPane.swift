@@ -481,6 +481,7 @@ struct LibraryPane: View {
                 spacing: Self.cardSpacing
             ),
             visibleIDs: filteredWallpapers.map(\.id),
+            focusedID: focusedCardID,
             extending: NSEvent.modifierFlags.contains(.shift)
         )
         guard let result else { return }
@@ -498,6 +499,7 @@ struct LibraryPane: View {
         } actions: {
             Button("Import Wallpaper", systemImage: "plus", action: onImport)
                 .buttonStyle(.borderedProminent)
+                .disabled(model.isWorking)
         }
     }
 

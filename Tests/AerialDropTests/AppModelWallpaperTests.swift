@@ -94,6 +94,39 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.wallpapers.isEmpty)
     }
 
+    func testReloadRejectsStructurallyIncompleteCatalogue() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        try Data("{\"version\":1}".utf8).write(to: paths.manifest)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+
+        await model.reload()
+
+        guard case .unavailable = model.catalogueState else {
+            return XCTFail("A catalogue without assets/categories/count must not be ready")
+        }
+        XCTAssertFalse(model.canImport)
+    }
+
+    func testForegroundRefreshKeepsContentWhenCatalogueStructureIsInvalid() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "C0D3X-STRUCTURE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+        await model.reload()
+        let paths = WallpaperPaths(homeDirectory: home)
+        try Data("{\"version\":1}".utf8).write(to: paths.manifest)
+
+        await model.refreshCataloguePreservingContent()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        guard case .failed = model.catalogueRefreshState else {
+            return XCTFail("Invalid structure must be reported as a refresh failure")
+        }
+    }
+
     func testForegroundRefreshReplacesReadyContentWithoutLoadingState() async throws {
         let home = makeTemporaryHome()
         let first = makeWallpaper(id: "C0D3X-0300")
@@ -424,6 +457,205 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
         XCTAssertTrue(model.activeAlert?.message.contains("Restored") == true)
         XCTAssertFalse(model.isWorking)
+    }
+
+    func testRestoreRefusesToRemoveActiveWallpaperBeforeBackupOrWrite() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-ACTIVE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let before = try Data(contentsOf: paths.manifest)
+        let backups = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.activeAlert?.title, "Restore Failed")
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path).sorted(), backups.sorted())
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRestoreRefusesWallpaperActivatedDuringPreparation() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-BECAME-ACTIVE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let before = try Data(contentsOf: paths.manifest)
+        let backups = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 4 { service.activeIDs = [wallpaper.id] }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 4)
+        XCTAssertEqual(model.activeAlert?.title, "Restore Failed")
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+            backups
+        )
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRestoreRetainsSafetyBackupWhenWallpaperActivatesAfterWrite() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-ACTIVATED-AFTER-WRITE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let previousCatalogue = try Data(contentsOf: paths.manifest)
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 5 {
+                service.activeIDs = [wallpaper.id]
+            }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 6)
+        XCTAssertEqual(model.activeAlert?.title, "Restore Needs Attention")
+        XCTAssertTrue(model.activeAlert?.message.contains("safety backup") == true)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(model.activeAerialAssetIDs, [wallpaper.id])
+        XCTAssertEqual(service.refreshCallCount, 0)
+        let safetyBackup = try XCTUnwrap(model.latestBackupInfo())
+        XCTAssertEqual(safetyBackup.operation, "restore")
+        XCTAssertEqual(try Data(contentsOf: safetyBackup.url), previousCatalogue)
+    }
+
+    func testRestoreReportsConcurrentCatalogueAndReloadsCurrentEntries() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-CONCURRENT-CATALOGUE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let previousCatalogue = try Data(contentsOf: paths.manifest)
+        var concurrentRoot = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: previousCatalogue) as? [String: Any]
+        )
+        concurrentRoot["concurrentUpdate"] = true
+        let concurrentData = try JSONSerialization.data(withJSONObject: concurrentRoot, options: [.prettyPrinted])
+        let manifestURL = paths.manifest
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 5 {
+                service.activeIDs = [wallpaper.id]
+                try? concurrentData.write(to: manifestURL, options: .atomic)
+            }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 6)
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Changed During Restore")
+        XCTAssertTrue(model.activeAlert?.message.contains("kept the current catalogue untouched") == true)
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        XCTAssertEqual(model.activeAerialAssetIDs, [wallpaper.id])
+        XCTAssertEqual(try Data(contentsOf: manifestURL), concurrentData)
+        XCTAssertEqual(service.refreshCallCount, 0)
+        let safetyBackup = try XCTUnwrap(model.latestBackupInfo())
+        XCTAssertEqual(safetyBackup.operation, "restore")
+        XCTAssertEqual(try Data(contentsOf: safetyBackup.url), previousCatalogue)
+    }
+
+    func testRestoreReportsUnknownStatusWhenCatalogueDisappearsAfterWrite() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-UNKNOWN-AFTER-WRITE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let previousCatalogue = try Data(contentsOf: paths.manifest)
+        let manifestURL = paths.manifest
+        let service = FakeWallpaperService()
+        var selectionReads = 0
+        service.selectionReadHook = {
+            selectionReads += 1
+            if selectionReads == 5 {
+                service.activeIDs = [wallpaper.id]
+                try? FileManager.default.removeItem(at: manifestURL)
+            }
+        }
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(selectionReads, 6)
+        XCTAssertEqual(model.activeAlert?.title, "Restore Status Unknown")
+        XCTAssertTrue(model.activeAlert?.message.contains("safety backup") == true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: manifestURL.path))
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        if case .unavailable = model.catalogueState { } else {
+            XCTFail("Expected catalogue state to be unavailable after its manifest disappeared")
+        }
+        XCTAssertEqual(service.refreshCallCount, 0)
+        let safetyBackup = try XCTUnwrap(model.latestBackupInfo())
+        XCTAssertEqual(safetyBackup.operation, "restore")
+        XCTAssertEqual(try Data(contentsOf: safetyBackup.url), previousCatalogue)
+    }
+
+    func testRestoreRefusesRemovalWhenSelectionCannotBeRead() async throws {
+        let home = makeTemporaryHome()
+        try installManagedWallpaper(makeWallpaper(id: "RESTORE-UNKNOWN"), in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let before = try Data(contentsOf: paths.manifest)
+        let service = FakeWallpaperService()
+        service.selectionReadError = TestError.storeUnreadable
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.activeAlert?.title, "Restore Failed")
+        XCTAssertTrue(model.isSelectionStatusUnknown)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+        XCTAssertEqual(service.refreshCallCount, 0)
+    }
+
+    func testRestoreKeepsActiveAssetIncludedInConfirmedBackup() async throws {
+        let home = makeTemporaryHome()
+        let active = makeWallpaper(id: "RESTORE-KEPT")
+        let other = makeWallpaper(id: "RESTORE-OTHER")
+        try installManagedWallpapers([active, other], in: home)
+        let service = FakeWallpaperService(activeIDs: [active.id])
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup()
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
+        XCTAssertEqual(model.wallpapers.map(\.id), [active.id])
+        XCTAssertEqual(model.activeAerialAssetIDs, [active.id])
+        XCTAssertEqual(service.refreshCallCount, 1)
+    }
+
+    func testRestoreUsesConfirmedBackupEvenAfterNewerBackupAppears() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "RESTORE-FIRST")
+        try installManagedWallpaper(first, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        try Data("video".utf8).write(to: paths.videoURL(for: "RESTORE-LATER"))
+        try Data("preview".utf8).write(to: paths.thumbnailURL(for: "RESTORE-LATER"))
+        try store.addWallpaper(id: "RESTORE-LATER", title: "Later")
+        XCTAssertNotEqual(store.latestBackup()?.url, confirmed.url)
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+
+        await model.restoreLatestBackup(confirmed)
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 1)
     }
 
     func testRemovingTheHighlightedWallpaperClearsThePendingHighlight() async {
@@ -831,17 +1063,213 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.activeAlert?.title, "Catalogue Valid")
     }
 
+    func testImportReservesBusyStateAndCapturesDraftBeforeTaskStarts() async throws {
+        let home = makeTemporaryHome()
+        let existing = makeWallpaper(id: "BUSY-EXISTING")
+        try installManagedWallpaper(existing, in: home)
+        let service = FakeWallpaperService()
+        let processor = SuspendedVideoProcessor()
+        let source = home.appending(path: "source.mov")
+        let sourceSize = CGSize(width: 1920, height: 1080)
+        let options = ConversionOptions(cropOffset: 0.25, outputHeightCap: 720, quality: .high)
+        var automaticallyActivate = false
+        let model = makeModel(
+            service: service,
+            home: home,
+            automaticActivationEnabled: { automaticallyActivate },
+            availableCapacityProvider: { _ in requiredImportStorageBytes(sourceSize: sourceSize, options: options) },
+            videoProcessor: processor
+        )
+        await model.reload()
+        model.selectedVideo = source
+        model.isSelectedVideoValid = true
+        model.title = "Captured Name"
+        model.sourceResolution = sourceSize
+        model.cropOffset = options.cropOffset
+        model.outputHeightCap = options.outputHeightCap
+        model.conversionQuality = options.quality
+
+        model.importSelectedVideo()
+        XCTAssertTrue(model.isWorking)
+        XCTAssertEqual(model.stage, .validating)
+        model.importSelectedVideo()
+        model.chooseVideo(home.appending(path: "replacement.mov"))
+        XCTAssertEqual(model.selectedVideo, source)
+        XCTAssertEqual(model.title, "Captured Name")
+
+        // Change editable state before the scheduled task runs: the committed import
+        // must use the snapshot, including its storage estimate and activation choice.
+        model.title = "Edited Later"
+        model.sourceResolution = CGSize(width: 7680, height: 4320)
+        model.cropOffset = 1
+        model.outputHeightCap = nil
+        model.conversionQuality = .maximum
+        automaticallyActivate = true
+        let request = try await waitForEncode(processor, index: 0)
+        XCTAssertEqual(request.source, source)
+        XCTAssertEqual(request.options, options)
+        let before = try Data(contentsOf: WallpaperPaths(homeDirectory: home).manifest)
+
+        model.rename(existing, to: "Busy Rename")
+        model.remove(existing)
+        model.remove([existing])
+        model.removeAll()
+        model.setWallpaper(existing)
+        await model.removeWallpaper(existing)
+        await model.removeWallpapers([existing])
+        await model.removeAllWallpapers()
+        await model.activateWallpaper(existing)
+        await model.restoreLatestBackup()
+        XCTAssertEqual(try Data(contentsOf: WallpaperPaths(homeDirectory: home).manifest), before)
+        XCTAssertTrue(service.activatedAssetIDs.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 0)
+        XCTAssertTrue(model.isWorking)
+
+        try await processor.completeEncode(0)
+        await waitUntil { !model.isWorking }
+
+        XCTAssertEqual(model.stage, .finished)
+        XCTAssertEqual(model.importOutcome?.wallpaper.title, "Captured Name")
+        XCTAssertEqual(model.importOutcome?.activationResult, .installedOnly)
+        XCTAssertNil(model.selectedVideo)
+        XCTAssertTrue(service.activatedAssetIDs.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 1)
+        let requestCount = await processor.requestCount
+        XCTAssertEqual(requestCount, 1)
+    }
+
+    func testCancelledImportCallbacksCannotChangeFinishedOrNewImport() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let processor = SuspendedVideoProcessor()
+        let model = makeModel(service: FakeWallpaperService(), home: home, videoProcessor: processor)
+        await model.reload()
+        model.selectedVideo = home.appending(path: "source.mov")
+        model.title = "Source"
+        model.isSelectedVideoValid = true
+        model.sourceResolution = CGSize(width: 1920, height: 1080)
+        model.importSelectedVideo()
+        _ = try await waitForEncode(processor, index: 0)
+        await processor.sendProgress(0.4, for: 0)
+        await waitUntil { model.importProgress == 0.4 }
+        await processor.sendProgress(0.2, for: 0)
+        await drainMainActorCallbacks()
+        XCTAssertEqual(model.importProgress, 0.4)
+
+        model.cancelImport()
+        await processor.sendProgress(0.9, for: 0)
+        await drainMainActorCallbacks()
+        XCTAssertEqual(model.importProgress, 0.4)
+        await processor.failEncode(0)
+        await waitUntil { !model.isWorking }
+        XCTAssertEqual(model.stage, .idle)
+        XCTAssertEqual(model.importProgress, 0)
+        XCTAssertNil(model.activeAlert)
+
+        await processor.sendProgress(0.8, for: 0)
+        await drainMainActorCallbacks()
+        XCTAssertEqual(model.importProgress, 0)
+        model.importSelectedVideo()
+        _ = try await waitForEncode(processor, index: 1)
+        await processor.sendProgress(0.8, for: 0)
+        await processor.sendProgress(0.2, for: 1)
+        await waitUntil { model.importProgress == 0.2 }
+        await drainMainActorCallbacks()
+        XCTAssertEqual(model.importProgress, 0.2)
+        XCTAssertTrue(model.isWorking)
+        XCTAssertEqual(model.stage, .processingVideo)
+        model.cancelImport()
+        await processor.failEncode(1)
+        await waitUntil { !model.isWorking }
+    }
+
+    func testCancellingReservedImportBeforeTaskStartsAvoidsMediaWork() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let processor = SuspendedVideoProcessor()
+        let model = makeModel(service: FakeWallpaperService(), home: home, videoProcessor: processor)
+        model.catalogueState = .ready
+        model.selectedVideo = home.appending(path: "source.mov")
+        model.title = "Source"
+        model.isSelectedVideoValid = true
+
+        model.importSelectedVideo()
+        model.cancelImport()
+        await waitUntil { !model.isWorking }
+
+        let validationCount = await processor.validationCount
+        let requestCount = await processor.requestCount
+        XCTAssertEqual(validationCount, 0)
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertEqual(model.stage, .idle)
+        XCTAssertNil(model.activeAlert)
+    }
+
+    func testImportInvalidatesPendingSourceMetadataPublication() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let processor = SuspendedVideoProcessor(suspendDuration: true)
+        let model = makeModel(service: FakeWallpaperService(), home: home, videoProcessor: processor)
+        await model.reload()
+        model.chooseVideo(home.appending(path: "source.mov"))
+        await waitUntil { model.isSelectedVideoValid }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !(await processor.hasPendingDuration), ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        let hasPendingDuration = await processor.hasPendingDuration
+        XCTAssertTrue(hasPendingDuration)
+        model.sourceResolution = CGSize(width: 1920, height: 1080)
+        model.importSelectedVideo()
+        _ = try await waitForEncode(processor, index: 0)
+
+        await processor.completeDuration(99)
+        await drainMainActorCallbacks()
+        XCTAssertNil(model.sourceDuration)
+        XCTAssertTrue(model.isWorking)
+
+        model.cancelImport()
+        await processor.failEncode(0)
+        await waitUntil { !model.isWorking }
+    }
+
+    private func waitForEncode(_ processor: SuspendedVideoProcessor, index: Int) async throws -> SuspendedVideoProcessor.Request {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while ContinuousClock.now < deadline {
+            if let request = await processor.request(at: index) { return request }
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("The import never reached its suspended encode")
+        throw CancellationError()
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !condition(), ContinuousClock.now < deadline {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(condition())
+    }
+
+    private func drainMainActorCallbacks() async {
+        for _ in 0..<10 { await Task.yield() }
+    }
+
     private func makeModel(
         service: FakeWallpaperService,
         home: URL? = nil,
         automaticActivationEnabled: @escaping () -> Bool = { true },
         preferencesDefaults: UserDefaults = UserDefaults.standard,
-        availableCapacityProvider: @escaping (URL) -> Int64? = { _ in nil }
+        availableCapacityProvider: @escaping (URL) -> Int64? = { _ in nil },
+        videoProcessor: any VideoProcessing = VideoProcessor()
     ) -> AppModel {
         let temporaryHome = home ?? makeTemporaryHome()
         return AppModel(
             paths: WallpaperPaths(homeDirectory: temporaryHome),
             systemService: service,
+            videoProcessor: videoProcessor,
             automaticallyReload: false,
             automaticActivationEnabled: automaticActivationEnabled,
             preferencesDefaults: preferencesDefaults,
@@ -919,6 +1347,78 @@ final class AppModelWallpaperTests: XCTestCase {
     }
 }
 
+private actor SuspendedVideoProcessor: VideoProcessing {
+    struct Request: Sendable {
+        let source: URL
+        let destination: URL
+        let options: ConversionOptions
+    }
+
+    private var requests: [Request] = []
+    private var encodeContinuations: [Int: CheckedContinuation<CGSize, Error>] = [:]
+    private var progressCallbacks: [Int: @Sendable (Double) -> Void] = [:]
+    private var durationContinuation: CheckedContinuation<Double?, Never>?
+    private let suspendDuration: Bool
+    private(set) var validationCount = 0
+    var requestCount: Int { requests.count }
+    var hasPendingDuration: Bool { durationContinuation != nil }
+
+    init(suspendDuration: Bool = false) {
+        self.suspendDuration = suspendDuration
+    }
+
+    func validate(source: URL) async throws {
+        validationCount += 1
+    }
+
+    func effectiveSourceDuration(for source: URL) async -> Double? {
+        guard suspendDuration else { return nil }
+        return await withCheckedContinuation { durationContinuation = $0 }
+    }
+
+    func completeDuration(_ duration: Double) {
+        durationContinuation?.resume(returning: duration)
+        durationContinuation = nil
+    }
+
+    func sourceDisplaySize(for source: URL) async throws -> CGSize {
+        CGSize(width: 1920, height: 1080)
+    }
+
+    func makeNativeMOV(
+        from source: URL,
+        destination: URL,
+        options: ConversionOptions,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> CGSize {
+        let index = requests.count
+        requests.append(Request(source: source, destination: destination, options: options))
+        progressCallbacks[index] = progress
+        return try await withCheckedThrowingContinuation { encodeContinuations[index] = $0 }
+    }
+
+    func generateThumbnail(from video: URL, destination: URL) async throws {
+        try Data("thumbnail".utf8).write(to: destination)
+    }
+
+    func request(at index: Int) -> Request? {
+        requests.indices.contains(index) ? requests[index] : nil
+    }
+
+    func sendProgress(_ fraction: Double, for index: Int) {
+        progressCallbacks[index]?(fraction)
+    }
+
+    func completeEncode(_ index: Int) throws {
+        try Data("video".utf8).write(to: requests[index].destination)
+        encodeContinuations.removeValue(forKey: index)?.resume(returning: CGSize(width: 1920, height: 1080))
+    }
+
+    func failEncode(_ index: Int) {
+        encodeContinuations.removeValue(forKey: index)?.resume(throwing: CancellationError())
+    }
+}
+
 @MainActor
 private final class FakeWallpaperService: WallpaperServicing {
     var activeIDs: Set<String>
@@ -927,6 +1427,7 @@ private final class FakeWallpaperService: WallpaperServicing {
     var activationError: Error?
 
     var selectionReadError: Error?
+    var selectionReadHook: (() -> Void)?
 
     /// Optional test hooks: resumes a continuation as soon as activation starts,
     /// then blocks until the release stream finishes (see the operation-label test).
@@ -938,6 +1439,7 @@ private final class FakeWallpaperService: WallpaperServicing {
     }
 
     func activeAerialAssetIDs() throws -> Set<String> {
+        selectionReadHook?()
         if let selectionReadError {
             throw selectionReadError
         }

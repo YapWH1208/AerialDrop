@@ -298,6 +298,305 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(afterAssets[0]["accessibilityLabel"] as? String, "Changed By Another Tool")
     }
 
+    func testRestoreRejectsChangedConfirmedBackupBeforeWritingCatalogueOrBackup() throws {
+        try installFixtureWallpaper(id: "confirmed-target", title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        // Replace the exact confirmed filename with a different valid snapshot. Without
+        // content identity this would be an otherwise safe, foreign-preserving restore.
+        try currentData.write(to: confirmed.url, options: .atomic)
+        let backupsBefore = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed)) { error in
+            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("changed after confirmation"))
+        }
+
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+        XCTAssertEqual(try Data(contentsOf: confirmed.url), currentData)
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)), Set(backupsBefore))
+    }
+
+    func testRestoreDefaultsToUnknownSelectionWhenBackupRemovesManagedEntry() throws {
+        try installFixtureWallpaper(id: "currently-managed", title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed)) { error in
+            guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                return XCTFail("Expected backupRestoreRejected, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("couldn’t verify which wallpaper is active"))
+        }
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+            Set(backupsBefore)
+        )
+
+        // An explicit reader reports a verified-inactive selection at commit time.
+        try store.restoreBackup(confirmed, protectingActiveAssetIDs: { [] })
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+    }
+
+    func testRestoreRechecksSelectionBeforeWritingCatalogueOrBackup() throws {
+        let id = "became-active-before-restore"
+        try installFixtureWallpaper(id: id, title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        for activationRead in [2, 3] {
+            var reads = 0
+            XCTAssertThrowsError(try store.restoreBackup(confirmed, protectingActiveAssetIDs: {
+                reads += 1
+                return reads < activationRead ? [] : [id]
+            })) { error in
+                guard case AerialDropError.backupRestoreRejected(let reason) = error else {
+                    return XCTFail("Expected backupRestoreRejected, got \(error)")
+                }
+                XCTAssertTrue(reason.contains("currently active"))
+            }
+            XCTAssertEqual(reads, activationRead)
+            XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+            XCTAssertEqual(
+                Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+                backupsBefore
+            )
+        }
+    }
+
+    func testRestoreKeepsCommittedCatalogueAndSafetyBackupIfSelectionChangesAfterWrite() throws {
+        let id = "became-active-at-commit"
+        try installFixtureWallpaper(id: id, title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        var reads = 0
+        var becameActive = false
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed, protectingActiveAssetIDs: {
+            reads += 1
+            if reads == 3 {
+                defer { becameActive = true }
+                return []
+            }
+            return becameActive ? [id] : []
+        })) { error in
+            guard case AerialDropError.backupRestoreCommitted(let reason) = error else {
+                return XCTFail("Expected backupRestoreCommitted, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("left the restored catalogue in place"))
+            XCTAssertTrue(reason.contains("safety backup"))
+        }
+
+        XCTAssertEqual(reads, 4)
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+        let backupsAfter = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        XCTAssertEqual(backupsAfter.count, backupsBefore.count + 1)
+        let addedBackups = backupsAfter.subtracting(backupsBefore)
+        XCTAssertEqual(addedBackups.count, 1)
+        let safetyBackup = try XCTUnwrap(addedBackups.first)
+        XCTAssertEqual(
+            try Data(contentsOf: paths.backups.appending(path: safetyBackup)),
+            currentData
+        )
+    }
+
+    func testRestoreDoesNotOverwriteConcurrentManifestAfterCommit() throws {
+        let id = "became-active-with-concurrent-manifest"
+        try installFixtureWallpaper(id: id, title: "Current")
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let currentData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        var concurrentRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: currentData) as? [String: Any])
+        concurrentRoot["concurrentUpdate"] = true
+        let concurrentData = try JSONSerialization.data(withJSONObject: concurrentRoot, options: [.prettyPrinted])
+        let manifestURL = paths.manifest
+        var reads = 0
+        var becameActive = false
+
+        XCTAssertThrowsError(try store.restoreBackup(confirmed, protectingActiveAssetIDs: {
+            reads += 1
+            if reads == 3 {
+                defer { becameActive = true }
+                return []
+            }
+            if reads == 4 {
+                try concurrentData.write(to: manifestURL, options: .atomic)
+            }
+            return becameActive ? [id] : []
+        })) { error in
+            guard case AerialDropError.backupRestoreSuperseded(let reason) = error else {
+                return XCTFail("Expected backupRestoreSuperseded, got \(error)")
+            }
+            XCTAssertTrue(reason.contains("kept the current catalogue untouched"))
+        }
+
+        XCTAssertEqual(reads, 4)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), concurrentData)
+        let backupsAfter = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        XCTAssertEqual(backupsAfter.count, backupsBefore.count + 1)
+        let addedBackups = backupsAfter.subtracting(backupsBefore)
+        let safetyBackup = try XCTUnwrap(addedBackups.first)
+        XCTAssertEqual(
+            try Data(contentsOf: paths.backups.appending(path: safetyBackup)),
+            currentData
+        )
+    }
+
+    func testUnsafeInputIDsAreRejectedBeforeMutationOrDeletion() throws {
+        let before = try Data(contentsOf: paths.manifest)
+        let sentinel = paths.base.appending(path: "sentinel.mov")
+        try Data("outside videos".utf8).write(to: sentinel)
+        for id in ["", ".", "..", "../sentinel", "folder/item", "folder\\item", "item\0suffix"] {
+            XCTAssertThrowsError(try store.addWallpaper(id: id, title: "Unsafe"), id)
+            XCTAssertThrowsError(try store.renameWallpaper(id: id, title: "Unsafe"), id)
+            XCTAssertThrowsError(try store.removeWallpaper(id: id), id)
+            XCTAssertEqual(try Data(contentsOf: paths.manifest), before, id)
+            XCTAssertEqual(try Data(contentsOf: sentinel), Data("outside videos".utf8), id)
+        }
+    }
+
+    func testUnsafeExistingIDsAreRejectedBeforePathExposureOrNormalization() throws {
+        let safeID = "legacy-safe-id"
+        try installFixtureWallpaper(id: safeID, title: "Safe")
+        let safeRoot = try json(at: paths.manifest)
+        let sentinel = paths.base.appending(path: "sentinel.mov")
+        try Data("outside videos".utf8).write(to: sentinel)
+        for id in ["", ".", "..", "../sentinel", "folder/item", "folder\\item", "item\0suffix"] {
+            var root = safeRoot
+            var assets = try XCTUnwrap(root["assets"] as? [[String: Any]])
+            let managedIndex = try XCTUnwrap(assets.firstIndex { ($0["id"] as? String) == safeID })
+            assets[managedIndex]["id"] = id
+            root["assets"] = assets
+            let malformedData = try JSONSerialization.data(withJSONObject: root)
+            try malformedData.write(to: paths.manifest, options: .atomic)
+
+            XCTAssertThrowsError(try store.importedWallpapers(), id)
+            XCTAssertThrowsError(try store.removeAllManaged(), id)
+            // Even a safe requested ID must not let normalization drop the unsafe original entry.
+            XCTAssertThrowsError(try store.renameWallpaper(id: safeID, title: "Changed"), id)
+            XCTAssertThrowsError(try store.removeWallpaper(id: safeID), id)
+            XCTAssertThrowsError(try store.addWallpaper(id: safeID, title: "Changed"), id)
+            XCTAssertEqual(try Data(contentsOf: paths.manifest), malformedData, id)
+            XCTAssertEqual(try Data(contentsOf: sentinel), Data("outside videos".utf8), id)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: safeID).path))
+        }
+    }
+
+    func testSafeLegacyIDRemainsReadableAndRemovableWithMissingFiles() throws {
+        let id = "Legacy Wallpaper_1.0"
+        try installFixtureWallpaper(id: id, title: "Legacy")
+        try FileManager.default.removeItem(at: paths.videoURL(for: id))
+        let wallpaper = try XCTUnwrap(store.importedWallpapers().first { $0.id == id })
+        XCTAssertFalse(wallpaper.videoExists)
+        try store.removeWallpaper(id: id)
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+    }
+
+    func testRestoreRefusesForeignTopLevelKeyAddedOrRemovedSinceBackup() throws {
+        for removeCurrentKey in [true, false] {
+            var backupRoot = try JSONSerialization.jsonObject(with: fixtureData()) as! [String: Any]
+            var currentRoot = backupRoot
+            if removeCurrentKey {
+                backupRoot["ForeignFeature"] = ["enabled": true]
+            } else {
+                currentRoot["ForeignFeature"] = ["enabled": true]
+            }
+            let backupURL = paths.backups.appending(path: "entries-20260809-181419-745-foreign.json")
+            try JSONSerialization.data(withJSONObject: backupRoot).write(to: backupURL)
+            let currentData = try JSONSerialization.data(withJSONObject: currentRoot)
+            try currentData.write(to: paths.manifest, options: .atomic)
+            let info = ManifestStore.BackupInfo(url: backupURL, date: Date(), operation: "foreign")
+
+            XCTAssertThrowsError(try store.restoreBackup(info))
+            XCTAssertEqual(try Data(contentsOf: paths.manifest), currentData)
+        }
+    }
+
+    func testRenameRepairsMissingRepresentativeAndPreservesForeignEntries() throws {
+        for missingThumbnail in [true, false] {
+            try fixtureData().write(to: paths.manifest, options: .atomic)
+            try installFixtureWallpaper(id: "survivor", title: "Original", width: 1920, height: 1080)
+            try installFixtureWallpaper(id: "representative", title: "Missing")
+            let before = try json(at: paths.manifest)
+            try FileManager.default.removeItem(at: missingThumbnail
+                ? paths.thumbnailURL(for: "representative") : paths.videoURL(for: "representative"))
+
+            try store.renameWallpaper(id: "survivor", title: "Renamed")
+
+            let after = try json(at: paths.manifest)
+            let assets = try XCTUnwrap(after["assets"] as? [[String: Any]])
+            let categories = try XCTUnwrap(after["categories"] as? [[String: Any]])
+            XCTAssertEqual(canonical(assets[0]), canonical((before["assets"] as! [[String: Any]])[0]))
+            XCTAssertEqual(canonical(categories[0]), canonical((before["categories"] as! [[String: Any]])[0]))
+            let wallpapers = try store.importedWallpapers()
+            XCTAssertEqual(wallpapers.map(\.id), ["survivor"])
+            XCTAssertEqual(wallpapers.first?.title, "Renamed")
+            XCTAssertEqual(wallpapers.first?.preferredOrder, 0)
+            XCTAssertEqual(wallpapers.first?.resolution, CGSize(width: 1920, height: 1080))
+            let category = try XCTUnwrap(categories.first { ($0["id"] as? String) == ManifestStore.categoryID })
+            XCTAssertEqual(category["representativeAssetID"] as? String, "survivor")
+            let subcategory = try XCTUnwrap((category["subcategories"] as? [[String: Any]])?.first)
+            XCTAssertEqual(subcategory["representativeAssetID"] as? String, "survivor")
+            try store.validateCurrentManifest()
+        }
+    }
+
+    func testRenameRefusesMissingTargetFilesWithoutDroppingEntriesOrWritingBackup() throws {
+        for soleTarget in [true, false] {
+            for missingThumbnail in [true, false] {
+                try fixtureData().write(to: paths.manifest, options: .atomic)
+                if !soleTarget {
+                    try installFixtureWallpaper(id: "survivor", title: "Healthy")
+                }
+                try installFixtureWallpaper(id: "target", title: "Original")
+                let missingURL = missingThumbnail ? paths.thumbnailURL(for: "target") : paths.videoURL(for: "target")
+                try FileManager.default.removeItem(at: missingURL)
+                let originalData = try Data(contentsOf: paths.manifest)
+                let originalBackups = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+
+                XCTAssertThrowsError(try store.renameWallpaper(id: "target", title: "Renamed")) { error in
+                    guard case AerialDropError.installedFileMissing(let url) = error else {
+                        return XCTFail("Expected installedFileMissing, got \(error)")
+                    }
+                    XCTAssertEqual(url, missingURL)
+                }
+
+                XCTAssertEqual(try Data(contentsOf: paths.manifest), originalData)
+                XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)), Set(originalBackups))
+                XCTAssertEqual(try store.importedWallpapers().first { $0.id == "target" }?.title, "Original")
+            }
+        }
+    }
+
+    func testCatalogueReadRejectsMalformedBaseStructureAndCounts() throws {
+        let original = try json(at: paths.manifest)
+        for key in ["assets", "categories", "version", "initialAssetCount"] {
+            var root = original
+            root.removeValue(forKey: key)
+            try JSONSerialization.data(withJSONObject: root).write(to: paths.manifest)
+            XCTAssertThrowsError(try store.importedWallpapers(), key)
+        }
+        for invalidCount in [2, -1, 1.5, true] as [Any] {
+            var root = original
+            root["initialAssetCount"] = invalidCount
+            try JSONSerialization.data(withJSONObject: root).write(to: paths.manifest)
+            XCTAssertThrowsError(try store.importedWallpapers(), "count: \(invalidCount)")
+        }
+        try FileManager.default.removeItem(at: paths.manifest)
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+    }
+
+    private func installFixtureWallpaper(id: String, title: String, width: Int = 0, height: Int = 0) throws {
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: title, width: width, height: height)
+    }
+
     private func fixtureData() throws -> Data {
         let fixture: [String: Any] = [
             "version": 1,

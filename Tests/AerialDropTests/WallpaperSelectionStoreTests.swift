@@ -54,7 +54,9 @@ final class WallpaperSelectionStoreTests: XCTestCase {
         let originalForeign = try XCTUnwrap(original["Foreign"] as? [String: Any])
         let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
 
-        try store.apply(assetID: targetID)
+        let requiredSpaceIDs = try store.apply(assetID: targetID)
+        XCTAssertEqual(requiredSpaceIDs, Set(["space-one", "space-two"]))
+        try store.verifyAerialSelection(assetID: targetID, requiringSpaceIDs: requiredSpaceIDs)
 
         let result = try propertyListRoot(at: paths.selectionStore)
         let foreign = try XCTUnwrap(result["Foreign"] as? [String: Any])
@@ -205,6 +207,149 @@ final class WallpaperSelectionStoreTests: XCTestCase {
             try FileManager.default.contentsOfDirectory(at: paths.selectionBackups, includingPropertiesForKeys: nil).count,
             1
         )
+    }
+
+    func testApplyRejectsOneTargetRevertingToANonAerialSelection() throws {
+        for path in [["AllSpacesAndDisplays"], ["SystemDefault"], ["Spaces", "space-one", "Default"]] {
+            for individualSelection in [true, false] {
+                let original = try indexData()
+                try original.write(to: paths.selectionStore, options: .atomic)
+                var externalData: Data?
+                let store = WallpaperSelectionStore(
+                    paths: paths,
+                    now: { self.fixedDate },
+                    afterWrite: {
+                        let writtenRoot = try self.propertyListRoot(at: self.paths.selectionStore)
+                        let externalRoot = try self.mutatingDictionary(in: writtenRoot, at: path) { selection in
+                            if individualSelection {
+                                selection["Type"] = "individual"
+                            } else {
+                                var linked = try XCTUnwrap(selection["Linked"] as? [String: Any])
+                                var content = try XCTUnwrap(linked["Content"] as? [String: Any])
+                                var choices = try XCTUnwrap(content["Choices"] as? [[String: Any]])
+                                choices[0]["Provider"] = "com.apple.wallpaper.choice.image"
+                                content["Choices"] = choices
+                                linked["Content"] = content
+                                selection["Linked"] = linked
+                            }
+                        }
+                        let data = try self.propertyListData(externalRoot)
+                        try data.write(to: self.paths.selectionStore, options: .atomic)
+                        externalData = data
+                    }
+                )
+
+                XCTAssertThrowsError(try store.apply(assetID: targetID), "\(path), individual: \(individualSelection)") { error in
+                    guard case AerialDropError.wallpaperSelectionVerificationFailed = error else {
+                        return XCTFail("Expected wallpaperSelectionVerificationFailed, got \(error)")
+                    }
+                }
+
+                XCTAssertEqual(try Data(contentsOf: paths.selectionStore), try XCTUnwrap(externalData))
+                // The union still looks correct: this is why activation needs per-target verification.
+                XCTAssertEqual(try store.activeAerialAssetIDs(), Set([targetID]))
+                let backups = try FileManager.default.contentsOfDirectory(
+                    at: paths.selectionBackups, includingPropertiesForKeys: nil
+                )
+                XCTAssertTrue(backups.contains { (try? Data(contentsOf: $0)) == original })
+            }
+        }
+    }
+
+    func testVerifierRejectsEmptyMixedDuplicateAndShuffleChoices() throws {
+        let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
+        try store.apply(assetID: targetID)
+        let appliedRoot = try propertyListRoot(at: paths.selectionStore)
+        let backupNames = Set(try FileManager.default.contentsOfDirectory(atPath: paths.selectionBackups.path))
+        for mutation in ["empty", "mixed", "duplicate", "shuffle", "files"] {
+            let changedRoot = try mutatingDictionary(in: appliedRoot, at: ["SystemDefault"]) { selection in
+                var linked = try XCTUnwrap(selection["Linked"] as? [String: Any])
+                var content = try XCTUnwrap(linked["Content"] as? [String: Any])
+                var choices = try XCTUnwrap(content["Choices"] as? [[String: Any]])
+                switch mutation {
+                case "empty":
+                    choices = []
+                case "mixed":
+                    var imageChoice = choices[0]
+                    imageChoice["Provider"] = "com.apple.wallpaper.choice.image"
+                    choices.append(imageChoice)
+                case "duplicate":
+                    choices.append(choices[0])
+                case "shuffle":
+                    content["Shuffle"] = "enabled"
+                default:
+                    choices[0]["Files"] = ["file:///external-image.jpg"]
+                }
+                content["Choices"] = choices
+                linked["Content"] = content
+                selection["Linked"] = linked
+            }
+            let changedData = try propertyListData(changedRoot)
+            try changedData.write(to: paths.selectionStore, options: .atomic)
+
+            XCTAssertThrowsError(try store.verifyAerialSelection(assetID: targetID), mutation)
+            XCTAssertEqual(try Data(contentsOf: paths.selectionStore), changedData)
+            XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: paths.selectionBackups.path)), backupNames)
+            XCTAssertEqual(try store.activeAerialAssetIDs(), Set([targetID]))
+        }
+    }
+
+    func testVerifierRejectsDisappearedOriginalSpaceTargets() throws {
+        let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
+        let requiredSpaceIDs = try store.apply(assetID: targetID)
+        let appliedRoot = try propertyListRoot(at: paths.selectionStore)
+        for removeWholeSpace in [false, true] {
+            var changedRoot = appliedRoot
+            var spaces = try XCTUnwrap(changedRoot["Spaces"] as? [String: Any])
+            if removeWholeSpace {
+                spaces.removeValue(forKey: "space-one")
+            } else {
+                var space = try XCTUnwrap(spaces["space-one"] as? [String: Any])
+                space.removeValue(forKey: "Default")
+                spaces["space-one"] = space
+            }
+            changedRoot["Spaces"] = spaces
+            let changedData = try propertyListData(changedRoot)
+            try changedData.write(to: paths.selectionStore, options: .atomic)
+
+            // Current selections alone remain valid, but the activation's original targets do not.
+            try store.verifyAerialSelection(assetID: targetID)
+            XCTAssertThrowsError(try store.verifyAerialSelection(assetID: targetID, requiringSpaceIDs: requiredSpaceIDs)) { error in
+                guard case AerialDropError.wallpaperSelectionVerificationFailed = error else {
+                    return XCTFail("Expected wallpaperSelectionVerificationFailed, got \(error)")
+                }
+            }
+            XCTAssertEqual(try Data(contentsOf: paths.selectionStore), changedData)
+        }
+    }
+
+    func testVerifierRejectsMissingRequiredGlobalSelections() throws {
+        let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
+        try store.apply(assetID: targetID)
+        let appliedRoot = try propertyListRoot(at: paths.selectionStore)
+        for key in ["AllSpacesAndDisplays", "SystemDefault", "Spaces"] {
+            var changedRoot = appliedRoot
+            changedRoot.removeValue(forKey: key)
+            let changedData = try propertyListData(changedRoot)
+            try changedData.write(to: paths.selectionStore, options: .atomic)
+            XCTAssertThrowsError(try store.verifyAerialSelection(assetID: targetID), key)
+            XCTAssertEqual(try Data(contentsOf: paths.selectionStore), changedData)
+        }
+    }
+
+    private func mutatingDictionary(
+        in root: [String: Any],
+        at path: [String],
+        mutation: (inout [String: Any]) throws -> Void
+    ) throws -> [String: Any] {
+        var result = root
+        guard let key = path.first else {
+            try mutation(&result)
+            return result
+        }
+        let child = try XCTUnwrap(result[key] as? [String: Any])
+        result[key] = try mutatingDictionary(in: child, at: Array(path.dropFirst()), mutation: mutation)
+        return result
     }
 
     private func indexData() throws -> Data {
