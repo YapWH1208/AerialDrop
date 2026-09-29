@@ -3,6 +3,6 @@ import Foundation
 /// Single source of truth for the marketing version and build number.
 /// Scripts/build-app.sh reads these values to generate Info.plist.
 enum AppVersion {
-    static let shortVersion = "1.1.7"
-    static let buildNumber = "22"
+    static let shortVersion = "1.1.8"
+    static let buildNumber = "23"
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.8
+
+- Backup recovery now rechecks the wallpaper selection before and during restore, blocks restoring an active wallpaper, and preserves catalogue changes made concurrently.
+- Wallpaper activation verifies that macOS applied the requested wallpaper and reports when activation needs attention.
+- Import previews stay aligned with the selected video across changes, rotated-video cropping is corrected, and conversion progress remains monotonic.
+- Keyboard range selection now starts from the focused wallpaper card.
+- The installer handles release checksums and command-line arguments more reliably.
+- Expanded regression coverage for catalogue preservation, backup restore, import previews, video geometry, and installation.
+
 ## 1.1.7
 
 - The Library is keyboard-first: arrow keys move the selection card by card (up and down follow the grid's columns), Shift-arrow extends or contracts the range from the anchor just like Shift-click, focus follows the selection with automatic scrolling, and Delete on a focused card opens the removal confirmation.
