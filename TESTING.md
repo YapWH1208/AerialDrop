@@ -209,6 +209,52 @@ Expected:
   asset. A recoverable binary backup exists under `Store/AerialDropBackups` for
   each activation attempt.
 
+## macOS 27 Day/Night contract capture
+
+The proposed native Day/Night feature is awaiting a captured macOS 27 Automatic
+selection contract. The developer capture tool below is read-only; it does not
+enable Day/Night switching or change the current wallpaper.
+
+Use a disposable macOS 27 test account with nonpersonal test videos. Select a
+combined native Aerial and its **Automatic** option in System Settings. A combined
+Light/Dark wallpaper can establish the selection payload, but it does not prove
+solar switching. The shipped macOS 27.0.1 catalogue has no solar variants; the
+[native solar grouping research](https://gist.github.com/pdfux/5659724021e584313c00b843312e909d)
+is a starting point for a controlled test catalogue, not an AerialDrop feature or
+an approved production format. Keep any catalogue override and its original
+preference values confined to that test account, and restore them after testing.
+
+Copy the test account's `Index.plist` to a temporary location, then run the helper
+from the repository root with explicit input and a new output file:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  swift Scripts/capture-dynamic-aerial-fixture.swift \
+  --input /tmp/copied-Index.plist \
+  --output /tmp/native-automatic-selection.plist
+```
+
+The helper validates the decoded native `Configuration` and `EncodedOptionValues`
+trees, then re-encodes them inside a minimal linked selection. Their fields and
+values are preserved; opaque original bytes are excluded because binary plists
+can carry hidden, unreferenced objects. It omits dates, Space/display identifiers,
+paths, other providers, and unrelated store data. It refuses unsupported or
+non-Automatic selections, extra unknown payload fields, symlink/nonregular inputs,
+and existing output files. It does not infer the selected group identifier from
+the catalogue or manufacture an Automatic payload.
+
+Record the OS version/build and the selected test subcategory's ID,
+`representativeAssetID`, member IDs, and `variant.solar` anchors in a companion
+note. These references must establish whether the captured `assetID` names the
+subcategory, representative, or another member. Omit personal titles and paths.
+Capture again after a natural solar transition with AerialDrop closed, and verify
+native lock/unlock playback and every intended Space/display. A synthetic plist
+test or a matching stored ID alone does not establish those runtime results.
+
+Run `bash Scripts/test-dynamic-aerial-fixture.sh` for the helper's offline
+validation and privacy checks. Its inputs are synthetic test cases, not captured
+native macOS fixtures, and it never accesses real wallpaper storage.
+
 ## Website installation flow
 
 Run `bash Scripts/test-install.sh` first. It exercises compact and pretty
