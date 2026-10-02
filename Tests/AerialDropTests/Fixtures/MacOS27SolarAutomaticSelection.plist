@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Linked</key>
+	<dict>
+		<key>Content</key>
+		<dict>
+			<key>Choices</key>
+			<array>
+				<dict>
+					<key>Configuration</key>
+					<data>
+					YnBsaXN0MDDRAQJXYXNzZXRJRF8QJDY3NTEy
+					NTA4LUQzM0UtNENCQy04QTlFLUJFNTVDRUUz
+					NUM0QwgLEwAAAAAAAAEBAAAAAAAAAAMAAAAA
+					AAAAAAAAAAAAAAA6
+					</data>
+					<key>Files</key>
+					<array/>
+					<key>Provider</key>
+					<string>com.apple.wallpaper.choice.aerials</string>
+				</dict>
+			</array>
+			<key>EncodedOptionValues</key>
+			<data>
+			YnBsaXN0MDDRAQJWdmFsdWVz0QMEXWFlcmlhbFZhcmlhbnTRBQZW
+			cGlja2Vy0QcIUl8w0QkKUmlkWWF1dG9tYXRpYwgLEhUjJi0wMzY5
+			AAAAAAAAAQEAAAAAAAAACwAAAAAAAAAAAAAAAAAAAEM=
+			</data>
+			<key>Shuffle</key>
+			<string>$null</string>
+		</dict>
+	</dict>
+	<key>Type</key>
+	<string>linked</string>
+</dict>
+</plist>

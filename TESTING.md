@@ -211,9 +211,11 @@ Expected:
 
 ## macOS 27 Day/Night contract capture
 
-The proposed native Day/Night feature is awaiting a captured macOS 27 Automatic
-selection contract. The developer capture tool below is read-only; it does not
-enable Day/Night switching or change the current wallpaper.
+An observed macOS 27 Automatic solar selection is available in
+`Tests/AerialDropTests/Fixtures/MacOS27SolarAutomaticSelection.plist`, with its
+capture conditions and limits in the companion Markdown file. The Day/Night
+feature still requires native runtime acceptance. The developer capture tool
+below is read-only; it does not enable switching or change the current wallpaper.
 
 Use a disposable macOS 27 test account with nonpersonal test videos. Select a
 combined native Aerial and its **Automatic** option in System Settings. A combined
