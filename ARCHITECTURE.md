@@ -27,3 +27,20 @@ There is no app-managed desktop player. AerialDrop may be quit after setup.
 `ManifestStore` owns `entries.json`; `WallpaperSelectionStore` separately owns the private `Store/Index.plist` linked-selection format. Unknown store data is preserved, selection writes are backed up, and each global and Space target is verified after activation. Verification failures deliberately do not auto-restore over newer macOS state. Catalogue restore uses the confirmed backup bytes and refuses to remove an active managed entry (or any managed entry when active status is unknown). If selection validation fails after the restore write, the pre-write safety backup is retained and the UI reloads the current catalogue. A concurrent macOS catalogue update remains untouched; the safety backup can be restored if it still passes the foreign-data checks.
 
 The manifest's `initialAssetCount` must be an integer from zero through the number of assets. It need not equal the total: Apple's macOS 27 catalogue declares 4 with 164 assets. Reading and validating a catalogue preserve its bytes; existing managed import, rename and removal operations continue to normalize the count to their resulting asset count.
+
+The macOS 27 Day/Night catalogue adapter registers two distinct imported assets
+under one stable, AerialDrop-owned combined subcategory. It reuses their UUIDs
+and installed media, with solar anchors at altitude +35° for Day and −35° for
+Night (azimuth 180°). The manifest records the registered pair; editable choices
+are separate from registration. Import, rename and reimport preserve these roles.
+Malformed roles or missing paired media fail validation instead of silently
+dissolving the group.
+
+Removing either paired asset requires a fresh selection check and dissolves an
+inactive pair while returning its surviving member to the ordinary category.
+Selecting the group or either fixed member protects both members. Restore also
+protects their role mapping, even when the backup retains both UUIDs. Checks run
+again after the catalogue write; a late selection change retains media and the
+safety backup and reports the partial outcome. Replacing a registered pair
+requires the caller to persist protection for its previous and new members until
+a fresh native activation is verified, since native services can cache old roles.

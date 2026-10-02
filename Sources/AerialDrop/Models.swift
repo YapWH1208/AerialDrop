@@ -187,6 +187,10 @@ enum AerialDropError: LocalizedError {
     case backupRestoreCommitted(String)
     case backupRestoreSuperseded(String)
     case backupRestoreOutcomeUnknown(String)
+    case manifestMutationCommitted(String)
+    case manifestMutationSuperseded(String)
+    case manifestMutationOutcomeUnknown(String)
+    case dayNightPairChangeRequiresProtection
 
     var errorDescription: String? {
         switch self {
@@ -275,6 +279,14 @@ enum AerialDropError: LocalizedError {
             return "The Aerial catalogue changed during restore. \(reason)"
         case .backupRestoreOutcomeUnknown(let reason):
             return "The catalogue restore status could not be verified. \(reason)"
+        case .manifestMutationCommitted(let reason):
+            return "The catalogue was updated, but video cleanup was stopped. Your files and backup were kept. \(reason)"
+        case .manifestMutationSuperseded(let reason):
+            return "The catalogue changed again before video cleanup finished. Your files and backup were kept. \(reason)"
+        case .manifestMutationOutcomeUnknown(let reason):
+            return "Video cleanup stopped because the current catalogue could not be checked. Your files and backup were kept. \(reason)"
+        case .dayNightPairChangeRequiresProtection:
+            return "The previous Day/Night videos must be protected until the new wallpaper is verified. Try applying the wallpaper again."
         }
     }
 }
