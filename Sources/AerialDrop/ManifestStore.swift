@@ -554,9 +554,9 @@ struct ManifestStore {
         guard let count = integerValue(root["initialAssetCount"]) else {
             throw AerialDropError.malformedManifest("missing or invalid top-level initialAssetCount")
         }
-        guard count == assets.count else {
+        guard (0...assets.count).contains(count) else {
             throw AerialDropError.malformedManifest(
-                "initialAssetCount must match the assets array count (expected \(assets.count))"
+                "initialAssetCount must be between 0 and the assets array count (\(assets.count))"
             )
         }
     }

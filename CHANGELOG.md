@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Accept macOS 27 Aerial catalogues whose initial asset count is smaller than the full catalogue, preventing a valid catalogue from blocking import setup.
+
 ## 1.1.8
 
 - Backup recovery now rechecks the wallpaper selection before and during restore, blocks restoring an active wallpaper, and preserves catalogue changes made concurrently.
