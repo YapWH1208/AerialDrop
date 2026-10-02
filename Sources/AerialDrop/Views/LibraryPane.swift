@@ -215,6 +215,8 @@ struct LibraryPane: View {
                 bulkSelectionBanner
             }
 
+            DayNightWallpaperSection()
+
             if model.wallpapers.isEmpty {
                 emptyLibrary
             } else {

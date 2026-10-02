@@ -404,8 +404,9 @@ struct ManifestStore {
         try requireManifest()
 
         var removedPair: DayNightWallpaperPair?
+        var currentPair: DayNightWallpaperPair?
         func verifyActiveSelection() throws {
-            guard removedPair != nil else { return }
+            guard removedPair != nil || activeIDs != nil else { return }
             guard let activeIDs else {
                 throw AerialDropError.wallpaperSelectionUnknownForRemoval
             }
@@ -415,9 +416,10 @@ struct ManifestStore {
             } catch {
                 throw AerialDropError.wallpaperSelectionUnknownForRemoval
             }
-            guard let pair = removedPair,
-                  !selectedIDs.contains(Self.dayNightSubcategoryID),
-                  selectedIDs.isDisjoint(with: pair.memberAssetIDs) else {
+            let protectedIDs = removedPair?.memberAssetIDs ?? [id]
+            let invalidatesSelectedGroup = selectedIDs.contains(Self.dayNightSubcategoryID)
+                && (removedPair != nil || currentPair == nil)
+            guard !invalidatesSelectedGroup, selectedIDs.isDisjoint(with: protectedIDs) else {
                 throw AerialDropError.activeWallpaperCannotBeRemoved
             }
         }
@@ -434,6 +436,7 @@ struct ManifestStore {
             }
 
             let pair = try managedDayNightPair(in: root)
+            currentPair = pair
             if let pair, pair.memberAssetIDs.contains(id) {
                 removedPair = pair
                 for survivingID in pair.memberAssetIDs where survivingID != id {
@@ -488,7 +491,7 @@ struct ManifestStore {
         var removedIDs = Set(wallpapers.map(\.id))
         var removesPair = false
         func verifyActiveSelection() throws {
-            guard removesPair else { return }
+            guard removesPair || activeIDs != nil else { return }
             guard let activeIDs else {
                 throw AerialDropError.wallpaperSelectionUnknownForRemoval
             }

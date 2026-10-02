@@ -31,6 +31,13 @@ final class AppModel {
     var isSelectionStatusUnknown = false
     var activationFailure: ManagedWallpaper?
     var activationFailureMessage: String?
+    private(set) var dayNightDraft = DayNightWallpaperDraft()
+    private(set) var registeredDayNightPair: DayNightWallpaperPair?
+    private(set) var dayNightUnavailableReason: String? = "Checking Day/Night support…"
+    private(set) var isDayNightRecoveryPending = false
+    private var dayNightPreferenceError: String?
+    private var aerialSelectionInspection: AerialSelectionInspection?
+    private var rawAerialAssetIDs: Set<String> = []
     /// Human-readable label of the Library operation currently in progress
     /// (activation, removal, remove-all, restore), shown as busy feedback.
     /// Nil while idle or during an import, which has its own progress UI.
@@ -84,9 +91,134 @@ final class AppModel {
         self.automaticActivationEnabled = automaticActivationEnabled
         self.preferencesDefaults = preferencesDefaults
         self.availableCapacityProvider = availableCapacityProvider
+        do {
+            dayNightDraft = try AppPreferences.dayNightDraft(defaults: preferencesDefaults)
+        } catch {
+            dayNightPreferenceError = error.localizedDescription
+        }
         if automaticallyReload {
             Task { await reload() }
         }
+    }
+
+    var dayWallpaperID: String? {
+        get { dayNightDraft.dayAssetID }
+        set { saveDayNightDraft(.init(dayAssetID: newValue, nightAssetID: dayNightDraft.nightAssetID)) }
+    }
+
+    var nightWallpaperID: String? {
+        get { dayNightDraft.nightAssetID }
+        set { saveDayNightDraft(.init(dayAssetID: dayNightDraft.dayAssetID, nightAssetID: newValue)) }
+    }
+
+    private func saveDayNightDraft(_ draft: DayNightWallpaperDraft) {
+        guard !isWorking else { return }
+        do {
+            try AppPreferences.setDayNightDraft(draft, defaults: preferencesDefaults)
+            dayNightDraft = draft
+            dayNightPreferenceError = nil
+        } catch {
+            activeAlert = AppAlert(title: "Couldn’t Save Day/Night Choices", message: error.localizedDescription)
+        }
+    }
+
+    var dayNightApplyBlockerMessage: String? {
+        if let dayNightUnavailableReason { return dayNightUnavailableReason }
+        if let dayNightPreferenceError { return dayNightPreferenceError }
+        guard let day = dayNightDraft.dayAssetID, let night = dayNightDraft.nightAssetID else {
+            return "Choose a wallpaper for Day and Night. Import two different videos if needed."
+        }
+        guard day != night else { return "Choose different wallpapers for Day and Night." }
+        for (role, id) in [("Day", day), ("Night", night)] {
+            guard let wallpaper = wallpapers.first(where: { $0.id == id }) else {
+                return "The saved \(role) wallpaper is missing. Choose another wallpaper."
+            }
+            guard wallpaper.videoExists, wallpaper.thumbnailExists else {
+                return "The \(role) video or preview is missing. Reimport it or choose another wallpaper."
+            }
+        }
+        return nil
+    }
+
+    var canApplyDayNightWallpaper: Bool {
+        catalogueState == .ready && !isWorking && dayNightApplyBlockerMessage == nil
+    }
+
+    var dayNightStatusMessage: String {
+        if isDayNightRecoveryPending {
+            return "A wallpaper change still needs verification. Previous videos are protected; apply Day/Night or another wallpaper in AerialDrop to retry."
+        }
+        if let dayNightUnavailableReason { return dayNightUnavailableReason }
+        if isSelectionStatusUnknown { return "The current wallpaper selection could not be checked." }
+        if let pair = registeredDayNightPair {
+            if aerialSelectionInspection?.matches(.automatic(groupID: ManifestStore.dayNightSubcategoryID)) == true {
+                let sameDraft = pair.dayAssetID == dayNightDraft.dayAssetID && pair.nightAssetID == dayNightDraft.nightAssetID
+                return sameDraft
+                    ? "Automatic is selected on all Spaces and displays."
+                    : "Automatic is selected. Apply your saved choices to change the current pair."
+            }
+            if aerialSelectionInspection?.matches(.fixedVariant(assetID: pair.dayAssetID)) == true {
+                return "Day is selected on all Spaces and displays. Automatic switching is off."
+            }
+            if aerialSelectionInspection?.matches(.fixedVariant(assetID: pair.nightAssetID)) == true {
+                return "Night is selected on all Spaces and displays. Automatic switching is off."
+            }
+            if activeAerialAssetIDs.contains(ManifestStore.dayNightSubcategoryID) {
+                return "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
+            }
+        }
+        return "Choices are saved. Apply Day/Night to change the wallpaper."
+    }
+
+    func applyDayNightWallpaper() {
+        guard !isWorking else { return }
+        Task { await activateDayNightWallpaper() }
+    }
+
+    func activateDayNightWallpaper() async {
+        guard !isWorking else { return }
+        isWorking = true
+        operationLabel = "Applying Day/Night wallpaper…"
+        defer { isWorking = false; operationLabel = nil }
+        do {
+            try systemService.validateDayNightSupport()
+            dayNightUnavailableReason = nil
+            if let blocker = dayNightApplyBlockerMessage { throw AerialDropError.dayNightUnavailable(blocker) }
+            guard let day = dayNightDraft.dayAssetID, let night = dayNightDraft.nightAssetID else {
+                throw AerialDropError.wallpaperNotFound
+            }
+            let pair = DayNightWallpaperPair(dayAssetID: day, nightAssetID: night)
+            // Persist before either native store changes. The callback adds any
+            // previous mapping discovered by the actual manifest mutation.
+            try AppPreferences.protectDayNightAssetIDs(pair.memberAssetIDs, defaults: preferencesDefaults)
+            isDayNightRecoveryPending = true
+            try manifestStore.configureDayNightPair(pair, protectingPreviousPairMembers: { ids in
+                try AppPreferences.protectDayNightAssetIDs(ids, defaults: self.preferencesDefaults)
+            })
+            let expectedProtection = try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+            try await systemService.activateAerial(.automatic(groupID: ManifestStore.dayNightSubcategoryID), verifyingPair: pair)
+            try AppPreferences.clearPendingDayNightAssetIDs(expectingAssetIDs: expectedProtection, defaults: preferencesDefaults)
+            dismissActivationFailure()
+            await reload()
+        } catch {
+            await reload()
+            activeAlert = AppAlert(title: "Couldn’t Apply Day/Night Wallpaper", message: error.localizedDescription)
+        }
+    }
+
+    private func refreshDayNightState() {
+        do {
+            dayNightDraft = try AppPreferences.dayNightDraft(defaults: preferencesDefaults)
+            dayNightPreferenceError = nil
+        } catch { dayNightPreferenceError = "Saved Day/Night choices could not be read. Choose Day and Night again." }
+        do {
+            isDayNightRecoveryPending = try !AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults).isEmpty
+        } catch { isDayNightRecoveryPending = true }
+        do {
+            registeredDayNightPair = try manifestStore.dayNightPair()
+            try systemService.validateDayNightSupport()
+            dayNightUnavailableReason = nil
+        } catch { dayNightUnavailableReason = error.localizedDescription }
     }
 
     /// Form-level import prerequisites, shared by `canImport` and
@@ -463,6 +595,7 @@ final class AppModel {
         guard !isWorking else { return }
         isWorking = true
         operationLabel = "Removing “\(wallpaper.title)”…"
+        let previousPair = try? manifestStore.dayNightPair()
         defer {
             isWorking = false
             operationLabel = nil
@@ -475,13 +608,17 @@ final class AppModel {
             if pendingLibraryHighlightID == wallpaper.id {
                 pendingLibraryHighlightID = nil
             }
-            try manifestStore.removeWallpaper(id: wallpaper.id)
+            try manifestStore.removeWallpaper(id: wallpaper.id, protectingActiveAssetIDs: {
+                try self.removalProtectionIDs(allowingUnverifiedSelection: allowingUnverifiedSelection)
+            })
             await systemService.refresh()
             await reload()
         } catch {
+            let message = preservePairAfterPartialMutation(previousPair, error: error)
+            await reload()
             activeAlert = AppAlert(
                 title: "Couldn’t Remove Wallpaper",
-                message: error.localizedDescription
+                message: message
             )
         }
     }
@@ -516,14 +653,20 @@ final class AppModel {
                 for: ids,
                 allowingUnverifiedSelection: allowingUnverifiedSelection
             )
+            let initiallyInstalledIDs = ids.intersection(Set(try manifestStore.importedWallpapers().map(\.id)))
             var firstError: Error?
             var removedCount = 0
             for id in ids.sorted() {
+                let previousPair = try? manifestStore.dayNightPair()
                 do {
-                    try manifestStore.removeWallpaper(id: id)
+                    try requireRemovalReadiness(for: [id], allowingUnverifiedSelection: allowingUnverifiedSelection)
+                    try manifestStore.removeWallpaper(id: id, protectingActiveAssetIDs: {
+                        try self.removalProtectionIDs(allowingUnverifiedSelection: allowingUnverifiedSelection)
+                    })
                     removedCount += 1
                 } catch {
-                    firstError = firstError ?? error
+                    let message = preservePairAfterPartialMutation(previousPair, error: error)
+                    firstError = firstError ?? AerialDropError.dayNightUnavailable(message)
                 }
             }
             if let highlight = pendingLibraryHighlightID, ids.contains(highlight) {
@@ -534,12 +677,20 @@ final class AppModel {
             if let firstError {
                 // State exactly how far the bulk removal got so the outcome
                 // never contradicts the confirmed "Remove N" promise.
+                let message: String
+                if catalogueState == .ready {
+                    removedCount = initiallyInstalledIDs.subtracting(Set(self.wallpapers.map(\.id))).count
+                    message = "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError.localizedDescription)"
+                } else {
+                    message = "The removal status could not be checked. \(firstError.localizedDescription)"
+                }
                 activeAlert = AppAlert(
                     title: "Couldn’t Remove Wallpapers",
-                    message: "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError.localizedDescription)"
+                    message: message
                 )
             }
         } catch {
+            await reload()
             activeAlert = AppAlert(
                 title: "Couldn’t Remove Wallpapers",
                 message: error.localizedDescription
@@ -553,6 +704,7 @@ final class AppModel {
         guard !isWorking else { return }
         isWorking = true
         operationLabel = "Removing all AerialDrop wallpapers…"
+        let previousPair = try? manifestStore.dayNightPair()
         defer {
             isWorking = false
             operationLabel = nil
@@ -564,13 +716,17 @@ final class AppModel {
                 allowingUnverifiedSelection: allowingUnverifiedSelection
             )
             pendingLibraryHighlightID = nil
-            try manifestStore.removeAllManaged()
+            try manifestStore.removeAllManaged(protectingActiveAssetIDs: {
+                try self.removalProtectionIDs(allowingUnverifiedSelection: allowingUnverifiedSelection)
+            })
             await systemService.refresh()
             await reload()
         } catch {
+            let message = preservePairAfterPartialMutation(previousPair, error: error)
+            await reload()
             activeAlert = AppAlert(
                 title: "Couldn’t Remove Wallpapers",
-                message: error.localizedDescription
+                message: message
             )
         }
     }
@@ -593,6 +749,7 @@ final class AppModel {
         } catch {
             isSelectionStatusUnknown = true
         }
+        refreshDayNightState()
     }
 
     /// Refreshes a catalogue that is already on screen without replacing it
@@ -630,6 +787,7 @@ final class AppModel {
             isSelectionStatusUnknown = true
         }
 
+        refreshDayNightState()
         if let refreshError {
             catalogueRefreshState = .failed(refreshError.localizedDescription)
         } else {
@@ -666,7 +824,7 @@ final class AppModel {
             operationLabel = nil
         }
         do {
-            try await systemService.activateAerial(assetID: wallpaper.id)
+            try await activateSingleWallpaperSafely(wallpaper)
             dismissActivationFailure()
             if importOutcome?.wallpaper.id == wallpaper.id {
                 importOutcome = ImportOutcome(
@@ -697,7 +855,7 @@ final class AppModel {
         let activationResult: ImportActivationResult
         if automaticallyActivate ?? automaticActivationEnabled() {
             do {
-                try await systemService.activateAerial(assetID: wallpaper.id)
+                try await activateSingleWallpaperSafely(wallpaper)
                 dismissActivationFailure()
                 activationResult = .activatedEverywhere
             } catch {
@@ -718,7 +876,98 @@ final class AppModel {
     }
 
     private func refreshActiveSelection() throws {
-        activeAerialAssetIDs = try systemService.activeAerialAssetIDs()
+        activeAerialAssetIDs = try expandedActiveAerialAssetIDs()
+        // Legacy injectable services may not provide typed inspection. A nil
+        // result never establishes Automatic mode or clears pending protection.
+        aerialSelectionInspection = try? systemService.inspectAerialSelections()
+    }
+
+    private func expandedActiveAerialAssetIDs() throws -> Set<String> {
+        var ids = try systemService.activeAerialAssetIDs()
+        rawAerialAssetIDs = ids
+        let pair = try manifestStore.dayNightPair()
+        if ids.contains(ManifestStore.dayNightSubcategoryID), pair == nil {
+            throw AerialDropError.wallpaperSelectionUnknownForRemoval
+        }
+        if let pair, ids.contains(ManifestStore.dayNightSubcategoryID)
+            || !ids.isDisjoint(with: pair.memberAssetIDs) {
+            ids.formUnion(pair.memberAssetIDs)
+        }
+        return ids
+    }
+
+    private func protectedAerialAssetIDs() throws -> Set<String> {
+        try expandedActiveAerialAssetIDs().union(
+            AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+        )
+    }
+
+    private func removalProtectionIDs(allowingUnverifiedSelection: Bool) throws -> Set<String> {
+        do { return try protectedAerialAssetIDs() }
+        catch {
+            // Keep the existing acknowledgement for ordinary single wallpapers.
+            // It can never bypass known pair, orphan-group or pending protection.
+            let pending = try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+            guard allowingUnverifiedSelection, pending.isEmpty,
+                  try manifestStore.dayNightPair() == nil,
+                  !rawAerialAssetIDs.contains(ManifestStore.dayNightSubcategoryID) else { throw error }
+            return []
+        }
+    }
+
+    private func preservePairAfterPartialMutation(_ previous: DayNightWallpaperPair?, error: Error) -> String {
+        guard let mutation = error as? AerialDropError else { return error.localizedDescription }
+        switch mutation {
+        case .manifestMutationCommitted, .manifestMutationSuperseded, .manifestMutationOutcomeUnknown,
+             .backupRestoreCommitted, .backupRestoreSuperseded, .backupRestoreOutcomeUnknown:
+            let current = try? manifestStore.dayNightPair()
+            let ids = (previous?.memberAssetIDs ?? []).union(current?.memberAssetIDs ?? [])
+            guard !ids.isEmpty else { return error.localizedDescription }
+            isDayNightRecoveryPending = true
+            do {
+                try AppPreferences.protectDayNightAssetIDs(ids, defaults: preferencesDefaults)
+                return error.localizedDescription
+            } catch let persistenceError {
+                return "\(error.localizedDescription)\n\(persistenceError.localizedDescription)"
+            }
+        default: return error.localizedDescription
+        }
+    }
+
+    private func activateSingleWallpaperSafely(_ wallpaper: ManagedWallpaper) async throws {
+        let pair = try manifestStore.dayNightPair()
+        let pending: Set<String>?
+        let malformedProtection: NSObject?
+        do {
+            pending = try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+            malformedProtection = nil
+        } catch {
+            pending = nil
+            guard let stored = preferencesDefaults.object(forKey: AppPreferences.pendingDayNightAssetIDsKey) as? NSObject else {
+                throw error
+            }
+            malformedProtection = stored
+        }
+        guard pair != nil || pending == nil || pending?.isEmpty == false else {
+            try await systemService.activateAerial(assetID: wallpaper.id)
+            return
+        }
+        if let pending {
+            try AppPreferences.protectDayNightAssetIDs(
+                pending.union(pair?.memberAssetIDs ?? []).union([wallpaper.id]), defaults: preferencesDefaults
+            )
+        }
+        isDayNightRecoveryPending = true
+        let request: AerialSelectionRequest = pair?.memberAssetIDs.contains(wallpaper.id) == true
+            ? .fixedVariant(assetID: wallpaper.id) : .single(assetID: wallpaper.id)
+        let expectedProtection = pending == nil ? nil : try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+        try await systemService.activateAerial(request, verifyingPair: request == .single(assetID: wallpaper.id) ? nil : pair)
+        try AppPreferences.clearPendingDayNightAssetIDs(
+            expectingAssetIDs: expectedProtection,
+            expectingMalformedValue: malformedProtection,
+            defaults: preferencesDefaults
+        )
+        isDayNightRecoveryPending = false
     }
 
     /// Refreshes the selection immediately before removal UI is presented.
@@ -728,7 +977,8 @@ final class AppModel {
         do {
             try refreshActiveSelection()
             isSelectionStatusUnknown = false
-            return activeAerialAssetIDs.isDisjoint(with: wallpaperIDs)
+            let pending = try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+            return activeAerialAssetIDs.union(pending).isDisjoint(with: wallpaperIDs)
                 ? .verifiedInactive
                 : .verifiedActive
         } catch {
@@ -740,7 +990,9 @@ final class AppModel {
     func reportActiveWallpaperRemovalBlock() {
         activeAlert = AppAlert(
             title: "Can’t Remove Active Wallpaper",
-            message: AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription
+            message: isDayNightRecoveryPending
+                ? "These videos are protected while a Day/Night wallpaper change is unverified. Apply another wallpaper in AerialDrop, then try removing them."
+                : AerialDropError.activeWallpaperCannotBeRemoved.localizedDescription
         )
     }
 
@@ -750,13 +1002,20 @@ final class AppModel {
         for wallpaperIDs: Set<String>,
         allowingUnverifiedSelection: Bool
     ) throws {
+        let pending = try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+        guard pending.isDisjoint(with: wallpaperIDs) else {
+            throw AerialDropError.activeWallpaperCannotBeRemoved
+        }
         switch removalReadiness(for: wallpaperIDs) {
         case .verifiedInactive:
             return
         case .verifiedActive:
             throw AerialDropError.activeWallpaperCannotBeRemoved
         case .unknown:
-            guard allowingUnverifiedSelection else {
+            let pair = try manifestStore.dayNightPair()
+            guard allowingUnverifiedSelection,
+                  pair?.memberAssetIDs.isDisjoint(with: wallpaperIDs) != false,
+                  !rawAerialAssetIDs.contains(ManifestStore.dayNightSubcategoryID) else {
                 throw AerialDropError.wallpaperSelectionUnknownForRemoval
             }
         }
@@ -803,6 +1062,7 @@ final class AppModel {
         guard !isWorking else { return }
         isWorking = true
         operationLabel = "Restoring catalogue backup…"
+        let previousPair = try? manifestStore.dayNightPair()
         defer {
             isWorking = false
             operationLabel = nil
@@ -824,7 +1084,7 @@ final class AppModel {
             do {
                 try manifestStore.restoreBackup(info, protectingActiveAssetIDs: {
                     do {
-                        return try self.systemService.activeAerialAssetIDs()
+                        return try self.protectedAerialAssetIDs()
                     } catch {
                         self.isSelectionStatusUnknown = true
                         throw error
@@ -842,10 +1102,11 @@ final class AppModel {
                 default:
                     throw error
                 }
+                let message = preservePairAfterPartialMutation(previousPair, error: error)
                 await reload()
                 activeAlert = AppAlert(
                     title: attentionTitle,
-                    message: error.localizedDescription
+                    message: message
                 )
                 return
             }

@@ -677,6 +677,97 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(restoreBackup.content, preRestoreData)
     }
 
+    func testOrdinaryRemovalDetectsLateOrphanGroupAndRetainsMediaAndSafetyBackup() throws {
+        let id = "ORDINARY-LATE-ORPHAN"
+        try installFixtureWallpaper(id: id, title: "Ordinary")
+        let originalData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        var reads = 0
+
+        XCTAssertThrowsError(try store.removeWallpaper(id: id, protectingActiveAssetIDs: {
+            reads += 1
+            let installedIDs = Set(try self.store.importedWallpapers().map(\.id))
+            return installedIDs.contains(id) ? [] : [ManifestStore.dayNightSubcategoryID]
+        })) { error in
+            guard case AerialDropError.manifestMutationCommitted = error else {
+                return XCTFail("Expected manifestMutationCommitted, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(reads, 3)
+        XCTAssertFalse(try store.importedWallpapers().contains { $0.id == id })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: id).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: id).path))
+        let backupsAfter = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        let addedBackups = backupsAfter.subtracting(backupsBefore)
+        XCTAssertEqual(addedBackups.count, 1)
+        let backupName = try XCTUnwrap(addedBackups.first)
+        XCTAssertEqual(try Data(contentsOf: paths.backups.appending(path: backupName)), originalData)
+    }
+
+    func testOrdinaryRemoveAllBlocksOrphanGroupBeforeBackupOrWrite() throws {
+        let id = "ORDINARY-PREWRITE-ORPHAN"
+        try installFixtureWallpaper(id: id, title: "Ordinary")
+        let originalData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        var reads = 0
+
+        XCTAssertThrowsError(try store.removeAllManaged(protectingActiveAssetIDs: {
+            reads += 1
+            return [ManifestStore.dayNightSubcategoryID]
+        })) { error in
+            guard case AerialDropError.activeWallpaperCannotBeRemoved = error else {
+                return XCTFail("Expected activeWallpaperCannotBeRemoved, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), originalData)
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+            backupsBefore
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: id).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: id).path))
+    }
+
+    func testValidActivePairGroupPermitsRemovingUnrelatedOrdinaryWallpaper() throws {
+        let dayID = "PAIR-DAY"
+        let nightID = "PAIR-NIGHT"
+        let ordinaryID = "PAIR-UNRELATED-ORDINARY"
+        try installFixtureWallpaper(id: dayID, title: "Day")
+        try installFixtureWallpaper(id: nightID, title: "Night")
+        try installFixtureWallpaper(id: ordinaryID, title: "Ordinary")
+        let pair = DayNightWallpaperPair(dayAssetID: dayID, nightAssetID: nightID)
+        try store.configureDayNightPair(pair)
+        var reads = 0
+
+        try store.removeWallpaper(id: ordinaryID, protectingActiveAssetIDs: {
+            reads += 1
+            return [ManifestStore.dayNightSubcategoryID]
+        })
+
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(try store.dayNightPair(), pair)
+        XCTAssertEqual(Set(try store.importedWallpapers().map(\.id)), pair.memberAssetIDs)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.videoURL(for: ordinaryID).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: ordinaryID).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: dayID).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: nightID).path))
+    }
+
+    func testOrdinaryRemoveAllWithoutSelectionCallbackPreservesLegacyBehavior() throws {
+        let id = "ORDINARY-NO-CALLBACK"
+        try installFixtureWallpaper(id: id, title: "Ordinary")
+
+        try store.removeAllManaged()
+
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.videoURL(for: id).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: id).path))
+        XCTAssertEqual(try XCTUnwrap(store.latestBackup()).operation, "remove-all")
+    }
+
     private func installFixtureWallpaper(id: String, title: String, width: Int = 0, height: Int = 0) throws {
         try Data("video".utf8).write(to: paths.videoURL(for: id))
         try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: id))

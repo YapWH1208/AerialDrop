@@ -194,6 +194,8 @@ enum AerialDropError: LocalizedError {
     case dayNightUnavailable(String)
     case nativeWallpaperRefreshFailed(String)
     case wallpaperActivationInProgress
+    case dayNightPreferencesInvalid
+    case dayNightPreferencesWriteFailed
 
     var errorDescription: String? {
         switch self {
@@ -296,6 +298,10 @@ enum AerialDropError: LocalizedError {
             return "The wallpaper reload could not be verified. \(reason)"
         case .wallpaperActivationInProgress:
             return "Wait for the current wallpaper change to finish, then try again."
+        case .dayNightPreferencesInvalid:
+            return "The saved Day/Night settings could not be read. Apply another wallpaper before removing any videos."
+        case .dayNightPreferencesWriteFailed:
+            return "The Day/Night settings could not be saved. Your videos are kept; try applying again."
         }
     }
 }
