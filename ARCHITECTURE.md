@@ -60,3 +60,27 @@ before the agent; retire extensions started during that transition; then verify 
 fresh agent across two catalogue/selection checks. Lookup commands and restart
 polling are bounded. Failure keeps backups and cannot release pending member
 protection. The legacy best-effort refresh remains separate from this proof.
+
+`DayNightWallpaperDraft` persists the Library's editable role IDs through
+`AppPreferences`, independently of the registered manifest pair. Selecting a
+video saves only that draft; Apply validates support and media, persists a
+conservative member guard, registers the pair and requests Automatic activation.
+Status comes from decoded native selections, so a saved draft is not reported as
+active. Applying a paired member manually requests its fixed variant; applying
+an ordinary wallpaper replaces Automatic through the fresh reload barrier.
+
+Pending member protection survives relaunch and includes previous/new pair IDs
+until native activation succeeds. Clearing compares the expected member set or
+exact malformed snapshot before writing, preventing a concurrent recovery guard
+from being discarded. Preference flush/readback failures retain the conservative
+union or unknown state. Late catalogue removal/restore failures also retain
+previous/current pair protection after the on-disk roles disappear. Orphan group
+references and unknown pair protection cannot be bypassed by the ordinary
+unverified-removal acknowledgement. Supplied selection callbacks recheck
+ordinary removals too; partial failures retain media and expose the reloaded
+catalogue outcome.
+
+Automated fixtures and injected services verify these contracts without touching
+real wallpaper storage. They do not establish native custom-media rendering,
+natural solar transitions after quit, or lock/unlock playback. Those checks are
+tracked separately in `TESTING.md` and remain required runtime acceptance.

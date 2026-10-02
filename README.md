@@ -14,6 +14,7 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 - **Inline preview** — the Import pane shows the source with a live 16:9 crop mask, and crop, quality, and output resolution are tuned in place before importing.
 - **Controllable Library preview** — installed wallpapers loop in a native preview sheet with a visible Play/Pause control that respects Reduced Motion.
 - **In-app activation** — imported Aerials are applied across all Spaces and displays by default; Library also provides a manual Set as Wallpaper action and Active status.
+- **Native Day/Night pairs** — on supported macOS 27 systems, choose two distinct imports as Day and Night and explicitly apply native Automatic solar selection. This feature is unreleased; custom-media native playback acceptance is still pending.
 - **Maintenance tools** — validate the catalogue, open the storage folder, or remove all imported wallpapers.
 
 ## Requirements
@@ -21,6 +22,7 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 - macOS Tahoe 26 or later
 - Swift 6.2 or later with the macOS 26 SDK (Xcode)
 - Source videos: MP4 or MOV, H.264 or HEVC
+- Day/Night controls require macOS 27 or later and an observed `WallpaperAerialsExtension` build. The current allowlist contains only `313.0.4.401`; unfamiliar builds disable pair application. macOS 26 retains the single-wallpaper workflow.
 
 ## Installation
 
@@ -75,6 +77,12 @@ open -n dist/AerialDrop.app
 4. **Continue** — the focused completion summary replaces the configuration form and states whether the wallpaper was activated everywhere or installed without changing the desktop. Choose **View in Library** or **Import Another**.
 5. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
 
+On a supported macOS 27 system, expand **Day/Night Wallpaper** in Library and choose two different imported videos for **Day** and **Night**. Changing these selectors saves a draft. **Apply Day/Night Wallpaper** registers that pair and requests Automatic selection across all Spaces and displays. To select a fixed member, use that video's existing **Set as Wallpaper** action; applying an ordinary imported wallpaper replaces the active pair. Apply Day/Night again to return to Automatic.
+
+Automatic mode uses the native sun-position format and is intended to continue after AerialDrop quits. It follows solar position rather than Light/Dark appearance; exact transition times are not established. Custom-pair playback, natural switching after quit and lock/unlock remain unverified for this unreleased feature; see [TESTING.md](TESTING.md).
+
+If a wallpaper change cannot be verified, previous and new pair videos remain protected across relaunch. Retry **Apply Day/Night Wallpaper** or apply another imported wallpaper in AerialDrop. Protection clears only after a verified native reload; **Remove Anyway** cannot bypass it. The Library distinguishes saved choices from actual native Automatic or fixed-member selection.
+
 ### Maintenance menu
 
 - Open Aerial Storage Folder
@@ -91,6 +99,8 @@ The pipeline is: validate input → build an 80-second video-only composition �
 AerialDrop writes directly to Tahoe's private Aerial catalogue and restarts `WallpaperAgent` and `WallpaperAerialsExtension`. These data formats and processes are not a public API; a future macOS update may change the manifest schema and require an AerialDrop update.
 
 Every manifest write is backed up automatically first: backups live under `aerials/AerialDropBackups`. Linked-selection writes use separate binary-plist backups under `Store/AerialDropBackups` and refuse concurrent changes.
+
+Day/Night support is gated by the observed extension-build allowlist above. The Automatic fixture records Apple's observed native selection payload; it does not establish end-to-end solar playback for imported media. Apple may replace the downloaded catalogue during a system update, which can require reimporting or reapplying owned entries.
 
 ## Documentation
 

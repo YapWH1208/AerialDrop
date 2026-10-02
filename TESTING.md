@@ -8,7 +8,9 @@ whose license has been accepted, run `swift build`, `swift test`, and
 metadata, argument, and mocked-install checks, and
 `Scripts/check-docs-version.sh` for the website's release fallback. The installer
 smoke test uses a temporary directory and never contacts GitHub or installs into
-Applications.
+Applications. Wallpaper store and `AppModel` failure/relaunch/race tests use
+temporary home directories and test fixtures; they must never modify real
+wallpaper data.
 
 Run this matrix on macOS Tahoe 26 with at least one short and one longer MP4/MOV
 source. Use a separate test account for the setup-required checks; do not move or
@@ -209,25 +211,69 @@ Expected:
   asset. A recoverable binary backup exists under `Store/AerialDropBackups` for
   each activation attempt.
 
-## macOS 27 Day/Night contract capture
+## macOS 27 Day/Night native acceptance
 
-An observed macOS 27 Automatic solar selection is available in
-`Tests/AerialDropTests/Fixtures/MacOS27SolarAutomaticSelection.plist`, with its
-capture conditions and limits in the companion Markdown file. The Day/Night
-feature still requires native runtime acceptance. The developer capture tool
-below is read-only; it does not enable switching or change the current wallpaper.
+The Day/Night feature is unreleased. A controlled experiment with the captured
+native Apple fixture manually rendered Day, Night, and Automatic, then restored
+the prior system selection. This confirms the observed Apple selection contract;
+it does not establish custom imported-pair playback. The fixture
+`Tests/AerialDropTests/Fixtures/MacOS27SolarAutomaticSelection.plist` and its
+companion note record an observed native Automatic solar selection contract.
+That validates the captured Apple selection format; it does not establish that
+custom imported pairs follow the solar schedule or play correctly through
+lock/unlock. Complete this acceptance matrix on a disposable macOS 27 account
+with an allowlisted `WallpaperAerialsExtension` build (currently only
+`313.0.4.401`) and nonpersonal test videos. Use the default installed catalogue
+through the app's owned-entry writer. Do not enable native catalogue override
+preferences or simulate solar changes with Light/Dark appearance or a clock
+change. Arrange intended Spaces/displays before taking a recovery baseline.
 
-Use a disposable macOS 27 test account with nonpersonal test videos. Select a
-combined native Aerial and its **Automatic** option in System Settings. A combined
-Light/Dark wallpaper can establish the selection payload, but it does not prove
-solar switching. The shipped macOS 27.0.1 catalogue has no solar variants; the
-[native solar grouping research](https://gist.github.com/pdfux/5659724021e584313c00b843312e909d)
-is a starting point for a controlled test catalogue, not an AerialDrop feature or
-an approved production format. Keep any catalogue override and its original
-preference values confined to that test account, and restore them after testing.
+1. Disable **Set as wallpaper after importing**, then import two visibly
+   different test videos. In Library, choose them in the Day/Night selectors.
+   Confirm distinct imported IDs and persisted draft choices after relaunch.
+   Saving choices must leave the catalogue and native selection unchanged;
+   editing a draft must not alter any previously registered pair.
+2. Choose **Apply Day/Night Wallpaper**. Confirm the default installed catalogue
+   contains the owned combined group with the exact member IDs and Day
+   `+35/180` and Night `-35/180` solar anchors. Each global/system-default and
+   intended Space target must store that group ID with Automatic variant
+   options. Verify unrelated catalogue/store data is preserved and the strict
+   refresh establishes fresh trusted native actors. Confirm actual playback,
+   then relaunch and check saved choices versus actual Automatic status.
+3. Use the Day video's **Set as Wallpaper**, then the Night video's action.
+   Confirm each visibly renders/plays and stores its member ID with matching
+   fixed variant options. Use **Apply Day/Night Wallpaper** to return to
+   Automatic. Where native System Settings exposes the group, also check its
+   Day, Night and Automatic choices and the app's external-selection refresh.
+4. With Automatic active, quit AerialDrop and wait for a real natural solar
+   transition. Confirm macOS changes between the two imported videos without
+   AerialDrop running. Reopen the app and confirm it reports the current pair
+   and mode accurately.
+5. Repeat Automatic playback with multiple Spaces and displays. Lock and unlock
+   several times, inspect the lock screen and desktop playback, and check the
+   `WallpaperAerialsExtension` log for `VideoSampleReadingErrors Code=4`.
+6. Use isolated tests for malformed data, preference failures and post-write
+   selection races; never corrupt real wallpaper stores to simulate failure.
+   In the test account, check external selection changes and any naturally
+   occurring activation failure. Pending protection must survive relaunch and
+   block removal of all previous/new members, including Remove Anyway. A fresh
+   ordinary wallpaper apply recovers the pending state. Failed changes retain
+   media and catalogue/selection backups and must not automatically overwrite
+   newer native state. Verify the Library reports actual partial outcomes.
+7. On macOS 26, confirm the existing single-wallpaper activation path still
+   works and Day/Night application is unavailable. Use injected capability
+   tests for any non-allowlisted build, including newer builds; pair application
+   must be gated with a clear explanation while ordinary single activation
+   remains available. Never modify an installed system extension for this test.
+8. Check Library Day/Night menus, Apply, fixed-member actions, and pending/
+   recovery messages with keyboard navigation and VoiceOver. Confirm previews
+   distinguish the two members and communicate their Day/Night roles.
 
-Copy the test account's `Index.plist` to a temporary location, then run the helper
-from the repository root with explicit input and a new output file:
+The following capture helper is read-only. It does not enable switching, alter
+preferences, or change the current wallpaper. Use it only to make a minimized
+fixture from a native selection already captured in the disposable test account.
+Copy the test account's `Index.plist` to a temporary location, then run the
+helper from the repository root with explicit input and a new output file:
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -245,13 +291,13 @@ non-Automatic selections, extra unknown payload fields, symlink/nonregular input
 and existing output files. It does not infer the selected group identifier from
 the catalogue or manufacture an Automatic payload.
 
-Record the OS version/build and the selected test subcategory's ID,
-`representativeAssetID`, member IDs, and `variant.solar` anchors in a companion
-note. These references must establish whether the captured `assetID` names the
-subcategory, representative, or another member. Omit personal titles and paths.
-Capture again after a natural solar transition with AerialDrop closed, and verify
-native lock/unlock playback and every intended Space/display. A synthetic plist
-test or a matching stored ID alone does not establish those runtime results.
+For contract updates, record the OS version/build and selected test subcategory's
+ID, `representativeAssetID`, member IDs, and `variant.solar` anchors in a
+companion note. Establish whether the captured `assetID` names the subcategory,
+representative, or another member. Omit personal titles and paths. Capture after
+a natural solar transition with AerialDrop closed. A matching stored ID or
+successful fixture parse alone does not establish imported-pair playback; the
+manual acceptance matrix above remains required.
 
 Run `bash Scripts/test-dynamic-aerial-fixture.sh` for the helper's offline
 validation and privacy checks. Its inputs are synthetic test cases, not captured
