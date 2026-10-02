@@ -191,6 +191,9 @@ enum AerialDropError: LocalizedError {
     case manifestMutationSuperseded(String)
     case manifestMutationOutcomeUnknown(String)
     case dayNightPairChangeRequiresProtection
+    case dayNightUnavailable(String)
+    case nativeWallpaperRefreshFailed(String)
+    case wallpaperActivationInProgress
 
     var errorDescription: String? {
         switch self {
@@ -287,6 +290,12 @@ enum AerialDropError: LocalizedError {
             return "Video cleanup stopped because the current catalogue could not be checked. Your files and backup were kept. \(reason)"
         case .dayNightPairChangeRequiresProtection:
             return "The previous Day/Night videos must be protected until the new wallpaper is verified. Try applying the wallpaper again."
+        case .dayNightUnavailable(let reason):
+            return reason
+        case .nativeWallpaperRefreshFailed(let reason):
+            return "The wallpaper reload could not be verified. \(reason)"
+        case .wallpaperActivationInProgress:
+            return "Wait for the current wallpaper change to finish, then try again."
         }
     }
 }

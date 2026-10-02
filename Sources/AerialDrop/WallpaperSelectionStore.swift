@@ -12,7 +12,7 @@ struct WallpaperSelectionStore {
     private static let spacesKey = "Spaces"
     private static let defaultKey = "Default"
 
-    private let paths: WallpaperPaths
+    let paths: WallpaperPaths
     private let fileManager: FileManager
     private let now: () -> Date
     private let beforeCompare: () throws -> Void
@@ -32,36 +32,51 @@ struct WallpaperSelectionStore {
         self.afterWrite = afterWrite
     }
 
-    /// Returns native Aerial IDs configured in the global, system-default, and
-    /// existing per-Space selections. Non-Aerial selections are ignored.
+    /// Raw configuration references, without expanding manifest group members.
+    /// Unfamiliar option payloads cannot hide references from removal protection.
     func activeAerialAssetIDs() throws -> Set<String> {
-        let root = try root(from: try selectionStoreData())
-        return Set(try targetSelections(in: root).flatMap { try aerialAssetIDs(in: $0) })
+        try inspectAerialSelections().rawAssetIDs
     }
 
-    /// Verifies each selection target, rather than combining their IDs. Targets
-    /// present when activation began must still exist after the system refresh.
+    func inspectAerialSelections() throws -> AerialSelectionInspection {
+        try inspectAerialSelections(in: root(from: selectionStoreData()))
+    }
+
     func verifyAerialSelection(assetID: String, requiringSpaceIDs: Set<String> = []) throws {
-        let root = try root(from: try selectionStoreData())
-        try verifyAerialSelection(assetID: assetID, in: root, requiringSpaceIDs: requiringSpaceIDs)
+        try verifySelection(.single(assetID: assetID), requiringSpaceIDs: requiringSpaceIDs)
     }
 
-    /// Replaces every linked selection target with the fixture-locked native
-    /// Aerial form, preserving every other property-list value in the store.
-    /// Returns the per-Space targets to verify again after the system refresh.
+    /// Verifies identity and exact decoded options independently for every target.
+    func verifySelection(
+        _ selection: AerialSelectionRequest,
+        requiringSpaceIDs: Set<String> = []
+    ) throws {
+        let root = try root(from: try selectionStoreData())
+        try verifySelection(selection, in: root, requiringSpaceIDs: requiringSpaceIDs)
+    }
+
     @discardableResult
     func apply(assetID: String) throws -> Set<String> {
-        guard UUID(uuidString: assetID) != nil else {
-            throw AerialDropError.malformedWallpaperSelectionStore("asset ID is not a UUID")
-        }
+        try apply(.single(assetID: assetID))
+    }
 
+    /// Checks that the current store can safely accept this request, without
+    /// invoking mutation hooks, creating a backup, or writing either store.
+    /// Existing selections need not already use the Aerial provider.
+    func validateForApplying(_ selection: AerialSelectionRequest) throws {
+        try validateIdentity(of: selection)
+        let originalRoot = try root(from: try selectionStoreData())
+        _ = try preparedApplication(selection, to: originalRoot)
+    }
+
+    /// Replaces linked targets while retaining unrelated plist values and the
+    /// independent backup/compare-before-write contract.
+    @discardableResult
+    func apply(_ selection: AerialSelectionRequest) throws -> Set<String> {
+        try validateIdentity(of: selection)
         let originalData = try selectionStoreData()
         let originalRoot = try root(from: originalData)
-        let candidateRoot = try applying(assetID: assetID, to: originalRoot)
-        let requiredSpaceIDs = try defaultSpaceIDs(in: originalRoot)
-        try validatePreservation(from: originalRoot, to: candidateRoot)
-        let candidateData = try propertyListData(from: candidateRoot)
-        _ = try root(from: candidateData)
+        let (candidateData, requiredSpaceIDs) = try preparedApplication(selection, to: originalRoot)
 
         try beforeCompare()
         let latestData = try selectionStoreData()
@@ -75,32 +90,78 @@ struct WallpaperSelectionStore {
 
         let writtenRoot = try root(from: try selectionStoreData())
         try validatePreservation(from: originalRoot, to: writtenRoot)
-        try verifyAerialSelection(assetID: assetID, in: writtenRoot, requiringSpaceIDs: requiredSpaceIDs)
+        try verifySelection(selection, in: writtenRoot, requiringSpaceIDs: requiredSpaceIDs)
         return requiredSpaceIDs
     }
 
-    private func verifyAerialSelection(
-        assetID: String,
+    private func validateIdentity(of selection: AerialSelectionRequest) throws {
+        guard UUID(uuidString: selection.assetID) != nil else {
+            throw AerialDropError.malformedWallpaperSelectionStore("asset ID is not a UUID")
+        }
+    }
+
+    private func preparedApplication(
+        _ selection: AerialSelectionRequest,
+        to originalRoot: [String: Any]
+    ) throws -> (Data, Set<String>) {
+        let candidateRoot = try applying(selection, to: originalRoot)
+        let requiredSpaceIDs = try defaultSpaceIDs(in: originalRoot)
+        try validatePreservation(from: originalRoot, to: candidateRoot)
+        let candidateData = try propertyListData(from: candidateRoot)
+        let decodedCandidate = try root(from: candidateData)
+        try verifySelection(selection, in: decodedCandidate, requiringSpaceIDs: requiredSpaceIDs)
+        return (candidateData, requiredSpaceIDs)
+    }
+
+    private func verifySelection(
+        _ selection: AerialSelectionRequest,
         in root: [String: Any],
         requiringSpaceIDs: Set<String>
     ) throws {
-        guard try requiringSpaceIDs.isSubset(of: defaultSpaceIDs(in: root)) else {
-            throw AerialDropError.wallpaperSelectionVerificationFailed(assetID)
+        guard try requiringSpaceIDs.isSubset(of: defaultSpaceIDs(in: root)),
+              try inspectAerialSelections(in: root).matches(selection) else {
+            throw AerialDropError.wallpaperSelectionVerificationFailed(selection.assetID)
         }
-        for selection in try targetSelections(in: root) {
-            guard selection["Type"] as? String == "linked",
-                  let linked = selection["Linked"] as? [String: Any],
-                  let content = linked["Content"] as? [String: Any],
-                  content["Shuffle"] as? String == "$null",
-                  let choices = content["Choices"] as? [[String: Any]],
-                  choices.count == 1,
-                  let choice = choices.first,
-                  choice["Provider"] as? String == Self.aerialProvider,
-                  let files = choice["Files"] as? [Any], files.isEmpty,
-                  try aerialAssetIDs(in: selection) == Set([assetID]) else {
-                throw AerialDropError.wallpaperSelectionVerificationFailed(assetID)
-            }
+    }
+
+    private func inspectAerialSelections(in root: [String: Any]) throws -> AerialSelectionInspection {
+        let targets = try targetSelections(in: root).map { target, selection in
+            AerialTargetSelection(
+                target: target,
+                rawAssetIDs: try aerialAssetIDs(in: selection),
+                recognizedSelection: recognizedSelection(in: selection)
+            )
         }
+        return AerialSelectionInspection(targets: targets)
+    }
+
+    /// Unknown options are observable without discarding raw configuration IDs.
+    /// Exact semantic comparison prevents accepting a group in a fixed mode.
+    private func recognizedSelection(in selection: [String: Any]) -> AerialSelectionRequest? {
+        guard selection["Type"] as? String == "linked",
+              let linked = selection["Linked"] as? [String: Any],
+              let content = linked["Content"] as? [String: Any],
+              content["Shuffle"] as? String == "$null",
+              let choices = content["Choices"] as? [[String: Any]], choices.count == 1,
+              let choice = choices.first,
+              choice["Provider"] as? String == Self.aerialProvider,
+              let files = choice["Files"] as? [Any], files.isEmpty,
+              let configurationData = choice["Configuration"] as? Data,
+              let configuration = try? root(from: configurationData),
+              configuration.count == 1,
+              let assetID = configuration["assetID"] as? String,
+              UUID(uuidString: assetID) != nil,
+              let optionsData = content["EncodedOptionValues"] as? Data,
+              let options = try? root(from: optionsData) else { return nil }
+
+        for request in [
+            AerialSelectionRequest.single(assetID: assetID),
+            .fixedVariant(assetID: assetID),
+            .automatic(groupID: assetID)
+        ] where propertyListValuesEqual(options, optionValues(for: request)) {
+            return request
+        }
+        return nil
     }
 
     private func defaultSpaceIDs(in root: [String: Any]) throws -> Set<String> {
@@ -115,17 +176,17 @@ struct WallpaperSelectionStore {
         })
     }
 
-    private func applying(assetID: String, to root: [String: Any]) throws -> [String: Any] {
+    private func applying(_ request: AerialSelectionRequest, to root: [String: Any]) throws -> [String: Any] {
         let timestamp = now()
         var candidate = root
         candidate[Self.allSpacesAndDisplaysKey] = try replacingSelection(
             try requiredSelection(named: Self.allSpacesAndDisplaysKey, in: root),
-            assetID: assetID,
+            request: request,
             timestamp: timestamp
         )
         candidate[Self.systemDefaultKey] = try replacingSelection(
             try requiredSelection(named: Self.systemDefaultKey, in: root),
-            assetID: assetID,
+            request: request,
             timestamp: timestamp
         )
 
@@ -142,22 +203,22 @@ struct WallpaperSelectionStore {
             guard let selection = defaultSelection as? [String: Any] else {
                 throw AerialDropError.malformedWallpaperSelectionStore("Space '\(spaceID)' Default is not a dictionary")
             }
-            space[Self.defaultKey] = try replacingSelection(selection, assetID: assetID, timestamp: timestamp)
+            space[Self.defaultKey] = try replacingSelection(selection, request: request, timestamp: timestamp)
             spaces[spaceID] = space
         }
         candidate[Self.spacesKey] = spaces
         return candidate
     }
 
-    private func targetSelections(in root: [String: Any]) throws -> [[String: Any]] {
-        var selections = [
-            try requiredSelection(named: Self.allSpacesAndDisplaysKey, in: root),
-            try requiredSelection(named: Self.systemDefaultKey, in: root)
+    private func targetSelections(in root: [String: Any]) throws -> [(AerialSelectionTarget, [String: Any])] {
+        var selections: [(AerialSelectionTarget, [String: Any])] = [
+            (.allSpacesAndDisplays, try requiredSelection(named: Self.allSpacesAndDisplaysKey, in: root)),
+            (.systemDefault, try requiredSelection(named: Self.systemDefaultKey, in: root))
         ]
         guard let spaces = root[Self.spacesKey] as? [String: Any] else {
             throw AerialDropError.malformedWallpaperSelectionStore("missing top-level Spaces dictionary")
         }
-        for (spaceID, value) in spaces {
+        for (spaceID, value) in spaces.sorted(by: { $0.key < $1.key }) {
             guard let space = value as? [String: Any] else {
                 throw AerialDropError.malformedWallpaperSelectionStore("Space '\(spaceID)' is not a dictionary")
             }
@@ -167,7 +228,7 @@ struct WallpaperSelectionStore {
             guard let selection = defaultSelection as? [String: Any] else {
                 throw AerialDropError.malformedWallpaperSelectionStore("Space '\(spaceID)' Default is not a dictionary")
             }
-            selections.append(selection)
+            selections.append((.space(spaceID), selection))
         }
         return selections
     }
@@ -181,21 +242,19 @@ struct WallpaperSelectionStore {
 
     private func replacingSelection(
         _ original: [String: Any],
-        assetID: String,
+        request: AerialSelectionRequest,
         timestamp: Date
     ) throws -> [String: Any] {
         var replacement = original
         replacement["Type"] = "linked"
-        replacement["Linked"] = try linkedSelection(assetID: assetID, timestamp: timestamp)
+        replacement["Linked"] = try linkedSelection(request, timestamp: timestamp)
         return replacement
     }
 
-    /// This is the exact sanitized Tahoe fixture shape: one native Aerial
-    /// choice, an `assetID` configuration plist, empty encoded options, and
-    /// the `$null` shuffle marker. Only the asset ID and timestamps vary.
-    private func linkedSelection(assetID: String, timestamp: Date) throws -> [String: Any] {
-        let configuration = try propertyListData(from: ["assetID": assetID])
-        let options = try propertyListData(from: ["values": [String: Any]()])
+    /// Fixture-locked Tahoe and observed macOS 27 variant option payloads.
+    private func linkedSelection(_ request: AerialSelectionRequest, timestamp: Date) throws -> [String: Any] {
+        let configuration = try propertyListData(from: ["assetID": request.assetID])
+        let options = try propertyListData(from: optionValues(for: request))
         return [
             "Content": [
                 "Choices": [[
@@ -209,6 +268,17 @@ struct WallpaperSelectionStore {
             "LastSet": timestamp,
             "LastUse": timestamp
         ]
+    }
+
+    private func optionValues(for request: AerialSelectionRequest) -> [String: Any] {
+        switch request {
+        case .single:
+            return ["values": [String: Any]()]
+        case .fixedVariant(let assetID):
+            return ["values": ["aerialVariant": ["picker": ["_0": ["id": assetID]]]]]
+        case .automatic:
+            return ["values": ["aerialVariant": ["picker": ["_0": ["id": "automatic"]]]]]
+        }
     }
 
     /// Returns the Aerial asset IDs referenced by a linked selection. A
@@ -230,11 +300,10 @@ struct WallpaperSelectionStore {
                 throw AerialDropError.malformedWallpaperSelectionStore("native Aerial choice is missing Configuration")
             }
             let decodedConfiguration = try root(from: configuration)
-            guard decodedConfiguration.count == 1,
-                  let assetID = decodedConfiguration["assetID"] as? String,
+            guard let assetID = decodedConfiguration["assetID"] as? String,
                   UUID(uuidString: assetID) != nil
             else {
-                throw AerialDropError.malformedWallpaperSelectionStore("native Aerial Configuration does not contain exactly one UUID assetID")
+                throw AerialDropError.malformedWallpaperSelectionStore("native Aerial Configuration does not contain a UUID assetID")
             }
             assetIDs.insert(assetID)
         }

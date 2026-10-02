@@ -44,3 +44,19 @@ again after the catalogue write; a late selection change retains media and the
 safety backup and reports the partial outcome. Replacing a registered pair
 requires the caller to persist protection for its previous and new members until
 a fresh native activation is verified, since native services can cache old roles.
+
+`AerialSelectionRequest` separates ordinary single selection, fixed Day/Night
+member selection, and Automatic group selection. `WallpaperSelectionStore`
+checks each target's decoded configuration and variant options; raw configuration
+references remain visible even when the options are unfamiliar. Its nonmutating
+preflight checks target topology and preservation before registering a pair.
+
+Day/Night creation is enabled only on macOS 27+ with an observed Aerial extension
+build (initially `313.0.4.401`), a valid catalogue and supported selection topology.
+Unrecognized builds retain the ordinary single-wallpaper path. Typed activation
+uses a strict reload barrier: identify current-user native processes by executable,
+kernel start time and launchd membership; terminate the exact Aerials processes
+before the agent; retire extensions started during that transition; then verify a
+fresh agent across two catalogue/selection checks. Lookup commands and restart
+polling are bounded. Failure keeps backups and cannot release pending member
+protection. The legacy best-effort refresh remains separate from this proof.

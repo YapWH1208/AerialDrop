@@ -337,6 +337,256 @@ final class WallpaperSelectionStoreTests: XCTestCase {
         }
     }
 
+    func testAutomaticWriterMatchesObservedNativeOptionsAndEveryTarget() throws {
+        let fixtureURL = try XCTUnwrap(Bundle.module.url(
+            forResource: "MacOS27SolarAutomaticSelection", withExtension: "plist", subdirectory: "Fixtures"
+        ))
+        let fixture = try propertyListRoot(at: fixtureURL)
+        let linked = try XCTUnwrap(fixture["Linked"] as? [String: Any])
+        let content = try XCTUnwrap(linked["Content"] as? [String: Any])
+        let choice = try XCTUnwrap((content["Choices"] as? [[String: Any]])?.first)
+        let fixtureConfiguration = try propertyListRoot(from: XCTUnwrap(choice["Configuration"] as? Data))
+        let groupID = try XCTUnwrap(fixtureConfiguration["assetID"] as? String)
+        let request = AerialSelectionRequest.automatic(groupID: groupID)
+        let original = try propertyListRoot(at: paths.selectionStore)
+        let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
+
+        let required = try store.apply(request)
+        try store.verifySelection(request, requiringSpaceIDs: required)
+        let inspection = try store.inspectAerialSelections()
+        XCTAssertTrue(inspection.matches(request))
+        XCTAssertEqual(inspection.rawAssetIDs, [groupID])
+        XCTAssertEqual(inspection.targets.map(\.target), [
+            .allSpacesAndDisplays, .systemDefault, .space("space-one"), .space("space-two")
+        ])
+        let written = try propertyListRoot(at: paths.selectionStore)
+        try validateSelectionPayload(in: written, at: ["AllSpacesAndDisplays"], equals: fixture)
+        XCTAssertTrue(propertyListValuesEqual(try XCTUnwrap(original["Foreign"]), try XCTUnwrap(written["Foreign"])))
+    }
+
+    func testFixedVariantAndLegacySingleHaveDistinctExactOptions() throws {
+        let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
+        for request in [AerialSelectionRequest.fixedVariant(assetID: targetID), .single(assetID: targetID)] {
+            try store.apply(request)
+            XCTAssertTrue(try store.inspectAerialSelections().matches(request))
+            try store.verifySelection(request)
+            let root = try propertyListRoot(at: paths.selectionStore)
+            let selection = try XCTUnwrap(root["AllSpacesAndDisplays"] as? [String: Any])
+            let content = try XCTUnwrap((selection["Linked"] as? [String: Any])?["Content"] as? [String: Any])
+            let options = try propertyListRoot(from: XCTUnwrap(content["EncodedOptionValues"] as? Data))
+            let expected: [String: Any] = request == .single(assetID: targetID)
+                ? ["values": [String: Any]()]
+                : ["values": ["aerialVariant": ["picker": ["_0": ["id": targetID]]]]]
+            XCTAssertTrue(propertyListValuesEqual(options, expected))
+        }
+        try store.apply(.fixedVariant(assetID: targetID))
+        XCTAssertThrowsError(try store.verifyAerialSelection(assetID: targetID))
+        try store.apply(assetID: targetID)
+        try store.verifyAerialSelection(assetID: targetID)
+    }
+
+    func testOptionMismatchOnAnyTargetFailsWhileRawIDsRemainVisible() throws {
+        let store = WallpaperSelectionStore(paths: paths, now: { self.fixedDate })
+        let request = AerialSelectionRequest.automatic(groupID: targetID)
+        try store.apply(request)
+        let applied = try propertyListRoot(at: paths.selectionStore)
+        let backups = Set(try FileManager.default.contentsOfDirectory(atPath: paths.selectionBackups.path))
+        let optionMutations: [(String, Any?)] = [
+            ("missing", nil),
+            ("wrong-type", "automatic"),
+            ("invalid-plist", Data("invalid".utf8)),
+            ("empty-values", try propertyListData(["values": [String: Any]()])),
+            ("fixed-member", try propertyListData(["values": ["aerialVariant": ["picker": ["_0": ["id": targetID]]]]])),
+            ("wrong-picker", try propertyListData(["values": ["aerialVariant": ["picker": ["_0": ["id": alternateID]]]]])),
+            ("extra-value", try propertyListData(["values": ["aerialVariant": ["picker": ["_0": ["id": "automatic"]]], "foreign": true]])),
+            ("extra-root", try propertyListData(["values": ["aerialVariant": ["picker": ["_0": ["id": "automatic"]]]], "foreign": true]))
+        ]
+        for path in [["AllSpacesAndDisplays"], ["SystemDefault"], ["Spaces", "space-one", "Default"], ["Spaces", "space-two", "Default"]] {
+            for (name, value) in optionMutations {
+                let changed = try mutatingDictionary(in: applied, at: path) { selection in
+                    var linked = try XCTUnwrap(selection["Linked"] as? [String: Any])
+                    var content = try XCTUnwrap(linked["Content"] as? [String: Any])
+                    content["EncodedOptionValues"] = value
+                    linked["Content"] = content
+                    selection["Linked"] = linked
+                }
+                let data = try propertyListData(changed)
+                try data.write(to: paths.selectionStore, options: .atomic)
+                let inspection = try store.inspectAerialSelections()
+                XCTAssertEqual(inspection.rawAssetIDs, [targetID], name)
+                XCTAssertFalse(inspection.matches(request), name)
+                XCTAssertThrowsError(try store.verifySelection(request), name)
+                XCTAssertEqual(try Data(contentsOf: paths.selectionStore), data)
+                XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: paths.selectionBackups.path)), backups)
+            }
+        }
+    }
+
+    func testInspectionRetainsMultipleReferencesWithUnsupportedOptionsAndConfiguration() throws {
+        var root = try propertyListRoot(at: paths.selectionStore)
+        root = try mutatingDictionary(in: root, at: ["SystemDefault"]) { selection in
+            var linked = try XCTUnwrap(selection["Linked"] as? [String: Any])
+            var content = try XCTUnwrap(linked["Content"] as? [String: Any])
+            var choices = try XCTUnwrap(content["Choices"] as? [[String: Any]])
+            choices[0]["Configuration"] = try propertyListData(["assetID": targetID, "future-key": true])
+            var second = choices[0]
+            second["Configuration"] = try propertyListData(["assetID": alternateID])
+            choices.append(second)
+            content["Choices"] = choices
+            content["EncodedOptionValues"] = Data("unsupported".utf8)
+            linked["Content"] = content
+            selection["Linked"] = linked
+        }
+        try propertyListData(root).write(to: paths.selectionStore, options: .atomic)
+        let store = WallpaperSelectionStore(paths: paths)
+        let inspection = try store.inspectAerialSelections()
+        let target = try XCTUnwrap(inspection.targets.first { $0.target == .systemDefault })
+        XCTAssertEqual(target.rawAssetIDs, [targetID, alternateID])
+        XCTAssertNil(target.recognizedSelection)
+        XCTAssertEqual(inspection.rawAssetIDs, [targetID, alternateID, "00000000-0000-0000-0000-000000000001"])
+    }
+
+    func testCanonicalRecognitionRejectsExtraConfigurationFieldsWithoutLosingReference() throws {
+        let store = WallpaperSelectionStore(paths: paths)
+        let request = AerialSelectionRequest.automatic(groupID: targetID)
+        try store.apply(request)
+        let applied = try propertyListRoot(at: paths.selectionStore)
+        let changed = try mutatingDictionary(in: applied, at: ["SystemDefault"]) { selection in
+            var linked = try XCTUnwrap(selection["Linked"] as? [String: Any])
+            var content = try XCTUnwrap(linked["Content"] as? [String: Any])
+            var choices = try XCTUnwrap(content["Choices"] as? [[String: Any]])
+            choices[0]["Configuration"] = try propertyListData(["assetID": targetID, "future-key": true])
+            content["Choices"] = choices
+            linked["Content"] = content
+            selection["Linked"] = linked
+        }
+        try propertyListData(changed).write(to: paths.selectionStore, options: .atomic)
+        let target = try XCTUnwrap(store.inspectAerialSelections().targets.first { $0.target == .systemDefault })
+        XCTAssertEqual(target.rawAssetIDs, [targetID])
+        XCTAssertNil(target.recognizedSelection)
+        XCTAssertThrowsError(try store.verifySelection(request))
+    }
+
+    func testAutomaticApplyKeepsBackupsAndRefusesConcurrentSelectionChanges() throws {
+        let request = AerialSelectionRequest.automatic(groupID: targetID)
+        let original = try Data(contentsOf: paths.selectionStore)
+        var concurrentRoot = try propertyListRoot(from: original)
+        concurrentRoot["ForeignMutation"] = true
+        let concurrent = try propertyListData(concurrentRoot)
+        let racingStore = WallpaperSelectionStore(paths: paths, beforeCompare: {
+            try concurrent.write(to: self.paths.selectionStore, options: .atomic)
+        })
+        XCTAssertThrowsError(try racingStore.apply(request))
+        XCTAssertEqual(try Data(contentsOf: paths.selectionStore), concurrent)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.selectionBackups.path))
+
+        try original.write(to: paths.selectionStore, options: .atomic)
+        let postWriteStore = WallpaperSelectionStore(paths: paths, afterWrite: {
+            try concurrent.write(to: self.paths.selectionStore, options: .atomic)
+        })
+        XCTAssertThrowsError(try postWriteStore.apply(request))
+        XCTAssertEqual(try Data(contentsOf: paths.selectionStore), concurrent)
+        let backups = try FileManager.default.contentsOfDirectory(at: paths.selectionBackups, includingPropertiesForKeys: nil)
+        XCTAssertEqual(backups.count, 1)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(backups.first)), original)
+    }
+
+    func testTypedWriterRejectsInvalidIdentityBeforeBackupOrWrite() throws {
+        let store = WallpaperSelectionStore(paths: paths)
+        let original = try Data(contentsOf: paths.selectionStore)
+        for request in [AerialSelectionRequest.automatic(groupID: "invalid"), .fixedVariant(assetID: "invalid")] {
+            XCTAssertThrowsError(try store.apply(request))
+        }
+        XCTAssertEqual(try Data(contentsOf: paths.selectionStore), original)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.selectionBackups.path))
+    }
+
+    func testApplyPreflightDoesNotWriteBackupOrInvokeMutationHooks() throws {
+        let original = try Data(contentsOf: paths.selectionStore)
+        var hookCalls = 0
+        let store = WallpaperSelectionStore(paths: paths, beforeCompare: {
+            hookCalls += 1
+        }, afterWrite: {
+            hookCalls += 1
+        })
+        for request in [AerialSelectionRequest.single(assetID: targetID), .fixedVariant(assetID: targetID), .automatic(groupID: targetID)] {
+            try store.validateForApplying(request)
+        }
+        XCTAssertEqual(hookCalls, 0)
+        XCTAssertEqual(try Data(contentsOf: paths.selectionStore), original)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.selectionBackups.path))
+    }
+
+    func testApplyPreflightRejectsInvalidIdentityAndTargetTopologyWithoutWriting() throws {
+        let original = try propertyListRoot(at: paths.selectionStore)
+        let store = WallpaperSelectionStore(paths: paths)
+        var candidates: [[String: Any]] = []
+        for key in ["AllSpacesAndDisplays", "SystemDefault", "Spaces"] {
+            var candidate = original
+            candidate.removeValue(forKey: key)
+            candidates.append(candidate)
+        }
+        var malformedSpace = original
+        malformedSpace["Spaces"] = ["bad-space": "invalid"]
+        candidates.append(malformedSpace)
+        var malformedDefault = original
+        malformedDefault["Spaces"] = ["bad-space": ["Default": "invalid"]]
+        candidates.append(malformedDefault)
+        for candidate in candidates {
+            let data = try propertyListData(candidate)
+            try data.write(to: paths.selectionStore, options: .atomic)
+            XCTAssertThrowsError(try store.validateForApplying(.automatic(groupID: targetID)))
+            XCTAssertEqual(try Data(contentsOf: paths.selectionStore), data)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: paths.selectionBackups.path))
+        }
+        let originalData = try propertyListData(original)
+        try originalData.write(to: paths.selectionStore, options: .atomic)
+        XCTAssertThrowsError(try store.validateForApplying(.automatic(groupID: "invalid")))
+        XCTAssertEqual(try Data(contentsOf: paths.selectionStore), originalData)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.selectionBackups.path))
+    }
+
+    func testApplyPreflightAllowsCurrentNonAerialTargets() throws {
+        var root = try propertyListRoot(at: paths.selectionStore)
+        for path in [["AllSpacesAndDisplays"], ["SystemDefault"], ["Spaces", "space-one", "Default"], ["Spaces", "space-two", "Default"]] {
+            root = try mutatingDictionary(in: root, at: path) { selection in
+                selection["Type"] = "individual"
+                selection.removeValue(forKey: "Linked")
+                selection["Individual"] = ["Provider": "com.apple.wallpaper.choice.image"]
+            }
+        }
+        let data = try propertyListData(root)
+        try data.write(to: paths.selectionStore, options: .atomic)
+        let store = WallpaperSelectionStore(paths: paths)
+        try store.validateForApplying(.automatic(groupID: targetID))
+        XCTAssertEqual(try Data(contentsOf: paths.selectionStore), data)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.selectionBackups.path))
+    }
+
+    private func validateSelectionPayload(
+        in root: [String: Any], at path: [String], equals expected: [String: Any]
+    ) throws {
+        var value: Any = root
+        for key in path { value = try XCTUnwrap((value as? [String: Any])?[key]) }
+        let selection = try XCTUnwrap(value as? [String: Any])
+        let content = try XCTUnwrap((selection["Linked"] as? [String: Any])?["Content"] as? [String: Any])
+        let expectedContent = try XCTUnwrap((expected["Linked"] as? [String: Any])?["Content"] as? [String: Any])
+        XCTAssertEqual(selection["Type"] as? String, expected["Type"] as? String)
+        XCTAssertEqual(content["Shuffle"] as? String, expectedContent["Shuffle"] as? String)
+        XCTAssertTrue(propertyListValuesEqual(
+            try propertyListRoot(from: XCTUnwrap(content["EncodedOptionValues"] as? Data)),
+            try propertyListRoot(from: XCTUnwrap(expectedContent["EncodedOptionValues"] as? Data))
+        ))
+        let choice = try XCTUnwrap((content["Choices"] as? [[String: Any]])?.first)
+        let expectedChoice = try XCTUnwrap((expectedContent["Choices"] as? [[String: Any]])?.first)
+        XCTAssertEqual(choice["Provider"] as? String, expectedChoice["Provider"] as? String)
+        XCTAssertTrue(propertyListValuesEqual(try XCTUnwrap(choice["Files"]), try XCTUnwrap(expectedChoice["Files"])))
+        XCTAssertTrue(propertyListValuesEqual(
+            try propertyListRoot(from: XCTUnwrap(choice["Configuration"] as? Data)),
+            try propertyListRoot(from: XCTUnwrap(expectedChoice["Configuration"] as? Data))
+        ))
+    }
+
     private func mutatingDictionary(
         in root: [String: Any],
         at path: [String],
