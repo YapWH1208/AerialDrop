@@ -260,6 +260,18 @@ final class AppModel {
         wallpapers.contains { activeAerialAssetIDs.contains($0.id) }
     }
 
+    /// Pair membership protects both videos from removal, while setting a
+    /// member requests its fixed variant rather than Automatic playback.
+    func isWallpaperAlreadySelected(_ wallpaper: ManagedWallpaper) -> Bool {
+        guard registeredDayNightPair?.memberAssetIDs.contains(wallpaper.id) == true else {
+            return activeAerialAssetIDs.contains(wallpaper.id)
+        }
+        guard !isSelectionStatusUnknown, !isDayNightRecoveryPending,
+              let pending = try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults),
+              pending.isEmpty else { return false }
+        return aerialSelectionInspection?.matches(.fixedVariant(assetID: wallpaper.id)) == true
+    }
+
     var isImportCancellable: Bool {
         isWorking && stage.allowsCancellation
     }

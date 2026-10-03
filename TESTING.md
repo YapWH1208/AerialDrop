@@ -241,6 +241,11 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    refresh establishes fresh trusted native actors. Confirm actual playback,
    then relaunch and check saved choices versus actual Automatic status.
 3. Use the Day video's **Set as Wallpaper**, then the Night video's action.
+   In Automatic, both members' card/menu and preview actions must be enabled
+   while removal remains blocked for both. In fixed Day, only Day's Set action
+   is disabled; Night remains selectable and both members remain protected.
+   Repeat for fixed Night. An unknown selection or pending verification must
+   keep an explicit fixed-member retry reachable.
    Confirm each visibly renders/plays and stores its member ID with matching
    fixed variant options. Use **Apply Day/Night Wallpaper** to return to
    Automatic. Where native System Settings exposes the group, also check its

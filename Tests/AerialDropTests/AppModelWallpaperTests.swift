@@ -739,6 +739,7 @@ final class AppModelWallpaperTests: XCTestCase {
             WallpaperActionAvailability(
                 wallpaper: wallpaper,
                 isActive: true,
+                isAlreadySelected: true,
                 isSelectionStatusUnknown: false,
                 isWorking: false
             ).canRemove
@@ -747,10 +748,135 @@ final class AppModelWallpaperTests: XCTestCase {
             WallpaperActionAvailability(
                 wallpaper: wallpaper,
                 isActive: true,
+                isAlreadySelected: true,
                 isSelectionStatusUnknown: true,
                 isWorking: false
             ).canRemove
         )
+    }
+
+    func testWallpaperAlreadySelectedAutomaticAllowsBothFixedActionsAndProtectsRemoval() async throws {
+        let h = try await makeRegisteredPairSelectionModel()
+
+        for wallpaper in [h.day, h.night] {
+            XCTAssertFalse(h.model.isWallpaperAlreadySelected(wallpaper))
+            XCTAssertTrue(actionAvailability(for: wallpaper, model: h.model).canSetAsWallpaper)
+            XCTAssertFalse(actionAvailability(for: wallpaper, model: h.model).canRemove)
+            XCTAssertEqual(h.model.removalReadiness(for: [wallpaper.id]), .verifiedActive)
+        }
+        XCTAssertTrue(h.service.activatedAssetIDs.isEmpty)
+    }
+
+    func testWallpaperAlreadySelectedFixedDayDisablesOnlyDayAndProtectsBothMembers() async throws {
+        let h = try await makeRegisteredPairSelectionModel()
+        h.service.activeIDs = [h.day.id]
+        h.service.selectionInspection = selectionInspection(.fixedVariant(assetID: h.day.id))
+        await h.model.reload()
+
+        XCTAssertTrue(h.model.isWallpaperAlreadySelected(h.day))
+        XCTAssertFalse(actionAvailability(for: h.day, model: h.model).canSetAsWallpaper)
+        XCTAssertFalse(h.model.isWallpaperAlreadySelected(h.night))
+        XCTAssertTrue(actionAvailability(for: h.night, model: h.model).canSetAsWallpaper)
+        for wallpaper in [h.day, h.night] {
+            XCTAssertTrue(h.model.activeAerialAssetIDs.contains(wallpaper.id))
+            XCTAssertFalse(actionAvailability(for: wallpaper, model: h.model).canRemove)
+            XCTAssertEqual(h.model.removalReadiness(for: [wallpaper.id]), .verifiedActive)
+        }
+    }
+
+    func testWallpaperAlreadySelectedPendingFixedMatchKeepsRetryReachable() async throws {
+        let h = try await makeRegisteredPairSelectionModel()
+        h.service.activeIDs = [h.day.id]
+        h.service.selectionInspection = selectionInspection(.fixedVariant(assetID: h.day.id))
+        h.defaults.set([h.day.id, h.night.id], forKey: AppPreferences.pendingDayNightAssetIDsKey)
+        await h.model.reload()
+
+        XCTAssertTrue(h.model.isDayNightRecoveryPending)
+        XCTAssertFalse(h.model.isWallpaperAlreadySelected(h.day))
+        XCTAssertTrue(actionAvailability(for: h.day, model: h.model).canSetAsWallpaper)
+        XCTAssertFalse(actionAvailability(for: h.day, model: h.model).canRemove)
+        XCTAssertEqual(h.model.removalReadiness(for: [h.day.id, h.night.id]), .verifiedActive)
+    }
+
+    func testWallpaperAlreadySelectedMalformedProtectionKeepsRetryReachable() async throws {
+        let h = try await makeRegisteredPairSelectionModel()
+        h.service.activeIDs = [h.day.id]
+        h.service.selectionInspection = selectionInspection(.fixedVariant(assetID: h.day.id))
+        await h.model.reload()
+        XCTAssertTrue(h.model.isWallpaperAlreadySelected(h.day))
+
+        // A newly malformed guard must prevent disabling retry even before
+        // the next refresh updates the observable recovery flag.
+        h.defaults.set("unreadable protection", forKey: AppPreferences.pendingDayNightAssetIDsKey)
+        XCTAssertFalse(h.model.isWallpaperAlreadySelected(h.day))
+        await h.model.reload()
+        XCTAssertTrue(h.model.isDayNightRecoveryPending)
+        XCTAssertTrue(actionAvailability(for: h.day, model: h.model).canSetAsWallpaper)
+        XCTAssertEqual(h.model.removalReadiness(for: [h.day.id]), .unknown)
+    }
+
+    func testWallpaperAlreadySelectedFailedRefreshDoesNotReuseStaleFixedInspection() async throws {
+        let h = try await makeRegisteredPairSelectionModel()
+        h.service.activeIDs = [h.day.id]
+        h.service.selectionInspection = selectionInspection(.fixedVariant(assetID: h.day.id))
+        await h.model.reload()
+        XCTAssertTrue(h.model.isWallpaperAlreadySelected(h.day))
+
+        h.service.selectionReadError = TestError.storeUnreadable
+        await h.model.reload()
+
+        XCTAssertTrue(h.model.isSelectionStatusUnknown)
+        XCTAssertTrue(h.model.activeAerialAssetIDs.contains(h.day.id))
+        XCTAssertFalse(h.model.isWallpaperAlreadySelected(h.day))
+        let availability = actionAvailability(for: h.day, model: h.model)
+        XCTAssertTrue(availability.canSetAsWallpaper)
+        XCTAssertTrue(availability.canRemove) // Existing recovery acknowledgement remains reachable.
+        XCTAssertEqual(h.model.removalReadiness(for: [h.day.id]), .unknown)
+    }
+
+    func testWallpaperAlreadySelectedUnknownTypedModeAllowsExplicitReapply() async throws {
+        let h = try await makeRegisteredPairSelectionModel()
+        h.service.activeIDs = [h.day.id]
+        h.service.selectionInspection = nil
+        await h.model.reload()
+
+        XCTAssertFalse(h.model.isSelectionStatusUnknown)
+        XCTAssertFalse(h.model.isWallpaperAlreadySelected(h.day))
+        XCTAssertTrue(actionAvailability(for: h.day, model: h.model).canSetAsWallpaper)
+        XCTAssertFalse(actionAvailability(for: h.day, model: h.model).canRemove)
+    }
+
+    func testWallpaperAlreadySelectedMixedFixedTargetsAllowBothActions() async throws {
+        let h = try await makeRegisteredPairSelectionModel()
+        h.service.activeIDs = [h.day.id, h.night.id]
+        h.service.selectionInspection = AerialSelectionInspection(targets: [
+            AerialTargetSelection(target: .allSpacesAndDisplays, rawAssetIDs: [h.day.id],
+                                  recognizedSelection: .fixedVariant(assetID: h.day.id)),
+            AerialTargetSelection(target: .systemDefault, rawAssetIDs: [h.night.id],
+                                  recognizedSelection: .fixedVariant(assetID: h.night.id))
+        ])
+        await h.model.reload()
+
+        for wallpaper in [h.day, h.night] {
+            XCTAssertFalse(h.model.isWallpaperAlreadySelected(wallpaper))
+            XCTAssertTrue(actionAvailability(for: wallpaper, model: h.model).canSetAsWallpaper)
+            XCTAssertFalse(actionAvailability(for: wallpaper, model: h.model).canRemove)
+        }
+    }
+
+    func testWallpaperAlreadySelectedLegacyOrdinaryActiveDisablesSet() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: UUID().uuidString)
+        try installManagedWallpaper(wallpaper, in: home)
+        let model = makeModel(service: FakeWallpaperService(activeIDs: [wallpaper.id]), home: home,
+                              preferencesDefaults: makeSelectionTestDefaults())
+        await model.reload()
+        let installed = try XCTUnwrap(model.wallpapers.first)
+
+        XCTAssertNil(model.registeredDayNightPair)
+        XCTAssertTrue(model.isWallpaperAlreadySelected(installed))
+        XCTAssertFalse(actionAvailability(for: installed, model: model).canSetAsWallpaper)
+        XCTAssertFalse(actionAvailability(for: installed, model: model).canRemove)
     }
 
     func testRemoveAllBlocksOnlyActiveManagedWallpapers() async {
@@ -1287,6 +1413,50 @@ final class AppModelWallpaperTests: XCTestCase {
         return temporaryHome
     }
 
+    private func makeSelectionTestDefaults() -> UserDefaults {
+        let suiteName = "AerialDropWallpaperSelectionTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+        return defaults
+    }
+
+    private func selectionInspection(_ selection: AerialSelectionRequest) -> AerialSelectionInspection {
+        AerialSelectionInspection(targets: [.allSpacesAndDisplays, .systemDefault, .space("TEST-SPACE")].map {
+            AerialTargetSelection(target: $0, rawAssetIDs: [selection.assetID], recognizedSelection: selection)
+        })
+    }
+
+    private func makeRegisteredPairSelectionModel() async throws -> (
+        model: AppModel, service: FakeWallpaperService,
+        day: ManagedWallpaper, night: ManagedWallpaper, defaults: UserDefaults
+    ) {
+        let home = makeTemporaryHome()
+        let dayID = UUID().uuidString
+        let nightID = UUID().uuidString
+        try installManagedWallpapers([makeWallpaper(id: dayID), makeWallpaper(id: nightID)], in: home)
+        try ManifestStore(paths: WallpaperPaths(homeDirectory: home)).configureDayNightPair(
+            DayNightWallpaperPair(dayAssetID: dayID, nightAssetID: nightID)
+        )
+        let service = FakeWallpaperService(activeIDs: [ManifestStore.dayNightSubcategoryID])
+        service.selectionInspection = selectionInspection(.automatic(groupID: ManifestStore.dayNightSubcategoryID))
+        let defaults = makeSelectionTestDefaults()
+        let model = makeModel(service: service, home: home, preferencesDefaults: defaults)
+        await model.reload()
+        let day = try XCTUnwrap(model.wallpapers.first { $0.id == dayID })
+        let night = try XCTUnwrap(model.wallpapers.first { $0.id == nightID })
+        return (model, service, day, night, defaults)
+    }
+
+    private func actionAvailability(for wallpaper: ManagedWallpaper, model: AppModel) -> WallpaperActionAvailability {
+        WallpaperActionAvailability(
+            wallpaper: wallpaper,
+            isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+            isAlreadySelected: model.isWallpaperAlreadySelected(wallpaper),
+            isSelectionStatusUnknown: model.isSelectionStatusUnknown,
+            isWorking: model.isWorking
+        )
+    }
+
     /// Installs several managed wallpapers into one manifest (the single-item
     /// helper resets the manifest on every call, so it cannot build a set).
     private func installManagedWallpapers(_ wallpapers: [ManagedWallpaper], in home: URL) throws {
@@ -1428,6 +1598,7 @@ private final class FakeWallpaperService: WallpaperServicing {
 
     var selectionReadError: Error?
     var selectionReadHook: (() -> Void)?
+    var selectionInspection: AerialSelectionInspection?
 
     /// Optional test hooks: resumes a continuation as soon as activation starts,
     /// then blocks until the release stream finishes (see the operation-label test).
@@ -1444,6 +1615,11 @@ private final class FakeWallpaperService: WallpaperServicing {
             throw selectionReadError
         }
         return activeIDs
+    }
+
+    func inspectAerialSelections() throws -> AerialSelectionInspection {
+        guard let selectionInspection else { throw TestError.storeUnreadable }
+        return selectionInspection
     }
 
     func activateAerial(assetID: String) async throws {

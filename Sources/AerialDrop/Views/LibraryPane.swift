@@ -157,6 +157,7 @@ struct LibraryPane: View {
             WallpaperPreviewView(
                 wallpaper: wallpaper,
                 isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                isAlreadySelected: model.isWallpaperAlreadySelected(wallpaper),
                 isSelectionStatusUnknown: model.isSelectionStatusUnknown,
                 isWorking: model.isWorking,
                 operationLabel: model.operationLabel,
@@ -390,6 +391,7 @@ struct LibraryPane: View {
                     wallpaper: wallpaper,
                     isSelected: selectedIDs.contains(wallpaper.id),
                     isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                    isAlreadySelected: model.isWallpaperAlreadySelected(wallpaper),
                     isSelectionStatusUnknown: model.isSelectionStatusUnknown,
                     isWorking: model.isWorking,
                     onSelect: {

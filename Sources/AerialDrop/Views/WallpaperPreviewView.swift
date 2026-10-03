@@ -3,6 +3,7 @@ import SwiftUI
 struct WallpaperPreviewView: View {
     let wallpaper: ManagedWallpaper
     let isActive: Bool
+    let isAlreadySelected: Bool
     let isSelectionStatusUnknown: Bool
     let isWorking: Bool
     let operationLabel: String?
@@ -162,6 +163,7 @@ struct WallpaperPreviewView: View {
         WallpaperActionAvailability(
             wallpaper: wallpaper,
             isActive: isActive,
+            isAlreadySelected: isAlreadySelected,
             isSelectionStatusUnknown: isSelectionStatusUnknown,
             isWorking: isWorking
         )
