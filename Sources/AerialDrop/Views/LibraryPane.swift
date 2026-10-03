@@ -9,6 +9,7 @@ struct LibraryPane: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedIDs: Set<String> = []
+    @State private var isDayNightExpanded = false
     @State private var selectionAnchorID: String?
     @State private var searchText = ""
     @State private var previewWallpaper: ManagedWallpaper?
@@ -215,18 +216,10 @@ struct LibraryPane: View {
                 bulkSelectionBanner
             }
 
-            DayNightWallpaperSection()
-
             if model.wallpapers.isEmpty {
-                emptyLibrary
+                scrollableLibrary
             } else {
-                Group {
-                    if filteredWallpapers.isEmpty {
-                        ContentUnavailableView.search(text: searchText)
-                    } else {
-                        wallpaperGrid
-                    }
-                }
+                scrollableLibrary
                 .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
@@ -354,44 +347,22 @@ struct LibraryPane: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var wallpaperGrid: some View {
+    private var scrollableLibrary: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVGrid(columns: wallpaperColumns, spacing: 20) {
-                    ForEach(filteredWallpapers) { wallpaper in
-                        WallpaperCard(
-                            wallpaper: wallpaper,
-                            isSelected: selectedIDs.contains(wallpaper.id),
-                            isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
-                            isSelectionStatusUnknown: model.isSelectionStatusUnknown,
-                            isWorking: model.isWorking,
-                            onSelect: {
-                                guard !model.isWorking else { return }
-                                select(wallpaper)
-                            },
-                            onNavigate: handleArrowKeyNavigation,
-                            onDoubleClick: { openPreview(wallpaper) },
-                            onPreview: { openPreview(wallpaper) },
-                            onSetWallpaper: { model.setWallpaper(wallpaper) },
-                            onRename: { beginRename(wallpaper) },
-                            onReveal: { model.revealInFinder(wallpaper) },
-                            onRemove: { requestRemoval(wallpaper) },
-                            selectionFocus: $focusedCardID
-                        )
-                        .id(wallpaper.id)
+                // Keep expandable, wrapping content inside the viewport so it
+                // cannot inflate the window's content minimum height.
+                VStack(spacing: 12) {
+                    DayNightWallpaperSection(isExpanded: $isDayNightExpanded)
+
+                    if model.wallpapers.isEmpty {
+                        emptyLibrary
+                    } else if filteredWallpapers.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                    } else {
+                        wallpaperGrid
                     }
                 }
-                .background(alignment: .leading) {
-                    // Measures the UNPADDED grid so vertical arrow moves can
-                    // estimate the adaptive column count exactly.
-                    GeometryReader { geo in
-                        Color.clear
-                            .onAppear { gridContentWidth = geo.size.width }
-                            .onChange(of: geo.size.width) { _, width in gridContentWidth = width }
-                    }
-                }
-                .padding(24)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.wallpapers)
             }
             .onChange(of: highlightTarget) { _, target in
                 guard let target else { return }
@@ -410,6 +381,44 @@ struct LibraryPane: View {
                 keyboardNavScrollTarget = nil
             }
         }
+    }
+
+    private var wallpaperGrid: some View {
+        LazyVGrid(columns: wallpaperColumns, spacing: 20) {
+            ForEach(filteredWallpapers) { wallpaper in
+                WallpaperCard(
+                    wallpaper: wallpaper,
+                    isSelected: selectedIDs.contains(wallpaper.id),
+                    isActive: model.activeAerialAssetIDs.contains(wallpaper.id),
+                    isSelectionStatusUnknown: model.isSelectionStatusUnknown,
+                    isWorking: model.isWorking,
+                    onSelect: {
+                        guard !model.isWorking else { return }
+                        select(wallpaper)
+                    },
+                    onNavigate: handleArrowKeyNavigation,
+                    onDoubleClick: { openPreview(wallpaper) },
+                    onPreview: { openPreview(wallpaper) },
+                    onSetWallpaper: { model.setWallpaper(wallpaper) },
+                    onRename: { beginRename(wallpaper) },
+                    onReveal: { model.revealInFinder(wallpaper) },
+                    onRemove: { requestRemoval(wallpaper) },
+                    selectionFocus: $focusedCardID
+                )
+                .id(wallpaper.id)
+            }
+        }
+        .background(alignment: .leading) {
+            // Measures the UNPADDED grid so vertical arrow moves can
+            // estimate the adaptive column count exactly.
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { gridContentWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, width in gridContentWidth = width }
+            }
+        }
+        .padding(24)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.wallpapers)
     }
 
     /// Selects and scrolls to the wallpaper whose import just completed,

@@ -268,6 +268,14 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
 8. Check Library Day/Night menus, Apply, fixed-member actions, and pending/
    recovery messages with keyboard navigation and VoiceOver. Confirm previews
    distinguish the two members and communicate their Day/Night roles.
+   Expand and collapse the Day/Night section in a small window, with no draft
+   and with both roles selected. Confirm the sidebar, full instructions,
+   selectors, Apply button, and cards remain visible or reachable by scrolling.
+   Search for a matching title and for a title with no results, then clear the
+   search. Confirm the section remains usable, card keyboard navigation and
+   post-import scrolling still work, and operation/bulk-selection banners remain
+   above the scroll area. Repeat with an empty Library in an isolated account;
+   a manually expanded section must stay expanded after the first import.
 
 The following capture helper is read-only. It does not enable switching, alter
 preferences, or change the current wallpaper. Use it only to make a minimized

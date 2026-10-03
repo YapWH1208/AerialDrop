@@ -3,7 +3,11 @@ import SwiftUI
 
 struct DayNightWallpaperSection: View {
     @Environment(AppModel.self) private var model
-    @State private var isExpanded = false
+    @Binding private var isExpanded: Bool
+
+    init(isExpanded: Binding<Bool>) {
+        _isExpanded = isExpanded
+    }
 
     var body: some View {
         @Bindable var model = model
