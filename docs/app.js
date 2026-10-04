@@ -229,6 +229,7 @@
   }
   if (macosSelect) {
     clearRelease();
+    macosSelect.disabled = false;
     macosSelect.addEventListener("change", updateRelease);
     if (customMacos) customMacos.addEventListener("input", updateRelease);
     if (retryRelease) retryRelease.addEventListener("click", function () {
