@@ -19,11 +19,20 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      - name: Validate release compatibility
+        run: |
+          python3 Scripts/release_compatibility.py validate --tag "${GITHUB_REF_NAME}"
+          python3 Scripts/test-release-compatibility.py
+          bash Scripts/test-install.sh
+
       - name: Run tests
         run: swift test
 
       - name: Build app bundle
         run: ./Scripts/build-app.sh
+
+      - name: Validate packaged compatibility
+        run: python3 Scripts/release_compatibility.py validate --tag "${GITHUB_REF_NAME}" --bundle dist/AerialDrop.app
 
       - name: Package artifact
         run: |

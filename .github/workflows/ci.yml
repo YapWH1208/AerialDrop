@@ -16,6 +16,12 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      - name: Validate release compatibility
+        run: |
+          python3 Scripts/release_compatibility.py validate
+          python3 Scripts/test-release-compatibility.py
+          bash Scripts/test-install.sh
+
       - name: Verify website release fallback
         run: ./Scripts/check-docs-version.sh
 

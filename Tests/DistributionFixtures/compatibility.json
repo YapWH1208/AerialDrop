@@ -1,0 +1,401 @@
+{
+  "policy": {
+    "schema_version": 1,
+    "releases": [
+      {
+        "version": "1.1.8",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.9",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.10",
+        "min_macos": 27,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.11",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.12",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.13",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.14",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.15",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.16",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.1.17",
+        "min_macos": 26,
+        "max_macos": null,
+        "architectures": [
+          "arm64"
+        ]
+      },
+      {
+        "version": "1.2.0",
+        "min_macos": 26,
+        "max_macos": 26,
+        "architectures": [
+          "x86_64"
+        ]
+      }
+    ]
+  },
+  "catalogues": {
+    "base": [
+      {
+        "tag_name": "v1.1.8",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.8-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.8/AerialDrop-1.1.8-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.9",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.9-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.9/AerialDrop-1.1.9-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.10",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.10-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.10/AerialDrop-1.1.10-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.11",
+        "draft": true,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.11-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.11/AerialDrop-1.1.11-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.12",
+        "draft": false,
+        "prerelease": true,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.12-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.12/AerialDrop-1.1.12-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.13",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": []
+      },
+      {
+        "tag_name": "v1.1.14",
+        "draft": false,
+        "prerelease": false,
+        "published_at": null,
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.14-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.14/AerialDrop-1.1.14-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.15",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.15-macOS.zip",
+            "digest": "sha256:bad",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.15/AerialDrop-1.1.15-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.16",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.16-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.16/AerialDrop-1.1.16-macOS.zip"
+          },
+          {
+            "name": "AerialDrop-1.1.16-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.1.16/AerialDrop-1.1.16-macOS.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v1.1.17",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.1.17-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://example.invalid/AerialDrop.zip"
+          }
+        ]
+      },
+      {
+        "tag_name": "v2.0.0",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-2.0.0-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v2.0.0/AerialDrop-2.0.0-macOS.zip"
+          }
+        ]
+      }
+    ],
+    "bounds": [
+      {
+        "tag_name": "v1.2.0",
+        "draft": false,
+        "prerelease": false,
+        "published_at": "2026-01-01T00:00:00Z",
+        "assets": [
+          {
+            "name": "AerialDrop-1.2.0-macOS.zip",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 12345,
+            "browser_download_url": "https://github.com/YapWH1208/AerialDrop/releases/download/v1.2.0/AerialDrop-1.2.0-macOS.zip"
+          }
+        ]
+      }
+    ],
+    "empty": []
+  },
+  "cases": [
+    {
+      "name": "numeric-fallback-macos-26",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "expected_version": "1.1.9"
+    },
+    {
+      "name": "numeric-newer-macos-27",
+      "catalogue": "base",
+      "macos": 27,
+      "arch": "arm64",
+      "expected_version": "1.1.10"
+    },
+    {
+      "name": "pin-compatible",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.8",
+      "expected_version": "1.1.8"
+    },
+    {
+      "name": "pin-incompatible-os",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.10",
+      "expected_version": null
+    },
+    {
+      "name": "pin-unknown",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "9.9.9",
+      "expected_version": null
+    },
+    {
+      "name": "pin-unpublished",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.14",
+      "expected_version": null
+    },
+    {
+      "name": "pin-draft",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.11",
+      "expected_version": null
+    },
+    {
+      "name": "pin-prerelease",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.12",
+      "expected_version": null
+    },
+    {
+      "name": "pin-missing-asset",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.13",
+      "expected_version": null
+    },
+    {
+      "name": "pin-invalid-digest",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.15",
+      "expected_version": null
+    },
+    {
+      "name": "pin-duplicate-asset",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.16",
+      "expected_version": null
+    },
+    {
+      "name": "pin-wrong-url",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "1.1.17",
+      "expected_version": null
+    },
+    {
+      "name": "pin-unknown-release",
+      "catalogue": "base",
+      "macos": 26,
+      "arch": "arm64",
+      "version": "2.0.0",
+      "expected_version": null
+    },
+    {
+      "name": "max-boundary-inclusive",
+      "catalogue": "bounds",
+      "macos": 26,
+      "arch": "x86_64",
+      "expected_version": "1.2.0"
+    },
+    {
+      "name": "max-boundary-excluded",
+      "catalogue": "bounds",
+      "macos": 27,
+      "arch": "x86_64",
+      "expected_version": null
+    },
+    {
+      "name": "architecture-mismatch",
+      "catalogue": "bounds",
+      "macos": 26,
+      "arch": "arm64",
+      "expected_version": null
+    },
+    {
+      "name": "no-published-release",
+      "catalogue": "empty",
+      "macos": 26,
+      "arch": "arm64",
+      "expected_version": null
+    }
+  ]
+}
