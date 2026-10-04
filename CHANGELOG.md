@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Select the newest compatible published release in the install script, with validated version pins and a read-only `--print-version` option.
+- Add a macOS selector for compatible website downloads and source-build instructions.
+- Share explicit OS and processor requirements with the Homebrew tap updater, and validate release compatibility before packaging and publication.
+
 ## 1.1.9
 
 - Add Day/Night wallpaper pairs on verified macOS 27 builds, with saved role choices, explicit Automatic selection, and fixed Day or Night variants.

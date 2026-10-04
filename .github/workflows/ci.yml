@@ -16,6 +16,20 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      - name: Set up Node for website checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Validate release compatibility
+        run: |
+          python3 Scripts/release_compatibility.py validate
+          python3 Scripts/test-release-compatibility.py
+          bash Scripts/test-install.sh
+          node --check docs/compatibility.js
+          node --check docs/app.js
+          node Scripts/test-site-compatibility.js
+
       - name: Verify website release fallback
         run: ./Scripts/check-docs-version.sh
 
@@ -30,3 +44,6 @@ jobs:
 
       - name: Build app bundle
         run: ./Scripts/build-app.sh
+
+      - name: Validate packaged compatibility
+        run: python3 Scripts/release_compatibility.py validate --bundle dist/AerialDrop.app

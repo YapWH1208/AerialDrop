@@ -123,59 +123,121 @@
   var heroCopyBtn = $(".term-line--cmd .term-copy");
   if (heroCopyBtn) heroCopyBtn.classList.add("is-visible");
 
-  /* ---------- Latest release (GitHub API, graceful fallback) ---------- */
-  function releaseStatusMessage(err) {
-    var msg = err && err.message ? String(err.message) : "";
-    if (/HTTP (403|429)/.test(msg)) return "GitHub is limiting requests \u2014 commands below still work";
-    if (/HTTP [45]\d\d/.test(msg)) return "GitHub request failed \u2014 commands below still work";
-    return "Couldn\u2019t reach GitHub \u2014 commands below still work";
-  }
+  /* ---------- Compatible release for an explicitly selected macOS ---------- */
   function humanSize(bytes) {
     if (typeof bytes !== "number" || !isFinite(bytes) || bytes <= 0) return "\u2014";
     var units = ["B", "KB", "MB", "GB"], i = 0;
     while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
     return bytes.toFixed(i > 1 ? 1 : 0) + " " + units[i];
   }
-  function applyRelease(tag, downloadUrl) {
+  function applyRelease(result) {
+    var tag = result.tag, version = result.version, asset = result.asset;
     var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
     set("releaseTag", tag);
-    set("expectVersion", tag.replace(/^v/, ""));
-    var version = tag.replace(/^v/, "");
-    var zipName = "AerialDrop-" + version + "-macOS.zip";
-    var unzipCmd = $("#unzipCmd");
-    if (unzipCmd) unzipCmd.textContent = "unzip -q " + zipName + " -d /Applications";
+    set("expectVersion", version);
+    set("releaseSize", humanSize(asset.size));
+    set("unzipCmd", "unzip -q " + asset.name + " -d /Applications");
     var unzipCopy = $("#unzipCopy");
-    if (unzipCopy) unzipCopy.setAttribute("data-copy", "unzip -q " + zipName + " -d /Applications");
-    var out1 = $("#termOut1");
-    if (out1) out1.innerHTML = '<span class="term-ok">==&gt;</span> Downloading ' + zipName;
-    var out4 = $("#termOut4");
-    if (out4) out4.innerHTML = '<span class="term-check">\u2713</span> aerialdrop ' + version + " is ready. Open it, drop in a video.";
-    if (downloadUrl) {
-      $$("[data-download]").forEach(function (el) { el.setAttribute("href", downloadUrl); });
-      $$("[data-download-label]").forEach(function (el) { el.textContent = "Download AerialDrop " + tag; });
+    if (unzipCopy) { unzipCopy.setAttribute("data-copy", "unzip -q " + asset.name + " -d /Applications"); unzipCopy.disabled = false; }
+    set("termOut1", "==> Downloading " + asset.name);
+    set("termOut4", "✓ aerialdrop " + version + " is ready. Open it, drop in a video.");
+    $$("[data-download]").forEach(function (el) {
+      el.setAttribute("href", asset.url);
+      el.removeAttribute("aria-disabled");
+    });
+    $$("[data-download-label]").forEach(function (el) { el.textContent = "Download AerialDrop " + tag; });
+  }
+  function clearRelease() {
+    var set = function (id, value) { var el = document.getElementById(id); if (el) el.textContent = value; };
+    set("releaseTag", "—");
+    set("releaseSize", "Awaiting selection");
+    set("expectVersion", "Resolve on this Mac");
+    set("unzipCmd", "ZIP command available after release lookup");
+    set("termOut1", "==> Selecting a compatible release");
+    set("termOut4", "✓ Install the newest compatible release for your Mac.");
+    var unzipCopy = $("#unzipCopy");
+    if (unzipCopy) { unzipCopy.removeAttribute("data-copy"); unzipCopy.disabled = true; }
+    $$("[data-download]").forEach(function (el) {
+      el.removeAttribute("href");
+      el.setAttribute("aria-disabled", "true");
+    });
+    $$("[data-download-label]").forEach(function (el) { el.textContent = "Download unavailable"; });
+  }
+  var macosSelect = $("#macosSelect"), customMacos = $("#customMacos"), releaseStatus = $("#releaseStatus");
+  var customMacosLabel = $("#customMacosLabel");
+  var retryRelease = $("#retryRelease"), lookupId = 0, dataPromise = null;
+  function showStatus(message, retry) {
+    if (releaseStatus) releaseStatus.textContent = message;
+    if (retryRelease) retryRelease.hidden = !retry;
+  }
+  function selectedMacos() {
+    if (!macosSelect || !macosSelect.value) return null;
+    return macosSelect.value === "other" ? Number(customMacos.value) : Number(macosSelect.value);
+  }
+  function fetchWithTimeout(url, options) {
+    if (!("AbortController" in window)) return fetch(url, options);
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 10000);
+    return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+      .then(function (response) { clearTimeout(timer); return response; }, function (error) { clearTimeout(timer); throw error; });
+  }
+  function loadReleaseData() {
+    if (!dataPromise) {
+      dataPromise = Promise.all([
+        fetchWithTimeout("release-compatibility.json").then(function (response) {
+          if (!response.ok) throw new Error("compatibility policy HTTP " + response.status);
+          return response.json();
+        }),
+        window.AerialDropCompatibility.loadCatalogue(fetchWithTimeout)
+      ]).catch(function (error) { dataPromise = null; throw error; });
     }
+    return dataPromise;
   }
-  function fetchRelease() {
-    var url = "https://api.github.com/repos/YapWH1208/AerialDrop/releases/latest";
-    var controller = ("AbortController" in window) ? new AbortController() : null;
-    var timer = controller ? setTimeout(function () { controller.abort(); }, 6000) : null;
-    fetch(url, controller ? { signal: controller.signal, headers: { Accept: "application/vnd.github+json" } } : {})
-      .then(function (res) { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
-      .then(function (rel) {
-        var tag = rel.tag_name || "v1.1.9";
-        var asset = (rel.assets || []).filter(function (a) { return /macOS/i.test(a.name) && /\.zip$/i.test(a.name); })[0];
-        var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
-        set("releaseSize", humanSize(asset && asset.size));
-        applyRelease(tag, asset && asset.browser_download_url);
-      })
-      .catch(function (err) {
-        var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
-        set("releaseSize", releaseStatusMessage(err));
-        applyRelease("v1.1.9", null);
-      })
-      .then(function () { if (timer) clearTimeout(timer); });
+  function updateRelease() {
+    var current = ++lookupId;
+    clearRelease();
+    var macos = selectedMacos();
+    if (macosSelect && macosSelect.value === "other") {
+      customMacos.hidden = false;
+      if (customMacosLabel) customMacosLabel.hidden = false;
+    } else if (customMacos) {
+      customMacos.hidden = true;
+      if (customMacosLabel) customMacosLabel.hidden = true;
+    }
+    if (macos === null) { showStatus("Choose your Mac’s macOS major version to find its newest compatible release.", false); return; }
+    if (!Number.isInteger(macos) || macos < 26 || macos > 999) {
+      showStatus("Enter a macOS major version from 26 through 999.", false); return;
+    }
+    if (!window.fetch || !window.AerialDropCompatibility) {
+      showStatus("Release lookup is unavailable. Run the install script on your Mac or check the official release notes.", false); return;
+    }
+    showStatus("Checking published releases for macOS " + macos + " on Apple Silicon…", false);
+    loadReleaseData().then(function (data) {
+      if (current !== lookupId) return;
+      var result = window.AerialDropCompatibility.resolveRelease(data[0], data[1], macos, "arm64");
+      applyRelease(result);
+      showStatus("Newest compatible published release for macOS " + macos + " on Apple Silicon: " + result.tag + ".", false);
+    }).catch(function (error) {
+      if (current !== lookupId) return;
+      var message = String(error && error.message || error);
+      if (/no compatible published release/.test(message)) {
+        showStatus("No compatible published release is available for macOS " + macos + " on Apple Silicon. Check the release notes or try the install script on this Mac.", false);
+      } else {
+        showStatus("Couldn’t verify compatible releases. Retry, use the install script on this Mac, or inspect the official releases page. Direct ZIP downloads are paused.", true);
+      }
+    });
   }
-  if (window.fetch) fetchRelease();
+  if (macosSelect) {
+    clearRelease();
+    macosSelect.disabled = false;
+    macosSelect.addEventListener("change", updateRelease);
+    if (customMacos) customMacos.addEventListener("input", updateRelease);
+    if (retryRelease) retryRelease.addEventListener("click", function () {
+      dataPromise = null;
+      updateRelease();
+    });
+    showStatus("Choose your Mac’s macOS major version to find its newest compatible release.", false);
+  }
 
   /* ---------- Hero terminal typing ---------- */
   var termCmd = $("#termCmd");
@@ -373,20 +435,6 @@
       });
     }
     renderChecklist();
-  }
-
-  /* ---------- OS compatibility check ---------- */
-  var osEl = $("#osCheck");
-  if (osEl) {
-    var ua = navigator.userAgent || "";
-    var mac = /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad|iPod/i.test(ua);
-    if (mac) {
-      osEl.innerHTML = '<span class="ok">\u2713 macOS detected</span> \u2014 need macOS 26 (Tahoe) or later';
-    } else if (/iPhone|iPad|iPod/i.test(ua)) {
-      osEl.innerHTML = '<span class="warn">iOS detected</span> \u2014 AerialDrop is a macOS app';
-    } else {
-      osEl.innerHTML = '<span class="warn">Not macOS?</span> \u2014 AerialDrop runs on macOS 26+';
-    }
   }
 
   /* ---------- Scroll reveal ---------- */
