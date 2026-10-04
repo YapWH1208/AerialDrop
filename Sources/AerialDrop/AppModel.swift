@@ -269,6 +269,21 @@ final class AppModel {
         wallpapers.contains { activeAerialAssetIDs.contains($0.id) }
     }
 
+    /// Presentation-only selection details. Safety checks continue to use the
+    /// expanded active IDs and `isWallpaperAlreadySelected(_:)` independently.
+    func wallpaperPresentationState(for wallpaper: ManagedWallpaper) -> WallpaperPresentationState {
+        let pendingAssetIDs = try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+        return .resolve(
+            wallpaperID: wallpaper.id,
+            pair: registeredDayNightPair,
+            rawSelectionAssetIDs: rawAerialAssetIDs,
+            inspection: aerialSelectionInspection,
+            selectionStatusUnknown: isSelectionStatusUnknown,
+            pendingAssetIDs: pendingAssetIDs,
+            recoveryPending: isDayNightRecoveryPending || !(pendingAssetIDs?.isEmpty ?? false)
+        )
+    }
+
     /// Pair membership protects both videos from removal, while setting a
     /// member requests its fixed variant rather than Automatic playback.
     func isWallpaperAlreadySelected(_ wallpaper: ManagedWallpaper) -> Bool {
