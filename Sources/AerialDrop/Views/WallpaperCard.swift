@@ -290,8 +290,10 @@ struct WallpaperCard: View {
 
     private var statusSymbol: String {
         switch presentationState.selection {
-        case .selectedEverywhere, .fixedVariant:
+        case .selectedEverywhere:
             "checkmark.seal.fill"
+        case .fixedVariant:
+            presentationState.selectedRoleMatchesAssignment == false ? "circle" : "checkmark.seal.fill"
         case .selectedOnSomeTargets, .automatic:
             "arrow.triangle.2.circlepath"
         case .selectedWithUnknownScope:
@@ -307,8 +309,14 @@ struct WallpaperCard: View {
 
     private var statusColor: Color {
         switch presentationState.selection {
-        case .selectedEverywhere, .fixedVariant, .automatic:
+        case .selectedEverywhere, .automatic:
             .accentColor
+        case .fixedVariant:
+            if presentationState.selectedRoleMatchesAssignment == false {
+                Color(nsColor: .secondaryLabelColor)
+            } else {
+                .accentColor
+            }
         case .selectedOnSomeTargets, .selectedWithUnknownScope, .mixedTargets, .unknown, .pendingVerification, .notSelected:
             Color(nsColor: .secondaryLabelColor)
         }

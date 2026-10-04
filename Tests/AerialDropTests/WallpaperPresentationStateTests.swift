@@ -40,6 +40,21 @@ final class WallpaperPresentationStateTests: XCTestCase {
         XCTAssertEqual(resolve(nightID, inspection: inspection).selection, .fixedVariant(.night))
     }
 
+    func testFixedModeMarksOnlyTheMemberWhoseRoleIsSelected() {
+        let fixedDay = inspection(.fixedVariant(assetID: dayID))
+        let day = resolve(dayID, inspection: fixedDay)
+        let night = resolve(nightID, inspection: fixedDay)
+
+        XCTAssertEqual(day.selectedRoleMatchesAssignment, true)
+        XCTAssertEqual(night.selectedRoleMatchesAssignment, false)
+        XCTAssertEqual(day.statusLabel, "Day selected · Automatic off")
+        XCTAssertEqual(night.statusLabel, "Night member · Day selected")
+
+        let fixedNight = inspection(.fixedVariant(assetID: nightID))
+        XCTAssertEqual(resolve(dayID, inspection: fixedNight).selectedRoleMatchesAssignment, false)
+        XCTAssertEqual(resolve(nightID, inspection: fixedNight).selectedRoleMatchesAssignment, true)
+    }
+
     func testUnknownStatusDominatesPreviouslyVerifiedAutomaticSelection() {
         let inspection = inspection(.automatic(groupID: ManifestStore.dayNightSubcategoryID))
 
@@ -64,10 +79,32 @@ final class WallpaperPresentationStateTests: XCTestCase {
         XCTAssertEqual(resolve(nightID, inspection: inspection).selection, .mixedTargets)
     }
 
-    func testRecognizedAndUnsupportedTargetSelectionsReportMixedPairState() {
+    func testUnsupportedTargetsDoNotImplyARecognizedPairMismatch() {
         let inspection = inspection(.fixedVariant(assetID: nightID), nil)
 
+        XCTAssertEqual(resolve(dayID, inspection: inspection).selection, .unknown)
+        XCTAssertEqual(resolve(nightID, inspection: inspection).selection, .selectedWithUnknownScope)
+    }
+
+    func testOrdinarySelectionWithUnsupportedTargetsReportsOnlyWhatIsKnown() {
+        let matchingAndUnsupported = inspection(.single(assetID: otherID), nil)
+        let elsewhereAndUnsupported = inspection(.single(assetID: dayID), nil)
+        let knownDifferenceAndUnsupported = inspection(.single(assetID: otherID), .single(assetID: dayID), nil)
+
+        XCTAssertEqual(resolve(otherID, inspection: matchingAndUnsupported).selection, .selectedWithUnknownScope)
+        XCTAssertEqual(resolve(otherID, inspection: elsewhereAndUnsupported).selection, .unknown)
+        XCTAssertEqual(resolve(otherID, inspection: knownDifferenceAndUnsupported).selection, .mixedTargets)
+    }
+
+    func testKnownPairMismatchRemainsMixedWhenAnotherTargetIsUnsupported() {
+        let inspection = inspection(
+            .automatic(groupID: ManifestStore.dayNightSubcategoryID),
+            .fixedVariant(assetID: dayID),
+            nil
+        )
+
         XCTAssertEqual(resolve(dayID, inspection: inspection).selection, .mixedTargets)
+        XCTAssertEqual(resolve(nightID, inspection: inspection).selection, .mixedTargets)
     }
 
     func testRawGroupMembershipWithoutTypedInspectionCannotProveAutomaticSelection() {

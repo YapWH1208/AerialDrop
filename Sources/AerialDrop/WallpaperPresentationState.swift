@@ -36,6 +36,14 @@ struct WallpaperPresentationState: Equatable, Sendable {
     let assignment: Assignment
     let selection: Selection
 
+    /// Whether this card's assigned Day/Night role is the selected member when
+    /// the pair is in fixed mode. Nil outside that specific presentation.
+    var selectedRoleMatchesAssignment: Bool? {
+        guard case .dayNight(let role) = assignment,
+              case .fixedVariant(let selectedRole) = selection else { return nil }
+        return role == selectedRole
+    }
+
     static func resolve(
         wallpaperID: String,
         pair: DayNightWallpaperPair?,
@@ -107,7 +115,7 @@ struct WallpaperPresentationState: Equatable, Sendable {
             }
             let memberMatches = memberSelections.filter { $0 == wallpaperID }
             if !memberMatches.isEmpty {
-                if selections.contains(where: { if case .automatic = $0 { true } else { false } }) {
+                if hasDifferentSelections {
                     return Self(assignment: assignment, selection: .mixedTargets)
                 }
                 if hasUnrecognizedTarget {
@@ -115,11 +123,11 @@ struct WallpaperPresentationState: Equatable, Sendable {
                 }
                 return Self(assignment: assignment, selection: .selectedOnSomeTargets)
             }
-            if hasUnrecognizedTarget && selections.isEmpty {
-                return Self(assignment: assignment, selection: .unknown)
-            }
-            if hasDifferentSelections || hasUnrecognizedTarget {
+            if hasDifferentSelections {
                 return Self(assignment: assignment, selection: .mixedTargets)
+            }
+            if hasUnrecognizedTarget || selections.isEmpty {
+                return Self(assignment: assignment, selection: .unknown)
             }
             // A uniformly recognized selection of another wallpaper means
             // this pair remains registered but is not the current selection.
@@ -134,12 +142,18 @@ struct WallpaperPresentationState: Equatable, Sendable {
             return Self(assignment: assignment, selection: .selectedEverywhere)
         }
         if !matchingTargets.isEmpty {
+            if hasUnrecognizedTarget, !hasDifferentSelections {
+                return Self(assignment: assignment, selection: .selectedWithUnknownScope)
+            }
+            if hasUnrecognizedTarget, hasDifferentSelections {
+                return Self(assignment: assignment, selection: .mixedTargets)
+            }
             return Self(assignment: assignment, selection: .selectedOnSomeTargets)
         }
-        if hasDifferentSelections || hasUnrecognizedTarget && !selections.isEmpty {
+        if hasDifferentSelections {
             return Self(assignment: assignment, selection: .mixedTargets)
         }
-        if selections.isEmpty {
+        if hasUnrecognizedTarget || selections.isEmpty {
             return Self(assignment: assignment, selection: .unknown)
         }
         return Self(assignment: assignment, selection: .notSelected)

@@ -197,12 +197,40 @@ final class AppModel {
                   pair.nightAssetID == dayNightDraft.nightAssetID else {
                 return "draft:\(pair.dayAssetID):\(pair.nightAssetID):\(dayNightDraft.dayAssetID ?? "-"):\(dayNightDraft.nightAssetID ?? "-")"
             }
+            if dayNightSelectionNeedsAttention(for: pair) {
+                return "selection:\(pair.dayAssetID):\(pair.nightAssetID)"
+            }
             if let blocker = dayNightApplyBlockerMessage {
                 return "blocked:\(pair.dayAssetID):\(pair.nightAssetID):\(blocker)"
             }
             return nil
         }
         return "setup:\(dayNightDraft.dayAssetID ?? "-"):\(dayNightDraft.nightAssetID ?? "-")"
+    }
+
+    private func dayNightSelectionNeedsAttention(for pair: DayNightWallpaperPair) -> Bool {
+        let relatedIDs = pair.memberAssetIDs.union([ManifestStore.dayNightSubcategoryID])
+        guard !activeAerialAssetIDs.isDisjoint(with: relatedIDs) else { return false }
+        guard let inspection = aerialSelectionInspection, !inspection.targets.isEmpty else { return true }
+
+        if inspection.matches(.automatic(groupID: ManifestStore.dayNightSubcategoryID))
+            || inspection.matches(.fixedVariant(assetID: pair.dayAssetID))
+            || inspection.matches(.fixedVariant(assetID: pair.nightAssetID)) {
+            return false
+        }
+
+        let selectedMemberIDs = inspection.targets.compactMap { target -> String? in
+            guard let selection = target.recognizedSelection else { return nil }
+            switch selection {
+            case .single(let assetID), .fixedVariant(let assetID):
+                return pair.memberAssetIDs.contains(assetID) ? assetID : nil
+            case .automatic:
+                return nil
+            }
+        }
+        let allTargetsSelectOneMember = selectedMemberIDs.count == inspection.targets.count
+            && Set(selectedMemberIDs).count == 1
+        return !allTargetsSelectOneMember
     }
 
     func applyDayNightWallpaper() {
