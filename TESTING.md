@@ -262,8 +262,12 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    In the test account, check external selection changes and any naturally
    occurring activation failure. Pending protection must survive relaunch and
    block removal of all previous/new members, including Remove Anyway. A fresh
-   ordinary wallpaper apply recovers the pending state. Failed changes retain
-   media and catalogue/selection backups and must not automatically overwrite
+   ordinary wallpaper apply recovers the pending state. After relaunch, the
+   selected ordinary wallpaper's card/menu and preview Set actions must remain
+   enabled while protection is pending or malformed, even when no pair exists
+   and it is the only import. Successful reapply clears protection and disables
+   the already-selected action again. Failed changes retain media and
+   catalogue/selection backups and must not automatically overwrite
    newer native state. Verify the Library reports actual partial outcomes.
 7. On macOS 26, confirm the existing single-wallpaper activation path still
    works and Day/Night application is unavailable. Use injected capability

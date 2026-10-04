@@ -191,6 +191,69 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertFalse(h.model.isDayNightRecoveryPending)
     }
 
+    func testSelectedOrdinaryWallpaperCanRecoverPersistedProtectionAfterRelaunch() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        try h.store.removeWallpaper(id: h.dayID)
+        try h.store.removeWallpaper(id: h.nightID)
+        try AppPreferences.protectDayNightAssetIDs(h.pair.memberAssetIDs, defaults: h.defaults)
+        h.service.activeIDs = [h.thirdID]
+        h.service.selected = .single(assetID: h.thirdID)
+        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        await reopened.reload()
+        let wallpaper = h.wallpaper(h.thirdID)
+        XCTAssertNil(try h.store.dayNightPair())
+        XCTAssertEqual(try h.store.importedWallpapers().map(\.id), [h.thirdID])
+        XCTAssertTrue(reopened.isDayNightRecoveryPending)
+        XCTAssertNil(reopened.activationFailure)
+        XCTAssertFalse(reopened.isWallpaperAlreadySelected(wallpaper))
+        XCTAssertEqual(reopened.removalReadiness(for: [h.thirdID]), .verifiedActive)
+        let before = try Data(contentsOf: h.paths.manifest)
+        await reopened.removeWallpaper(wallpaper, allowingUnverifiedSelection: true)
+        XCTAssertEqual(try Data(contentsOf: h.paths.manifest), before)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wallpaper.videoURL.path))
+        XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), h.pair.memberAssetIDs)
+        await reopened.activateWallpaper(wallpaper)
+        XCTAssertEqual(h.service.typedRequests, [.single(assetID: h.thirdID)])
+        XCTAssertTrue(h.service.legacyRequests.isEmpty)
+        XCTAssertTrue(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults).isEmpty)
+        XCTAssertFalse(reopened.isDayNightRecoveryPending)
+        XCTAssertTrue(reopened.isWallpaperAlreadySelected(wallpaper))
+        XCTAssertNil(reopened.activationFailure)
+    }
+
+    func testSelectedOrdinaryWallpaperCanRecoverMalformedProtectionAfterRelaunch() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        try h.store.removeWallpaper(id: h.dayID)
+        try h.store.removeWallpaper(id: h.nightID)
+        h.defaults.set([42], forKey: AppPreferences.pendingDayNightAssetIDsKey)
+        XCTAssertTrue(h.defaults.synchronize())
+        h.service.activeIDs = [h.thirdID]
+        h.service.selected = .single(assetID: h.thirdID)
+        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        await reopened.reload()
+        let wallpaper = h.wallpaper(h.thirdID)
+        XCTAssertNil(try h.store.dayNightPair())
+        XCTAssertEqual(try h.store.importedWallpapers().map(\.id), [h.thirdID])
+        XCTAssertTrue(reopened.isDayNightRecoveryPending)
+        XCTAssertNil(reopened.activationFailure)
+        XCTAssertFalse(reopened.isWallpaperAlreadySelected(wallpaper))
+        XCTAssertEqual(reopened.removalReadiness(for: [h.thirdID]), .unknown)
+        let before = try Data(contentsOf: h.paths.manifest)
+        await reopened.removeWallpaper(wallpaper, allowingUnverifiedSelection: true)
+        XCTAssertEqual(try Data(contentsOf: h.paths.manifest), before)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wallpaper.videoURL.path))
+        XCTAssertThrowsError(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults))
+        await reopened.activateWallpaper(wallpaper)
+        XCTAssertEqual(h.service.typedRequests, [.single(assetID: h.thirdID)])
+        XCTAssertTrue(h.service.legacyRequests.isEmpty)
+        XCTAssertTrue(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults).isEmpty)
+        XCTAssertFalse(reopened.isDayNightRecoveryPending)
+        XCTAssertTrue(reopened.isWallpaperAlreadySelected(wallpaper))
+        XCTAssertNil(reopened.activationFailure)
+    }
+
     func testRestoreCannotRemovePreviouslyCachedPendingMember() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }

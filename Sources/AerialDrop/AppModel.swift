@@ -272,12 +272,15 @@ final class AppModel {
     /// Pair membership protects both videos from removal, while setting a
     /// member requests its fixed variant rather than Automatic playback.
     func isWallpaperAlreadySelected(_ wallpaper: ManagedWallpaper) -> Bool {
+        // An interrupted transition must remain retryable even when an ordinary
+        // wallpaper already matches the current selection.
+        guard !isDayNightRecoveryPending,
+              let pending = try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults),
+              pending.isEmpty else { return false }
         guard registeredDayNightPair?.memberAssetIDs.contains(wallpaper.id) == true else {
             return activeAerialAssetIDs.contains(wallpaper.id)
         }
-        guard !isSelectionStatusUnknown, !isDayNightRecoveryPending,
-              let pending = try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults),
-              pending.isEmpty else { return false }
+        guard !isSelectionStatusUnknown else { return false }
         return aerialSelectionInspection?.matches(.fixedVariant(assetID: wallpaper.id)) == true
     }
 
