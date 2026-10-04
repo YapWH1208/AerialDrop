@@ -226,7 +226,11 @@
         <button id="retryRelease" type="button" hidden>Retry release lookup</button>
         <p class="compatibility-chooser__help">Manual ZIP results are for Apple Silicon Macs. Homebrew and the install script detect your Mac directly. <a href="https://github.com/YapWH1208/AerialDrop/releases" target="_blank" rel="noopener">Inspect all releases</a> if this lookup is unavailable.</p>
       </div>
-      <noscript><p class="compatibility-chooser__noscript">JavaScript is needed to verify a manual ZIP for your macOS version. Use the Homebrew or install script command below; they check compatibility on your Mac. You can also inspect the <a href="https://github.com/YapWH1208/AerialDrop/releases">official release notes</a> before downloading a ZIP.</p></noscript>
+      <noscript>
+        <p class="compatibility-chooser__noscript">JavaScript is needed to verify a manual ZIP for your macOS version. Homebrew checks compatibility on your Mac. To use the install script, run:</p>
+        <pre><code>curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh &amp;&amp; bash install.sh</code></pre>
+        <p class="compatibility-chooser__noscript">You can also inspect the <a href="https://github.com/YapWH1208/AerialDrop/releases">official release notes</a> before downloading a ZIP.</p>
+      </noscript>
 
       <div class="installer reveal" id="installer">
         <div class="installer__rail" role="tablist" aria-label="Installation methods">
