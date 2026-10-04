@@ -22,7 +22,7 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 - macOS Tahoe 26 or later
 - Swift 6.2 or later with the macOS 26 SDK (Xcode)
 - Source videos: MP4 or MOV, H.264 or HEVC
-- Day/Night controls require macOS 27 or later and an observed `WallpaperAerialsExtension` build. The current allowlist contains only `313.0.4.401`; unfamiliar builds disable pair application. macOS 26 retains the single-wallpaper workflow.
+- Day/Night controls require verified macOS 27 and an observed `WallpaperAerialsExtension` build. The current allowlist contains only `313.0.4.401`; unfamiliar builds and unverified macOS releases disable pair application. macOS 26 retains the single-wallpaper workflow.
 
 ## Installation
 

@@ -51,9 +51,10 @@ checks each target's decoded configuration and variant options; raw configuratio
 references remain visible even when the options are unfamiliar. Its nonmutating
 preflight checks target topology and preservation before registering a pair.
 
-Day/Night creation is enabled only on macOS 27+ with an observed Aerial extension
-build (initially `313.0.4.401`), a valid catalogue and supported selection topology.
-Unrecognized builds retain the ordinary single-wallpaper path. Typed activation
+Day/Night creation is enabled only on verified macOS 27 with an observed Aerial
+extension build (initially `313.0.4.401`), a valid catalogue and supported
+selection topology. Unrecognized builds and unverified macOS releases retain the
+ordinary single-wallpaper path. Typed activation
 uses a strict reload barrier: identify current-user native processes by executable,
 kernel start time and launchd membership; terminate the exact Aerials processes
 before the agent; retire extensions started during that transition; then verify a

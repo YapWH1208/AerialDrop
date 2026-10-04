@@ -12,6 +12,7 @@ final class SystemWallpaperServiceTests: XCTestCase {
         ]
         XCTAssertNoThrow(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: known))
         XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 26, bundleInfo: known))
+        XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 28, bundleInfo: known))
         XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: [:]))
         XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: [
             "CFBundleIdentifier": "com.apple.wallpaper.extension.aerials", "CFBundleVersion": "unknown"

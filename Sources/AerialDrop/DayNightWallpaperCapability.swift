@@ -22,8 +22,8 @@ enum DayNightWallpaperCapability {
     }
 
     static func validate(osMajor: Int, bundleInfo: [String: Any]) throws {
-        guard osMajor >= 27 else {
-            throw AerialDropError.dayNightUnavailable("Day/Night wallpapers require macOS 27 or later. You can still apply a single wallpaper.")
+        guard osMajor == 27 else {
+            throw AerialDropError.dayNightUnavailable("Day/Night wallpapers are supported only on verified macOS 27 systems. You can still apply a single wallpaper.")
         }
         guard bundleInfo["CFBundleIdentifier"] as? String == "com.apple.wallpaper.extension.aerials",
               let build = bundleInfo["CFBundleVersion"] as? String,
