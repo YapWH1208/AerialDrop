@@ -83,17 +83,21 @@ struct ManifestStore {
         let root = try loadRoot(from: Data(contentsOf: paths.manifest))
         // Pair membership is catalogue metadata. Keep it readable when an
         // ordinary restored entry has missing media so activation and removal
-        // checks for other wallpapers can still proceed. Mutations and native
-        // activation retain their strict installed-file validation.
+        // checks for other wallpapers can still proceed. Pair-role mutations
+        // validate installed files, while activation checks the selected media.
         try validateCandidate(root, preservingForeignEntriesFrom: root, requireManagedFiles: false)
         return try managedDayNightPair(in: root)
     }
 
-    func validateCurrentManifest() throws {
+    func validateCurrentManifest(requireManagedFiles: Bool = true) throws {
         try requireManifest()
         let data = try Data(contentsOf: paths.manifest)
         let root = try loadRoot(from: data)
-        try validateCandidate(root, preservingForeignEntriesFrom: root)
+        try validateCandidate(
+            root,
+            preservingForeignEntriesFrom: root,
+            requireManagedFiles: requireManagedFiles
+        )
     }
 
     /// A restorable catalogue backup, including the exact bytes selected for confirmation.

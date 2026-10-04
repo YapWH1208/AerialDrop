@@ -62,7 +62,7 @@ final class SystemWallpaperService: WallpaperServicing {
     /// selections may belong to another native provider.
     func validateDayNightSupport() throws {
         try validateCapability()
-        try manifestStore.validateCurrentManifest()
+        try manifestStore.validateCurrentManifest(requireManagedFiles: false)
         try selectionStore.validateForApplying(.automatic(groupID: ManifestStore.dayNightSubcategoryID))
         try processController.validateCurrentAgent()
     }
@@ -103,7 +103,7 @@ final class SystemWallpaperService: WallpaperServicing {
     }
 
     private func verifyCatalogue(_ selection: AerialSelectionRequest, pair: DayNightWallpaperPair?) throws {
-        try manifestStore.validateCurrentManifest()
+        try manifestStore.validateCurrentManifest(requireManagedFiles: false)
         switch selection {
         case .automatic(let groupID):
             guard groupID == ManifestStore.dayNightSubcategoryID, let pair,

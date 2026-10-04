@@ -60,6 +60,29 @@ final class SystemWallpaperServiceTests: XCTestCase {
         XCTAssertTrue(try service.inspectAerialSelections().matches(.single(assetID: h.thirdID)))
     }
 
+    func testActivationValidatesSelectedMediaWithoutBlockingOnUnrelatedMissingFiles() async throws {
+        let h = try ServiceHarness()
+        defer { h.cleanup() }
+        try FileManager.default.removeItem(at: h.paths.videoURL(for: h.missingID))
+        let originalSelection = try Data(contentsOf: h.paths.selectionStore)
+
+        XCTAssertThrowsError(try h.manifest.validateCurrentManifest())
+
+        do {
+            try await h.service().activateAerial(.single(assetID: h.missingID), verifyingPair: nil)
+            XCTFail("Expected the selected wallpaper's missing video to be rejected")
+        } catch { }
+        XCTAssertEqual(try Data(contentsOf: h.paths.selectionStore), originalSelection)
+        XCTAssertTrue(h.signaled.isEmpty)
+
+        try await h.service().activateAerial(.single(assetID: h.thirdID), verifyingPair: nil)
+        XCTAssertTrue(try h.service().inspectAerialSelections().matches(.single(assetID: h.thirdID)))
+
+        h.resetProcesses()
+        try await h.service().activateAerial(.fixedVariant(assetID: h.dayID), verifyingPair: h.pair)
+        XCTAssertTrue(try h.service().inspectAerialSelections().matches(.fixedVariant(assetID: h.dayID)))
+    }
+
     func testUnsupportedCapabilityOrIncorrectRolesRefuseBeforeSelectionWrites() async throws {
         let h = try ServiceHarness()
         defer { h.cleanup() }
@@ -215,6 +238,7 @@ private final class ServiceHarness {
     let dayID = "11111111-2222-4333-8444-555555555555"
     let nightID = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"
     let thirdID = "99999999-2222-4333-8444-555555555555"
+    let missingID = "88888888-2222-4333-8444-555555555555"
     let home: URL
     let paths: WallpaperPaths
     let manifest: ManifestStore
@@ -234,7 +258,7 @@ private final class ServiceHarness {
         try FileManager.default.createDirectory(at: paths.selectionStoreDirectory, withIntermediateDirectories: true)
         let root: [String: Any] = ["version": 1, "initialAssetCount": 0, "assets": [[String: Any]](), "categories": [[String: Any]]()]
         try JSONSerialization.data(withJSONObject: root).write(to: paths.manifest)
-        for id in [dayID, nightID, thirdID] {
+        for id in [dayID, nightID, thirdID, missingID] {
             try Data("video".utf8).write(to: paths.videoURL(for: id))
             try Data("preview".utf8).write(to: paths.thumbnailURL(for: id))
             try manifest.addWallpaper(id: id, title: id)
