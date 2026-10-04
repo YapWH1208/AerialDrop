@@ -87,6 +87,23 @@ struct WallpaperPresentationState: Equatable, Sendable {
         let hasUnrecognizedTarget = selections.count != inspection.targets.count
 
         if role != nil, let pair {
+            let normalizedPairSelections = selections.map { selection in
+                switch selection {
+                case .single(let assetID):
+                    return pair.memberAssetIDs.contains(assetID)
+                        ? AerialSelectionRequest.fixedVariant(assetID: assetID)
+                        : selection
+                case .fixedVariant(let assetID):
+                    return pair.memberAssetIDs.contains(assetID)
+                        ? AerialSelectionRequest.fixedVariant(assetID: assetID)
+                        : selection
+                case .automatic:
+                    return selection
+                }
+            }
+            let hasDifferentPairSelections = normalizedPairSelections.dropFirst().contains {
+                $0 != normalizedPairSelections[0]
+            }
             if inspection.matches(.automatic(groupID: ManifestStore.dayNightSubcategoryID)) {
                 return Self(assignment: assignment, selection: .automatic)
             }
@@ -115,7 +132,7 @@ struct WallpaperPresentationState: Equatable, Sendable {
             }
             let memberMatches = memberSelections.filter { $0 == wallpaperID }
             if !memberMatches.isEmpty {
-                if hasDifferentSelections {
+                if hasDifferentPairSelections {
                     return Self(assignment: assignment, selection: .mixedTargets)
                 }
                 if hasUnrecognizedTarget {
@@ -123,7 +140,7 @@ struct WallpaperPresentationState: Equatable, Sendable {
                 }
                 return Self(assignment: assignment, selection: .selectedOnSomeTargets)
             }
-            if hasDifferentSelections {
+            if hasDifferentPairSelections {
                 return Self(assignment: assignment, selection: .mixedTargets)
             }
             if hasUnrecognizedTarget || selections.isEmpty {

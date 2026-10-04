@@ -171,6 +171,13 @@ final class WallpaperPresentationStateTests: XCTestCase {
         XCTAssertEqual(resolve(nightID, inspection: inspection).selection, .notSelected)
     }
 
+    func testSamePairMemberAcrossRequestFormsKeepsUnknownTargetAsUnknownScope() {
+        let inspection = inspection(.single(assetID: dayID), .fixedVariant(assetID: dayID), nil)
+
+        XCTAssertEqual(resolve(dayID, inspection: inspection).selection, .selectedWithUnknownScope)
+        XCTAssertEqual(resolve(nightID, inspection: inspection).selection, .unknown)
+    }
+
     private func resolve(
         _ wallpaperID: String,
         rawIDs: Set<String> = [],
