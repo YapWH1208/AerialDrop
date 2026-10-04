@@ -1,10 +1,27 @@
 import Foundation
 
+struct DayNightSectionExpansionPreference: Equatable, Sendable {
+    enum Mode: String, Sendable {
+        case automatic
+        case expanded
+        case collapsed
+    }
+
+    var mode: Mode
+    var dismissedAttentionToken: String?
+
+    init(mode: Mode = .automatic, dismissedAttentionToken: String? = nil) {
+        self.mode = mode
+        self.dismissedAttentionToken = dismissedAttentionToken
+    }
+}
+
 enum AppPreferences {
     static let setWallpaperAfterImportKey = "setWallpaperAfterImport"
     static let lastConversionQualityKey = "lastConversionQuality"
     static let lastOutputHeightCapKey = "lastOutputHeightCap"
     static let dayNightDraftKey = "dayNightWallpaperDraft"
+    static let dayNightSectionExpansionPreferenceKey = "dayNightSectionExpansionPreference"
     static let pendingDayNightAssetIDsKey = "pendingDayNightAssetIDs"
 
     static func dayNightDraft(defaults: UserDefaults = .standard) throws -> DayNightWallpaperDraft {
@@ -42,6 +59,46 @@ enum AppPreferences {
             restorePreference(old, key: dayNightDraftKey, defaults: defaults)
             throw AerialDropError.dayNightPreferencesWriteFailed
         }
+    }
+
+    static func dayNightSectionExpansionPreference(
+        defaults: UserDefaults = .standard
+    ) -> DayNightSectionExpansionPreference {
+        guard let stored = defaults.object(forKey: dayNightSectionExpansionPreferenceKey) else {
+            return DayNightSectionExpansionPreference()
+        }
+        guard let values = stored as? [String: Any],
+              Set(values.keys).isSubset(of: ["mode", "dismissedAttentionToken"]),
+              let rawMode = values["mode"] as? String,
+              let mode = DayNightSectionExpansionPreference.Mode(rawValue: rawMode) else {
+            return DayNightSectionExpansionPreference()
+        }
+
+        let dismissedAttentionToken: String?
+        if let storedToken = values["dismissedAttentionToken"] {
+            guard let token = storedToken as? String else {
+                return DayNightSectionExpansionPreference()
+            }
+            dismissedAttentionToken = token
+        } else {
+            dismissedAttentionToken = nil
+        }
+
+        return DayNightSectionExpansionPreference(
+            mode: mode,
+            dismissedAttentionToken: dismissedAttentionToken
+        )
+    }
+
+    static func setDayNightSectionExpansionPreference(
+        _ preference: DayNightSectionExpansionPreference,
+        defaults: UserDefaults = .standard
+    ) {
+        var values: [String: Any] = ["mode": preference.mode.rawValue]
+        if let dismissedAttentionToken = preference.dismissedAttentionToken {
+            values["dismissedAttentionToken"] = dismissedAttentionToken
+        }
+        defaults.set(values, forKey: dayNightSectionExpansionPreferenceKey)
     }
 
     /// A durable conservative guard retained until a native generation proves

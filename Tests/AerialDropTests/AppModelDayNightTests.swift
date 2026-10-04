@@ -4,6 +4,45 @@ import XCTest
 
 @MainActor
 final class AppModelDayNightTests: XCTestCase {
+    func testDayNightSectionAttentionTracksSetupAndChangedDraft() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        await h.model.reload()
+
+        XCTAssertEqual(h.model.dayNightSectionAttentionToken, "setup:-:-")
+
+        h.model.dayWallpaperID = h.dayID
+        XCTAssertEqual(h.model.dayNightSectionAttentionToken, "setup:\(h.dayID):-")
+
+        h.choosePair()
+        XCTAssertEqual(h.model.dayNightSectionAttentionToken, "setup:\(h.dayID):\(h.nightID)")
+
+        try h.store.configureDayNightPair(h.pair)
+        await h.model.reload()
+        XCTAssertNil(h.model.dayNightSectionAttentionToken)
+
+        h.model.dayWallpaperID = h.thirdID
+        XCTAssertEqual(
+            h.model.dayNightSectionAttentionToken,
+            "draft:\(h.dayID):\(h.nightID):\(h.thirdID):\(h.nightID)"
+        )
+    }
+
+    func testDayNightSectionAttentionPrioritizesRecoveryAndUnavailableSupport() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        await h.model.reload()
+
+        h.defaults.set([42], forKey: AppPreferences.pendingDayNightAssetIDsKey)
+        await h.model.reload()
+        XCTAssertEqual(h.model.dayNightSectionAttentionToken, "recovery:unreadable")
+
+        h.defaults.removeObject(forKey: AppPreferences.pendingDayNightAssetIDsKey)
+        h.service.supportError = AerialDropError.dayNightUnavailable("macOS 26")
+        await h.model.reload()
+        XCTAssertNil(h.model.dayNightSectionAttentionToken)
+    }
+
     func testSavingRolesPersistsWithoutRegisteringOrActivating() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }

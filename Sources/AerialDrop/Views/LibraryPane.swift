@@ -46,6 +46,15 @@ struct LibraryPane: View {
         return base.sortedForLibrary(sortOrder)
     }
 
+    private var sortOrderTitle: String {
+        switch sortOrder {
+        case .title:
+            "Title"
+        case .recentlyAdded:
+            "Recently Added"
+        }
+    }
+
     var body: some View {
         libraryState
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -225,11 +234,14 @@ struct LibraryPane: View {
                 .searchable(text: $searchText, placement: .toolbar, prompt: "Search wallpapers")
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
-                        Picker("Sort", selection: $sortOrder) {
-                            Text("Title").tag(LibrarySortOrder.title)
-                            Text("Recently Added").tag(LibrarySortOrder.recentlyAdded)
+                        Menu {
+                            Picker("Sort by", selection: $sortOrder) {
+                                Text("Title").tag(LibrarySortOrder.title)
+                                Text("Recently Added").tag(LibrarySortOrder.recentlyAdded)
+                            }
+                        } label: {
+                            Label("Sort: \(sortOrderTitle)", systemImage: "arrow.up.arrow.down")
                         }
-                        .pickerStyle(.menu)
                         .disabled(model.wallpapers.count < 2)
                     }
                 }

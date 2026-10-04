@@ -179,6 +179,32 @@ final class AppModel {
         }
     }
 
+    /// A stable token for setup or selection recovery that should surface in
+    /// the compact Library section. A nil token means the summary is healthy
+    /// or Day/Night support is unavailable without pending recovery.
+    var dayNightSectionAttentionToken: String? {
+        if isDayNightRecoveryPending {
+            let protectedIDs = (try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults))?.sorted()
+                ?? ["unreadable"]
+            return "recovery:\(protectedIDs.joined(separator: ":"))"
+        }
+        if isSelectionStatusUnknown, let pair = registeredDayNightPair {
+            return "selection:\(pair.dayAssetID):\(pair.nightAssetID)"
+        }
+        guard dayNightUnavailableReason == nil else { return nil }
+        if let pair = registeredDayNightPair {
+            guard pair.dayAssetID == dayNightDraft.dayAssetID,
+                  pair.nightAssetID == dayNightDraft.nightAssetID else {
+                return "draft:\(pair.dayAssetID):\(pair.nightAssetID):\(dayNightDraft.dayAssetID ?? "-"):\(dayNightDraft.nightAssetID ?? "-")"
+            }
+            if let blocker = dayNightApplyBlockerMessage {
+                return "blocked:\(pair.dayAssetID):\(pair.nightAssetID):\(blocker)"
+            }
+            return nil
+        }
+        return "setup:\(dayNightDraft.dayAssetID ?? "-"):\(dayNightDraft.nightAssetID ?? "-")"
+    }
+
     func applyDayNightWallpaper() {
         guard !isWorking else { return }
         Task { await activateDayNightWallpaper() }
