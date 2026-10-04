@@ -14,7 +14,7 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 - **Inline preview** — the Import pane shows the source with a live 16:9 crop mask, and crop, quality, and output resolution are tuned in place before importing.
 - **Controllable Library preview** — installed wallpapers loop in a native preview sheet with a visible Play/Pause control that respects Reduced Motion.
 - **In-app activation** — imported Aerials are applied across all Spaces and displays by default; Library also provides a manual Set as Wallpaper action and Active status.
-- **Native Day/Night pairs** — on supported macOS 27 systems, choose two distinct imports as Day and Night and explicitly apply native Automatic solar selection. This feature is unreleased; custom-media native playback acceptance is still pending.
+- **Native Day/Night pairs** — on supported macOS 27 systems, choose two distinct imports as Day and Night and explicitly apply native Automatic solar selection. Custom-media native playback acceptance is still pending.
 - **Maintenance tools** — validate the catalogue, open the storage folder, or remove all imported wallpapers.
 
 ## Requirements

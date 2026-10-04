@@ -1,8 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.1.9
 
+- Add Day/Night wallpaper pairs on verified macOS 27 builds, with saved role choices, explicit Automatic selection, and fixed Day or Night variants.
+- Protect both pair members during activation, replacement, removal, and backup restore; retain recovery protection and backups when native verification fails.
 - Accept macOS 27 Aerial catalogues whose initial asset count is smaller than the full catalogue, preventing a valid catalogue from blocking import setup.
+- Keep unrelated missing media from blocking wallpaper activation and removal, while validating the selected wallpaper's files before activation.
+- Keep reapplying the selected ordinary wallpaper available during pending or malformed recovery, including after relaunch with only one import.
+- Fix the expanded Day/Night Library layout and distinguish saved choices from the active wallpaper mode.
+- Select full Xcode before clearing build output to avoid Command Line Tools build failures.
+
+Native imported-video playback, natural solar transitions after the app quits, and lock/unlock acceptance for Day/Night pairs remain unverified. See `TESTING.md` for the remaining runtime checks.
 
 ## 1.1.8
 
