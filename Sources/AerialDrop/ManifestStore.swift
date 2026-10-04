@@ -81,7 +81,11 @@ struct ManifestStore {
     func dayNightPair() throws -> DayNightWallpaperPair? {
         guard fileManager.fileExists(atPath: paths.manifest.path) else { return nil }
         let root = try loadRoot(from: Data(contentsOf: paths.manifest))
-        try validateCandidate(root, preservingForeignEntriesFrom: root)
+        // Pair membership is catalogue metadata. Keep it readable when an
+        // ordinary restored entry has missing media so activation and removal
+        // checks for other wallpapers can still proceed. Mutations and native
+        // activation retain their strict installed-file validation.
+        try validateCandidate(root, preservingForeignEntriesFrom: root, requireManagedFiles: false)
         return try managedDayNightPair(in: root)
     }
 

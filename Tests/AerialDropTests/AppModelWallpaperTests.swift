@@ -1043,6 +1043,32 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertTrue(model.isSelectionStatusUnknown)
     }
 
+    func testMissingOrdinaryWallpaperDoesNotBlockOtherActivationOrRemoval() async throws {
+        let home = makeTemporaryHome()
+        let intact = makeWallpaper(id: "C0D3X-MISSING-001")
+        let missing = makeWallpaper(id: "C0D3X-MISSING-002")
+        try installManagedWallpapers([intact, missing], in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        try FileManager.default.removeItem(at: paths.videoURL(for: missing.id))
+
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        XCTAssertEqual(model.catalogueState, .ready)
+        let loadedIntact = try XCTUnwrap(model.wallpapers.first { $0.id == intact.id })
+        let loadedMissing = try XCTUnwrap(model.wallpapers.first { $0.id == missing.id })
+        XCTAssertFalse(loadedMissing.videoExists)
+
+        await model.activateWallpaper(loadedIntact)
+        XCTAssertEqual(service.activatedAssetIDs, [intact.id])
+        XCTAssertNil(model.activationFailure)
+
+        await model.removeWallpaper(loadedMissing)
+        XCTAssertNil(model.activeAlert)
+        XCTAssertEqual(model.wallpapers.map(\.id), [intact.id])
+    }
+
     func testRemovalStopsWhenTheSelectionStoreIsUnreadableWithoutAcknowledgement() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0010")
         let service = FakeWallpaperService()
