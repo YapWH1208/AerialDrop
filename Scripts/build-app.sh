@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+. "$PWD/Scripts/select-xcode.sh" || exit $?
+
 APP_NAME="AerialDrop"
 BUILD_DIR=".build/release"
 DIST_DIR="dist"

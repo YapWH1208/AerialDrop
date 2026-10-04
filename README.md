@@ -69,6 +69,11 @@ This creates `dist/AerialDrop.app`. Open it with:
 open -n dist/AerialDrop.app
 ```
 
+For a clean build and launch, run `./build-and-open.sh`. Both packaging scripts
+use your selected Xcode, or `/Applications/Xcode.app` when Command Line Tools
+is selected. Set `DEVELOPER_DIR` to use another Xcode installation. They check
+for full Xcode and its macOS SDK before removing previous build output.
+
 ## Usage
 
 1. **Set up Apple Aerials** — before the first import, open System Settings → Wallpaper and download at least one Apple Aerial wallpaper. If the native catalogue is not ready, AerialDrop shows **Open Wallpaper Settings** and **Check Again** instead of an empty Library.
