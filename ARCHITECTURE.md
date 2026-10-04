@@ -25,3 +25,63 @@ Screen saver → Lock Screen → native slowdown → static desktop
 There is no app-managed desktop player. AerialDrop may be quit after setup.
 
 `ManifestStore` owns `entries.json`; `WallpaperSelectionStore` separately owns the private `Store/Index.plist` linked-selection format. Unknown store data is preserved, selection writes are backed up, and each global and Space target is verified after activation. Verification failures deliberately do not auto-restore over newer macOS state. Catalogue restore uses the confirmed backup bytes and refuses to remove an active managed entry (or any managed entry when active status is unknown). If selection validation fails after the restore write, the pre-write safety backup is retained and the UI reloads the current catalogue. A concurrent macOS catalogue update remains untouched; the safety backup can be restored if it still passes the foreign-data checks.
+
+The manifest's `initialAssetCount` must be an integer from zero through the number of assets. It need not equal the total: Apple's macOS 27 catalogue declares 4 with 164 assets. Reading and validating a catalogue preserve its bytes; existing managed import, rename and removal operations continue to normalize the count to their resulting asset count.
+
+The macOS 27 Day/Night catalogue adapter registers two distinct imported assets
+under one stable, AerialDrop-owned combined subcategory. It reuses their UUIDs
+and installed media, with solar anchors at altitude +35° for Day and −35° for
+Night (azimuth 180°). The manifest records the registered pair; editable choices
+are separate from registration. Import, rename and reimport preserve these roles.
+Malformed roles or missing paired media fail validation instead of silently
+dissolving the group.
+
+Removing either paired asset requires a fresh selection check and dissolves an
+inactive pair while returning its surviving member to the ordinary category.
+Selecting the group or either fixed member protects both members. Restore also
+protects their role mapping, even when the backup retains both UUIDs. Checks run
+again after the catalogue write; a late selection change retains media and the
+safety backup and reports the partial outcome. Replacing a registered pair
+requires the caller to persist protection for its previous and new members until
+a fresh native activation is verified, since native services can cache old roles.
+
+`AerialSelectionRequest` separates ordinary single selection, fixed Day/Night
+member selection, and Automatic group selection. `WallpaperSelectionStore`
+checks each target's decoded configuration and variant options; raw configuration
+references remain visible even when the options are unfamiliar. Its nonmutating
+preflight checks target topology and preservation before registering a pair.
+
+Day/Night creation is enabled only on verified macOS 27 with an observed Aerial
+extension build (initially `313.0.4.401`), a valid catalogue and supported
+selection topology. Unrecognized builds and unverified macOS releases retain the
+ordinary single-wallpaper path. Typed activation
+uses a strict reload barrier: identify current-user native processes by executable,
+kernel start time and launchd membership; terminate the exact Aerials processes
+before the agent; retire extensions started during that transition; then verify a
+fresh agent across two catalogue/selection checks. Lookup commands and restart
+polling are bounded. Failure keeps backups and cannot release pending member
+protection. The legacy best-effort refresh remains separate from this proof.
+
+`DayNightWallpaperDraft` persists the Library's editable role IDs through
+`AppPreferences`, independently of the registered manifest pair. Selecting a
+video saves only that draft; Apply validates support and media, persists a
+conservative member guard, registers the pair and requests Automatic activation.
+Status comes from decoded native selections, so a saved draft is not reported as
+active. Applying a paired member manually requests its fixed variant; applying
+an ordinary wallpaper replaces Automatic through the fresh reload barrier.
+
+Pending member protection survives relaunch and includes previous/new pair IDs
+until native activation succeeds. Clearing compares the expected member set or
+exact malformed snapshot before writing, preventing a concurrent recovery guard
+from being discarded. Preference flush/readback failures retain the conservative
+union or unknown state. Late catalogue removal/restore failures also retain
+previous/current pair protection after the on-disk roles disappear. Orphan group
+references and unknown pair protection cannot be bypassed by the ordinary
+unverified-removal acknowledgement. Supplied selection callbacks recheck
+ordinary removals too; partial failures retain media and expose the reloaded
+catalogue outcome.
+
+Automated fixtures and injected services verify these contracts without touching
+real wallpaper storage. They do not establish native custom-media rendering,
+natural solar transitions after quit, or lock/unlock playback. Those checks are
+tracked separately in `TESTING.md` and remain required runtime acceptance.

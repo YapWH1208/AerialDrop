@@ -581,14 +581,191 @@ final class ManifestStoreTests: XCTestCase {
             try JSONSerialization.data(withJSONObject: root).write(to: paths.manifest)
             XCTAssertThrowsError(try store.importedWallpapers(), key)
         }
-        for invalidCount in [2, -1, 1.5, true] as [Any] {
+        for (description, invalidCount) in [
+            ("above total", 2),
+            ("negative", -1),
+            ("fraction", 1.5),
+            ("boolean", true),
+            ("string", "1"),
+            ("integer overflow", Double.greatestFiniteMagnitude)
+        ] as [(String, Any)] {
             var root = original
             root["initialAssetCount"] = invalidCount
             try JSONSerialization.data(withJSONObject: root).write(to: paths.manifest)
-            XCTAssertThrowsError(try store.importedWallpapers(), "count: \(invalidCount)")
+            XCTAssertThrowsError(try store.importedWallpapers(), description)
         }
         try FileManager.default.removeItem(at: paths.manifest)
         XCTAssertTrue(try store.importedWallpapers().isEmpty)
+    }
+
+    func testCatalogueReadAcceptsZeroInitialAssetCount() throws {
+        var root = try json(at: paths.manifest)
+        root["initialAssetCount"] = 0
+        try JSONSerialization.data(withJSONObject: root).write(to: paths.manifest)
+
+        XCTAssertNoThrow(try store.validateCurrentManifest())
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+    }
+
+    func testNativeShapedPartialInitialAssetCountValidatesWithoutChangingBytes() throws {
+        let originalData = try partialInitialCountFixtureData(assetCount: 164, initialAssetCount: 4)
+        try originalData.write(to: paths.manifest, options: .atomic)
+
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+        XCTAssertNoThrow(try store.validateCurrentManifest())
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), originalData)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path).isEmpty)
+    }
+
+    func testImportFromPartialInitialAssetCountPreservesBackupAndNormalizesLifecycleCounts() throws {
+        let originalData = try partialInitialCountFixtureData(assetCount: 6, initialAssetCount: 4)
+        try originalData.write(to: paths.manifest, options: .atomic)
+        let originalRoot = try json(at: paths.manifest)
+        let originalForeignAssets = try XCTUnwrap(originalRoot["assets"] as? [[String: Any]])
+        let id = "PARTIAL-COUNT-LIFECYCLE"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: id))
+
+        try store.addWallpaper(id: id, title: "Partial Count")
+
+        let importBackup = try XCTUnwrap(store.latestBackup())
+        XCTAssertEqual(importBackup.operation, "import")
+        XCTAssertEqual(importBackup.content, originalData)
+        var current = try json(at: paths.manifest)
+        var currentAssets = try XCTUnwrap(current["assets"] as? [[String: Any]])
+        XCTAssertEqual(current["initialAssetCount"] as? Int, currentAssets.count)
+        XCTAssertEqual(currentAssets.count, 7)
+        XCTAssertEqual(canonical(Array(currentAssets.prefix(6))), canonical(originalForeignAssets))
+
+        try store.renameWallpaper(id: id, title: "Renamed Partial Count")
+        current = try json(at: paths.manifest)
+        currentAssets = try XCTUnwrap(current["assets"] as? [[String: Any]])
+        XCTAssertEqual(current["initialAssetCount"] as? Int, currentAssets.count)
+        XCTAssertEqual(try store.importedWallpapers().first?.title, "Renamed Partial Count")
+
+        try store.removeWallpaper(id: id)
+        current = try json(at: paths.manifest)
+        currentAssets = try XCTUnwrap(current["assets"] as? [[String: Any]])
+        XCTAssertEqual(current["initialAssetCount"] as? Int, currentAssets.count)
+        XCTAssertEqual(canonical(currentAssets), canonical(originalForeignAssets))
+    }
+
+    func testRestoreAcceptsPartialInitialAssetCountAndBacksUpNormalizedCatalogue() throws {
+        let originalData = try partialInitialCountFixtureData(assetCount: 6, initialAssetCount: 4)
+        try originalData.write(to: paths.manifest, options: .atomic)
+        let originalRoot = try json(at: paths.manifest)
+        let id = "PARTIAL-COUNT-RESTORE"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Restore Partial Count")
+        let partialCountBackup = try XCTUnwrap(store.latestBackup())
+        let preRestoreData = try Data(contentsOf: paths.manifest)
+        let preRestoreRoot = try json(at: paths.manifest)
+        XCTAssertEqual(preRestoreRoot["initialAssetCount"] as? Int, 7)
+        XCTAssertEqual((preRestoreRoot["assets"] as? [[String: Any]])?.count, 7)
+
+        try store.restoreBackup(partialCountBackup, protectingActiveAssetIDs: { [] })
+
+        let restoredRoot = try json(at: paths.manifest)
+        let restoredAssets = try XCTUnwrap(restoredRoot["assets"] as? [[String: Any]])
+        XCTAssertEqual(restoredRoot["initialAssetCount"] as? Int, 4)
+        XCTAssertEqual(restoredAssets.count, 6)
+        XCTAssertFalse(restoredAssets.contains { ($0["id"] as? String) == id })
+        XCTAssertEqual(canonical(restoredRoot), canonical(originalRoot))
+        let restoreBackup = try XCTUnwrap(store.latestBackup())
+        XCTAssertEqual(restoreBackup.operation, "restore")
+        XCTAssertEqual(restoreBackup.content, preRestoreData)
+    }
+
+    func testOrdinaryRemovalDetectsLateOrphanGroupAndRetainsMediaAndSafetyBackup() throws {
+        let id = "ORDINARY-LATE-ORPHAN"
+        try installFixtureWallpaper(id: id, title: "Ordinary")
+        let originalData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        var reads = 0
+
+        XCTAssertThrowsError(try store.removeWallpaper(id: id, protectingActiveAssetIDs: {
+            reads += 1
+            let installedIDs = Set(try self.store.importedWallpapers().map(\.id))
+            return installedIDs.contains(id) ? [] : [ManifestStore.dayNightSubcategoryID]
+        })) { error in
+            guard case AerialDropError.manifestMutationCommitted = error else {
+                return XCTFail("Expected manifestMutationCommitted, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(reads, 3)
+        XCTAssertFalse(try store.importedWallpapers().contains { $0.id == id })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: id).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: id).path))
+        let backupsAfter = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        let addedBackups = backupsAfter.subtracting(backupsBefore)
+        XCTAssertEqual(addedBackups.count, 1)
+        let backupName = try XCTUnwrap(addedBackups.first)
+        XCTAssertEqual(try Data(contentsOf: paths.backups.appending(path: backupName)), originalData)
+    }
+
+    func testOrdinaryRemoveAllBlocksOrphanGroupBeforeBackupOrWrite() throws {
+        let id = "ORDINARY-PREWRITE-ORPHAN"
+        try installFixtureWallpaper(id: id, title: "Ordinary")
+        let originalData = try Data(contentsOf: paths.manifest)
+        let backupsBefore = Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path))
+        var reads = 0
+
+        XCTAssertThrowsError(try store.removeAllManaged(protectingActiveAssetIDs: {
+            reads += 1
+            return [ManifestStore.dayNightSubcategoryID]
+        })) { error in
+            guard case AerialDropError.activeWallpaperCannotBeRemoved = error else {
+                return XCTFail("Expected activeWallpaperCannotBeRemoved, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), originalData)
+        XCTAssertEqual(
+            Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)),
+            backupsBefore
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: id).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: id).path))
+    }
+
+    func testValidActivePairGroupPermitsRemovingUnrelatedOrdinaryWallpaper() throws {
+        let dayID = "PAIR-DAY"
+        let nightID = "PAIR-NIGHT"
+        let ordinaryID = "PAIR-UNRELATED-ORDINARY"
+        try installFixtureWallpaper(id: dayID, title: "Day")
+        try installFixtureWallpaper(id: nightID, title: "Night")
+        try installFixtureWallpaper(id: ordinaryID, title: "Ordinary")
+        let pair = DayNightWallpaperPair(dayAssetID: dayID, nightAssetID: nightID)
+        try store.configureDayNightPair(pair)
+        var reads = 0
+
+        try store.removeWallpaper(id: ordinaryID, protectingActiveAssetIDs: {
+            reads += 1
+            return [ManifestStore.dayNightSubcategoryID]
+        })
+
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(try store.dayNightPair(), pair)
+        XCTAssertEqual(Set(try store.importedWallpapers().map(\.id)), pair.memberAssetIDs)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.videoURL(for: ordinaryID).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: ordinaryID).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: dayID).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: nightID).path))
+    }
+
+    func testOrdinaryRemoveAllWithoutSelectionCallbackPreservesLegacyBehavior() throws {
+        let id = "ORDINARY-NO-CALLBACK"
+        try installFixtureWallpaper(id: id, title: "Ordinary")
+
+        try store.removeAllManaged()
+
+        XCTAssertTrue(try store.importedWallpapers().isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.videoURL(for: id).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: id).path))
+        XCTAssertEqual(try XCTUnwrap(store.latestBackup()).operation, "remove-all")
     }
 
     private func installFixtureWallpaper(id: String, title: String, width: Int = 0, height: Int = 0) throws {
@@ -632,6 +809,24 @@ final class ManifestStoreTests: XCTestCase {
                     "representativeAssetID": "EC42DAD0-E8D4-4408-9CA3-3B4767783453"
                 ]]
             ]]
+        ]
+        return try JSONSerialization.data(withJSONObject: fixture, options: [.prettyPrinted])
+    }
+
+    private func partialInitialCountFixtureData(assetCount: Int, initialAssetCount: Int) throws -> Data {
+        let assets: [[String: Any]] = (0..<assetCount).map { index in
+            [
+                "id": "FOREIGN-\(index)",
+                "categories": ["FOREIGN-CATEGORY"],
+                "unknownNativeField": ["index": index]
+            ]
+        }
+        let fixture: [String: Any] = [
+            "version": 1,
+            "localizationVersion": "native-shaped-fixture",
+            "initialAssetCount": initialAssetCount,
+            "assets": assets,
+            "categories": []
         ]
         return try JSONSerialization.data(withJSONObject: fixture, options: [.prettyPrinted])
     }

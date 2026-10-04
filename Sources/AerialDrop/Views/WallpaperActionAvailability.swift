@@ -1,11 +1,14 @@
 struct WallpaperActionAvailability {
     let wallpaper: ManagedWallpaper
+    /// Includes every member protected by an active Day/Night pair.
     let isActive: Bool
+    /// Whether this card's activation would repeat the verified selection.
+    let isAlreadySelected: Bool
     let isSelectionStatusUnknown: Bool
     let isWorking: Bool
 
     var canSetAsWallpaper: Bool {
-        wallpaper.videoExists && !isActive && !isWorking
+        wallpaper.videoExists && !isAlreadySelected && !isWorking
     }
 
     var canRename: Bool {
@@ -20,7 +23,7 @@ struct WallpaperActionAvailability {
         if !wallpaper.videoExists {
             return "The installed video is missing"
         }
-        if isActive {
+        if isAlreadySelected {
             return "This wallpaper is already active"
         }
         if isWorking {

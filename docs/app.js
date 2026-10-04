@@ -162,7 +162,7 @@
     fetch(url, controller ? { signal: controller.signal, headers: { Accept: "application/vnd.github+json" } } : {})
       .then(function (res) { if (!res.ok) throw new Error("HTTP " + res.status); return res.json(); })
       .then(function (rel) {
-        var tag = rel.tag_name || "v1.1.8";
+        var tag = rel.tag_name || "v1.1.9";
         var asset = (rel.assets || []).filter(function (a) { return /macOS/i.test(a.name) && /\.zip$/i.test(a.name); })[0];
         var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
         set("releaseSize", humanSize(asset && asset.size));
@@ -171,7 +171,7 @@
       .catch(function (err) {
         var set = function (id, text) { var el = document.getElementById(id); if (el) el.textContent = text; };
         set("releaseSize", releaseStatusMessage(err));
-        applyRelease("v1.1.8", null);
+        applyRelease("v1.1.9", null);
       })
       .then(function () { if (timer) clearTimeout(timer); });
   }

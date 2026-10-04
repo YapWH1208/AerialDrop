@@ -5,6 +5,7 @@ struct WallpaperCard: View {
     let wallpaper: ManagedWallpaper
     let isSelected: Bool
     let isActive: Bool
+    let isAlreadySelected: Bool
     let isSelectionStatusUnknown: Bool
     let isWorking: Bool
     let onSelect: () -> Void
@@ -238,6 +239,7 @@ struct WallpaperCard: View {
         WallpaperActionAvailability(
             wallpaper: wallpaper,
             isActive: isActive,
+            isAlreadySelected: isAlreadySelected,
             isSelectionStatusUnknown: isSelectionStatusUnknown,
             isWorking: isWorking
         )
