@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 11615)
-Total output lines: 680
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -271,7 +268,174 @@ Total output lines: 680
                   <div class="cmd">
                     <pre><code>brew install --cask yapwh1208/tap/aerialdrop</code></pre>
                     <button class="cmd__copy" type="button" data-copy="brew install --cask yapwh1208/tap/aerialdrop">Copy</button>
-                  </d…2615 tokens truncated…de></pre>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>Verify it&rsquo;s in place</h4>
+                  <div class="cmd">
+                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code>AerialDrop.app</code> and the version:
+                  <button class="cmd__copy cmd__copy--inline" type="button" data-copy="defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString">Copy</button></p>
+                  <div class="cmd">
+                    <pre><code>defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString">Copy</button>
+                  </div>
+                  <p class="expect">Expected version for the selected macOS on Apple Silicon: <code><span id="expectVersion">Run installer to resolve</span></code>. The current source version is 1.1.9; compatibility and publication decide the selected version.</p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>To upgrade later</h4>
+                  <div class="cmd">
+                    <pre><code>brew update &amp;&amp; brew upgrade --cask aerialdrop</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="brew update && brew upgrade --cask aerialdrop">Copy</button>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Script -->
+          <div class="panel" id="panel-script" role="tabpanel" aria-labelledby="method-script" hidden>
+            <div class="panel__head">
+              <h3>Install script</h3>
+              <p>Downloads the newest compatible published release, verifies its sha256 checksum against the release metadata, installs to <code>/Applications</code>, and clears the quarantine.</p>
+            </div>
+            <ol class="steps">
+              <li class="step">
+                <span class="step__num" aria-hidden="true">1</span>
+                <div class="step__content">
+                  <h4>Fetch the script</h4>
+                  <div class="cmd">
+                    <pre><code>curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>Run it</h4>
+                  <div class="cmd">
+                    <pre><code>bash install.sh</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="bash install.sh">Copy</button>
+                  </div>
+                  <p class="expect">Options: <code>install.sh &lt;version&gt;</code> checks an explicit pin for compatibility &middot; <code>--print-version</code> resolves without installing &middot; <code>--open</code> launches after install &middot; <code>--force</code> replaces without asking &middot; <code>--install-dir &lt;path&gt;</code> sets the destination.</p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>Verify</h4>
+                  <div class="cmd">
+                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Release -->
+          <div class="panel" id="panel-release" role="tabpanel" aria-labelledby="method-release" hidden>
+            <div class="panel__head">
+              <h3>Release zip</h3>
+              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. Unzip it into Applications.</p>
+            </div>
+            <ol class="steps">
+              <li class="step">
+                <span class="step__num" aria-hidden="true">1</span>
+                <div class="step__content">
+                  <h4>Download</h4>
+                  <a class="btn btn--primary" data-download aria-disabled="true" target="_blank" rel="noopener">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
+                    <span data-download-label>Download unavailable</span>
+                  </a>
+                  <p class="expect">Or extract from the terminal:</p>
+                  <div class="cmd">
+                    <pre><code id="unzipCmd">ZIP command available after release lookup</code></pre>
+                    <button class="cmd__copy" id="unzipCopy" type="button" disabled>Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>First launch</h4>
+                  <p class="step__note">The app is ad-hoc signed, so Gatekeeper may ask the first time: right-click the app and choose <strong>Open</strong> once, or clear the quarantine:</p>
+                  <div class="cmd">
+                    <pre><code>xattr -dr com.apple.quarantine /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="xattr -dr com.apple.quarantine /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>Verify</h4>
+                  <div class="cmd">
+                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                  </div>
+                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Source -->
+          <div class="panel" id="panel-source" role="tabpanel" aria-labelledby="method-source" hidden>
+            <div class="panel__head">
+              <h3>Build from source</h3>
+              <p>Requires full Xcode with Swift 6.2+ and the macOS 26 SDK or later. The packaging script selects Xcode and checks its SDK before clearing build output. The final app lands at <code>dist/AerialDrop.app</code>.</p>
+            </div>
+            <ol class="steps">
+              <li class="step">
+                <span class="step__num" aria-hidden="true">1</span>
+                <div class="step__content">
+                  <h4>Fetch the resolver</h4>
+                  <div class="cmd">
+                    <pre><code>curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/main/install.sh">Copy</button>
+                  </div>
+                  <p class="expect">The read-only resolver checks this Mac and prints a compatible release version.</p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">2</span>
+                <div class="step__content">
+                  <h4>Clone the compatible tag</h4>
+                  <div class="cmd">
+                    <pre><code>VERSION="$(bash install.sh --print-version)" &amp;&amp; git clone --branch "v$VERSION" --depth 1 https://github.com/YapWH1208/AerialDrop.git</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="VERSION=&quot;$(bash install.sh --print-version)&quot; &amp;&amp; git clone --branch &quot;v$VERSION&quot; --depth 1 https://github.com/YapWH1208/AerialDrop.git">Copy</button>
+                  </div>
+                  <p class="expect">Use these commands in a fresh terminal session before building. A selected version on this page may differ from the Mac running the resolver.</p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">3</span>
+                <div class="step__content">
+                  <h4>Select Xcode and build</h4>
+                  <div class="cmd">
+                    <pre><code>cd AerialDrop &amp;&amp; export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer &amp;&amp; swift build -c release</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="cd AerialDrop && export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer && swift build -c release">Copy</button>
+                  </div>
+                  <p class="expect">If Xcode is installed elsewhere, replace <code>/Applications/Xcode.app</code> with its path.</p>
+                </div>
+              </li>
+              <li class="step">
+                <span class="step__num" aria-hidden="true">4</span>
+                <div class="step__content">
+                  <h4>Package, launch, then verify</h4>
+                  <div class="cmd">
+                    <pre><code>Scripts/build-app.sh &amp;&amp; open -n dist/AerialDrop.app &amp;&amp; ls dist/AerialDrop.app</code></pre>
                     <button class="cmd__copy" type="button" data-copy="Scripts/build-app.sh && open -n dist/AerialDrop.app && ls dist/AerialDrop.app">Copy</button>
                   </div>
                   <p class="expect">Expected output: <code>AerialDrop.app</code> &mdash; the app is running.</p>
