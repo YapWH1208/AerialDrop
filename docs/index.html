@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AerialDrop — your videos, natively on the macOS Tahoe desktop</title>
-<meta name="description" content="Import your own MP4/MOV videos into macOS Tahoe's native Aerial wallpaper catalogue. They play as screen savers and lock screen wallpapers through Apple's own pipeline. Free, open source, MIT licensed.">
+<meta name="description" content="Import your MP4/MOV videos into the native macOS Aerial wallpaper catalogue. AerialDrop 1.1.9 adds Day/Night pairs on verified macOS 27 builds, following safer activation and recovery in 1.1.8. Free and open source.">
 <meta name="theme-color" content="#070b10">
 <meta property="og:type" content="website">
 <meta property="og:title" content="AerialDrop — your videos, natively on the macOS Tahoe desktop">
-<meta property="og:description" content="Import your own videos into macOS Tahoe's native Aerial wallpaper catalogue. No helper processes, no app-managed player.">
+<meta property="og:description" content="Native video wallpapers on macOS 26+, with safer activation and backup recovery. Day/Night pairs are available on verified macOS 27 builds; native playback checks for pairs remain pending.">
 <meta property="og:url" content="https://yapwh1208.github.io/AerialDrop/">
 <meta property="og:image" content="https://yapwh1208.github.io/AerialDrop/assets/icon.png">
 <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
@@ -40,6 +40,7 @@
     </button>
     <ul class="nav__links" id="navLinks">
       <li><a href="#install">Install</a></li>
+      <li><a href="#updates">Updates</a></li>
       <li><a href="#specs">Specs</a></li>
       <li><a href="#pipeline">Pipeline</a></li>
       <li><a href="#checklist">Checklist</a></li>
@@ -65,7 +66,7 @@
   <section class="hero" id="top">
     <div class="container hero__grid">
       <div class="hero__copy reveal">
-        <p class="hero__eyebrow"><span class="pill">macOS Tahoe 26</span><span class="pill">Free &amp; open source</span><span class="pill">MIT</span></p>
+        <p class="hero__eyebrow"><span class="pill">macOS 26+</span><span class="pill">Free &amp; open source</span><span class="pill">MIT</span></p>
         <h1>Your videos, natively on the Tahoe desktop.</h1>
         <p class="hero__lede">AerialDrop imports your MP4 or MOV into macOS Tahoe&rsquo;s own Aerial catalogue. Screen saver and lock screen, played by Apple&rsquo;s pipeline. No helper processes, no app-managed player.</p>
         <div class="hero__cta">
@@ -75,7 +76,7 @@
           </a>
           <a class="btn btn--glass btn--lg" href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">View on GitHub</a>
         </div>
-        <p class="hero__hint">One command. Copy it below or pick your method.</p>
+        <p class="hero__hint">One command. Copy it below or pick your method. <a href="#updates">See what&rsquo;s new in 1.1.8 and 1.1.9.</a></p>
       </div>
 
       <div class="hero__visual reveal">
@@ -118,6 +119,33 @@
     </dl>
   </div>
 
+  <!-- ============ RELEASE UPDATES ============ -->
+  <section class="section" id="updates">
+    <div class="container container--narrow">
+      <header class="section__head reveal">
+        <h2>What&rsquo;s new</h2>
+        <p class="section__sub">Day/Night pairs in 1.1.9, with the activation, recovery, and import fixes from 1.1.8.</p>
+      </header>
+      <div class="spec-grid">
+        <article class="spec reveal">
+          <span class="spec__name mono">Version 1.1.9</span>
+          <h3 class="spec__value">Day/Night wallpaper pairs</h3>
+          <p class="spec__body">On verified macOS 27 builds, choose separate Day and Night videos, then explicitly apply Automatic selection. You can also select a fixed Day or Night member. Both videos stay protected during pair changes and recovery.</p>
+          <p class="spec__body">Unrelated missing media no longer blocks activation or removal. AerialDrop checks the selected wallpaper&rsquo;s files before applying it, and keeps ordinary wallpaper activation available during pending recovery.</p>
+          <p class="spec__body"><strong>Pair playback is still being verified:</strong> imported-video playback, natural solar transitions after quitting, and lock/unlock checks remain pending.</p>
+          <p class="spec__body"><a href="https://github.com/YapWH1208/AerialDrop/releases/tag/v1.1.9" target="_blank" rel="noopener">Read the 1.1.9 release notes</a></p>
+        </article>
+        <article class="spec reveal">
+          <span class="spec__name mono">Version 1.1.8</span>
+          <h3 class="spec__value">Safer activation and recovery</h3>
+          <p class="spec__body">Wallpaper activation now verifies the selection macOS applied and reports when it needs attention. Backup restore rechecks the active wallpaper, blocks changes that would remove it, and preserves concurrent catalogue updates.</p>
+          <p class="spec__body">Import previews stay aligned when you change videos, rotated-video cropping is corrected, and conversion progress stays monotonic. Keyboard range selection starts from the focused wallpaper card, and the installer handles checksums and arguments more reliably.</p>
+          <p class="spec__body"><a href="https://github.com/YapWH1208/AerialDrop/releases/tag/v1.1.8" target="_blank" rel="noopener">Read the 1.1.8 release notes</a></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ SPECS ============ -->
   <section class="section" id="specs">
     <div class="container container--narrow">
@@ -144,17 +172,27 @@
         <article class="spec reveal">
           <span class="spec__name mono">Activation</span>
           <p class="spec__value">One click</p>
-          <p class="spec__body">Imported aerials apply across all Spaces and displays; WallpaperAgent and WallpaperAerialsExtension are restarted and the change verified.</p>
+          <p class="spec__body">Apply an imported aerial across all Spaces and displays. AerialDrop checks its files, refreshes macOS, and verifies the requested selection. If verification fails, it reports Activation Needs Attention and offers a retry.</p>
         </article>
         <article class="spec reveal">
           <span class="spec__name mono">Safety</span>
           <p class="spec__value">Reversible writes</p>
-          <p class="spec__body">Every catalogue write is backed up first, compares the file before writing, and can be restored from the Maintenance menu.</p>
+          <p class="spec__body">Every catalogue write is backed up first and checked for concurrent changes. Restore Latest Backup rechecks the active wallpaper and refuses changes that would remove it or overwrite unrelated catalogue data.</p>
         </article>
         <article class="spec reveal">
           <span class="spec__name mono">Source</span>
           <p class="spec__value">Never touched</p>
           <p class="spec__body">Your file is opened read-only. Crop, quality, and resolution are tuned in place with a live 16:9 preview mask.</p>
+        </article>
+        <article class="spec reveal">
+          <span class="spec__name mono">Day/Night</span>
+          <p class="spec__value">Two videos, one pair</p>
+          <p class="spec__body">Choose Day and Night imports in Library, then use Apply Day/Night Wallpaper to request native Automatic selection. Saved choices stay separate from the active wallpaper mode.</p>
+        </article>
+        <article class="spec reveal">
+          <span class="spec__name mono">Compatibility</span>
+          <p class="spec__value">macOS 26+</p>
+          <p class="spec__body">Single wallpapers work on macOS Tahoe 26 and later. Day/Night pairs require a verified macOS 27 build; unfamiliar builds disable pair application. Native playback checks for custom pairs remain pending.</p>
         </article>
       </div>
     </div>
@@ -333,7 +371,7 @@
           <div class="panel" id="panel-source" role="tabpanel" aria-labelledby="method-source" hidden>
             <div class="panel__head">
               <h3>Build from source</h3>
-              <p>Requires Swift 6.2+ with the macOS 26 SDK (Xcode). The final app lands at <code>dist/AerialDrop.app</code>.</p>
+              <p>Requires full Xcode with Swift 6.2+ and the macOS 26 SDK or later. The packaging script selects Xcode and checks its SDK before clearing build output. The final app lands at <code>dist/AerialDrop.app</code>.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -349,11 +387,12 @@
               <li class="step">
                 <span class="step__num" aria-hidden="true">2</span>
                 <div class="step__content">
-                  <h4>Build the release binary</h4>
+                  <h4>Select Xcode and build</h4>
                   <div class="cmd">
-                    <pre><code>cd AerialDrop &amp;&amp; swift build -c release</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="cd AerialDrop && swift build -c release">Copy</button>
+                    <pre><code>cd AerialDrop &amp;&amp; export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer &amp;&amp; swift build -c release</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="cd AerialDrop && export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer && swift build -c release">Copy</button>
                   </div>
+                  <p class="expect">If Xcode is installed elsewhere, replace <code>/Applications/Xcode.app</code> with its path.</p>
                 </div>
               </li>
               <li class="step">
@@ -443,7 +482,7 @@
           </div>
           <div class="step-panel" id="stepPanel6" role="group" aria-label="Step 7: Activate" hidden>
             <h3>Activate and refresh</h3>
-            <p>The wallpaper is linked across all Spaces and displays, then <code>WallpaperAgent</code> and <code>WallpaperAerialsExtension</code> are restarted and the change is verified.</p>
+            <p>When Set as wallpaper after importing is enabled, AerialDrop checks the installed files, links the wallpaper across all Spaces and displays, restarts macOS&rsquo;s wallpaper services, and verifies the requested selection. If it cannot verify the change, the import summary offers a retry.</p>
             <ul class="chips"><li class="chip">Linked selection</li><li class="chip">Restart + verify</li></ul>
           </div>
 
@@ -525,7 +564,26 @@
         </details>
         <details class="faq__item">
           <summary>Does AerialDrop need to keep running after setup?</summary>
-          <p>No. Once a wallpaper is imported, macOS plays it natively. AerialDrop is only needed for importing and managing the catalogue.</p>
+          <p>No. Once a single wallpaper is imported and applied, macOS plays it natively. AerialDrop is only needed for importing and managing the catalogue. Day/Night Automatic selection is also intended to continue after quitting, but natural transitions for imported pairs remain unverified.</p>
+        </details>
+        <details class="faq__item">
+          <summary>How do I set up a Day/Night wallpaper pair?</summary>
+          <p>On a verified macOS 27 build, expand <strong>Day/Night Wallpaper</strong> in Library and choose two different imported videos for <strong>Day</strong> and <strong>Night</strong>. Changing these choices saves a draft; it does not change your desktop. Choose <strong>Apply Day/Night Wallpaper</strong> to register the pair and request Automatic selection across all Spaces and displays.</p>
+          <p>To use a fixed Day or Night video, choose that video&rsquo;s <strong>Set as Wallpaper</strong> action. Applying an ordinary imported wallpaper replaces the active pair. Apply Day/Night Wallpaper again to return to Automatic.</p>
+          <p>macOS 26 keeps the single-wallpaper workflow. Pair application requires verified macOS 27 and a recognized wallpaper extension build; the current supported extension build is <code>313.0.4.401</code>. Unfamiliar builds disable pair application.</p>
+        </details>
+        <details class="faq__item">
+          <summary>Does Automatic follow Light and Dark appearance?</summary>
+          <p>No. Day/Night Automatic selection uses macOS&rsquo;s native solar-position format, independently of Light/Dark appearance. Exact transition times are not established. Imported-pair playback, natural transitions after quitting, and lock/unlock behavior remain unverified. See the <a href="https://github.com/YapWH1208/AerialDrop/blob/v1.1.9/TESTING.md" target="_blank" rel="noopener">Day/Night runtime checks</a> for the remaining validation.</p>
+        </details>
+        <details class="faq__item">
+          <summary>What should I do if activation needs attention?</summary>
+          <p>Retry activation in AerialDrop, or apply another imported wallpaper. For a Day/Night pair, retry <strong>Apply Day/Night Wallpaper</strong>. If a pair change cannot be verified, previous and new pair videos stay protected across relaunch until a native reload is verified; <strong>Remove Anyway</strong> cannot bypass that protection.</p>
+          <p>A missing file for an unrelated wallpaper does not block applying a valid selection. The selected wallpaper&rsquo;s required files must still be available.</p>
+        </details>
+        <details class="faq__item">
+          <summary>Can I restore a backup while an imported wallpaper is active?</summary>
+          <p>Use <strong>Restore Latest Backup</strong> in Maintenance. AerialDrop shows the backup in a confirmation and rechecks the active selection before and during restore. It refuses a restore that would remove the active wallpaper, overwrite unrelated catalogue changes, or replace protected Day/Night media. If verification fails, the safety backup is retained for recovery.</p>
         </details>
         <details class="faq__item">
           <summary>Where are my wallpapers stored?</summary>
@@ -533,7 +591,7 @@
         </details>
         <details class="faq__item">
           <summary>What if a future macOS update changes the catalogue format?</summary>
-          <p>The catalogue is a private API, so it could change. Every write is backed up first, Restore Latest Backup can put the catalogue back, and a future update may require an AerialDrop update.</p>
+          <p>The catalogue is a private API, so it could change. Every write is backed up first, and Restore Latest Backup checks the active wallpaper and unrelated catalogue data before restoring. Day/Night application is disabled on unfamiliar builds. A system update may require an AerialDrop update, reimporting, or reapplying your wallpapers.</p>
         </details>
       </div>
     </div>
@@ -564,6 +622,7 @@
     <nav aria-label="Footer: project">
       <h4>Project</h4>
       <ul>
+        <li><a href="#updates">1.1.8 &amp; 1.1.9 highlights</a></li>
         <li><a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">Source code</a></li>
         <li><a href="https://github.com/YapWH1208/AerialDrop/releases" target="_blank" rel="noopener">Releases</a></li>
         <li><a href="https://github.com/YapWH1208/AerialDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></li>

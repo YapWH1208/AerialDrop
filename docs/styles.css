@@ -799,6 +799,14 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   max-width: 46ch;
 }
 
+.spec__body + .spec__body {
+  margin-top: 12px;
+}
+
+.spec__body a {
+  color: var(--accent);
+}
+
 .spec__body code,
 .step__note code,
 .expect code,
