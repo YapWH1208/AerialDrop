@@ -178,6 +178,24 @@ func nearestCropPreset(_ offset: Double) -> Double {
     return 0.5
 }
 
+/// Accessible value for the continuous crop control. Exact preset positions
+/// use their names; intermediate positions report the rounded distance from
+/// the left edge without changing the crop geometry.
+func cropPositionAccessibilityValue(_ offset: Double) -> String {
+    guard offset.isFinite else { return "Unknown" }
+    let clampedOffset = min(max(offset, 0), 1)
+    switch clampedOffset {
+    case 0:
+        return "Left"
+    case 0.5:
+        return "Centered"
+    case 1:
+        return "Right"
+    default:
+        return "\(Int((clampedOffset * 100).rounded())) percent from left"
+    }
+}
+
 /// Fractions of the preview box width to darken, in 0...1 box space. The box
 /// shows the entire source fitted (scaledToFit, width-filling for wide
 /// sources), so these darken everything outside the chosen 16:9 crop window.

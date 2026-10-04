@@ -33,6 +33,18 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 catalogueRefreshBanner
+                if destination == .library && isImportInProgress {
+                    LibraryImportStatusView(
+                        stage: model.stage,
+                        progress: model.displayProgress,
+                        eta: model.encodeETA,
+                        canCancel: model.isImportCancellable,
+                        onCancel: model.cancelImport,
+                        onViewImport: { destination = .importVideo }
+                    )
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                }
                 destinationView
             }
         }
@@ -226,23 +238,7 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var primaryToolbarContent: some ToolbarContent {
-        if isImportInProgress {
-            ToolbarItemGroup(placement: .primaryAction) {
-                ProgressView(value: model.displayProgress)
-                    .frame(width: 84)
-                    .accessibilityLabel(model.stage.label)
-                    .accessibilityValue(importProgressValue)
-                    .help("\(model.stage.label) \(importProgressValue)")
-
-                if model.isImportCancellable {
-                    Button("Cancel Import", systemImage: "xmark") {
-                        model.cancelImport()
-                    }
-                    .keyboardShortcut(.cancelAction)
-                    .help("Cancel before catalogue installation begins")
-                }
-            }
-        } else if model.catalogueState == .ready {
+        if !isImportInProgress, model.catalogueState == .ready {
             if destination == .importVideo, model.selectedVideo != nil {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button("Replace Video…", systemImage: "arrow.triangle.2.circlepath") {
@@ -274,10 +270,6 @@ struct ContentView: View {
 
     private var isImportInProgress: Bool {
         model.isWorking && model.stage != .idle && model.stage != .finished
-    }
-
-    private var importProgressValue: String {
-        "\(Int(model.displayProgress * 100)) percent"
     }
 
     private var primaryActionTitle: String {
@@ -428,6 +420,94 @@ struct ContentView: View {
             break
         }
         confirmation = nil
+    }
+}
+
+private struct LibraryImportStatusView: View {
+    let stage: ImportStage
+    let progress: Double
+    let eta: TimeInterval?
+    let canCancel: Bool
+    let onCancel: () -> Void
+    let onViewImport: () -> Void
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Label(stage.label, systemImage: stage.icon)
+                        .font(.callout.weight(.medium))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 8)
+
+                    Text("\(Int(progress * 100))%")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+
+                ProgressView(value: progress)
+                    .accessibilityLabel("Import progress")
+                    .accessibilityValue("\(Int(progress * 100)) percent")
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        supportingStatus(oneLine: true)
+                        Spacer(minLength: 8)
+                        actionButtons
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        supportingStatus(oneLine: false)
+                        HStack(spacing: 8) {
+                            Spacer()
+                            actionButtons
+                        }
+                    }
+                }
+            }
+            .padding(4)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Import status")
+    }
+
+    private func supportingStatus(oneLine: Bool) -> some View {
+        Text(supportingStatusLabel)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(oneLine ? 1 : nil)
+            .fixedSize(horizontal: oneLine, vertical: false)
+            .frame(maxWidth: oneLine ? nil : .infinity, alignment: .leading)
+    }
+
+    private var supportingStatusLabel: String {
+        if let etaText { return etaText }
+        if canCancel { return "The source video stays unchanged." }
+        return "Finishing installation. This step can’t be cancelled."
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 8) {
+            if canCancel {
+                Button("Cancel", role: .cancel, action: onCancel)
+                    .controlSize(.small)
+                    .keyboardShortcut(.cancelAction)
+                    .help("Cancel before catalogue installation begins")
+            }
+
+            Button("View Import", systemImage: "arrow.right", action: onViewImport)
+                .controlSize(.small)
+        }
+    }
+
+    private var etaText: String? {
+        guard let eta, eta > 5 else { return nil }
+        if eta >= 60 {
+            return "≈ \(Int(eta / 60)) min left"
+        }
+        return "≈ \(Int(eta)) s left"
     }
 }
 
