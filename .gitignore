@@ -32,6 +32,10 @@ playground.xcworkspace
 .build/
 dist/
 
+# Python maintenance tools
+__pycache__/
+*.pyc
+
 # CocoaPods
 #
 # We recommend against adding the Pods directory to your .gitignore. However

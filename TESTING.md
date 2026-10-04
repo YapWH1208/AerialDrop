@@ -4,13 +4,40 @@
 
 On macOS Tahoe 26 with the macOS 26 SDK, Swift 6.2+, and an Xcode installation
 whose license has been accepted, run `swift build`, `swift test`, and
-`swift build -c release`. Run `bash Scripts/test-install.sh` for offline release
-metadata, argument, and mocked-install checks, and
-`Scripts/check-docs-version.sh` for the website's release fallback. The installer
+`swift build -c release`. Run the distribution checks:
+
+```sh
+python3 Scripts/release_compatibility.py validate
+python3 Scripts/test-release-compatibility.py
+bash Scripts/test-install.sh
+node Scripts/test-site-compatibility.js
+Scripts/check-docs-version.sh
+```
+
+After `Scripts/build-app.sh`, run
+`python3 Scripts/release_compatibility.py validate --bundle dist/AerialDrop.app`.
+For a release, also pass `--tag v<version>` to validate the tag against the
+source version. The installer
 smoke test uses a temporary directory and never contacts GitHub or installs into
 Applications. Wallpaper store and `AppModel` failure/relaunch/race tests use
 temporary home directories and test fixtures; they must never modify real
 wallpaper data.
+
+The Python, Bash, and browser selectors share
+`Tests/DistributionFixtures/compatibility.json`. It covers current and future
+OS requirements, numeric version ordering, inclusive maximum OS bounds,
+architecture mismatches, exact pins, and unpublished or invalid assets. The
+installer suite also covers metadata/checksum failures, replacement safety,
+automatic downgrade refusal, and the read-only `--print-version` option.
+The separate `YapWH1208/homebrew-tap` repository tests its static cask generator
+against the same upstream policy and fixture.
+
+For the website, serve `docs/` locally and check the labelled macOS selector
+with the keyboard. Change OS while metadata is loading, then simulate failed
+policy and release requests: direct ZIP links and copied version-specific
+commands must never retain a previous selection. Disable JavaScript and confirm
+the installation guidance still offers the compatible installer. Browser OS
+identification is not used for release selection.
 
 Run this matrix on macOS Tahoe 26 with at least one short and one longer MP4/MOV
 source. Use a separate test account for the setup-required checks; do not move or

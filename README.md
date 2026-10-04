@@ -32,7 +32,10 @@ AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) 
 brew install --cask yapwh1208/tap/aerialdrop
 ```
 
-The cask tracks new releases automatically, so `brew update && brew upgrade --cask aerialdrop` gets you the latest version.
+The cask selects the newest published release compatible with your macOS version
+and processor. Run `brew update && brew upgrade --cask aerialdrop` to receive
+compatible updates. The tap's scheduled updater refreshes these selections when
+the release compatibility policy changes.
 
 > **⚠️ Disclaimer — unsigned app:** AerialDrop is **ad-hoc signed and not notarized by Apple**. To make the app open, this cask automatically removes the macOS download quarantine (`com.apple.quarantine`) after install, which disables Apple's malware check for this app — you are trusting the publisher instead of Apple. Only install from the official [YapWH1208/AerialDrop](https://github.com/YapWH1208/AerialDrop) repository, and audit the open-source code if you have concerns. The only way to get Apple's own verification is Developer ID notarization (paid Apple Developer account, $99/year).
 
@@ -43,19 +46,51 @@ curl -fsSL -o install.sh https://raw.githubusercontent.com/YapWH1208/AerialDrop/
 bash install.sh
 ```
 
-Downloads the latest release, verifies its sha256 checksum against the release metadata, installs `AerialDrop.app` into /Applications, and clears the download quarantine (same unsigned-app caveat as above). Useful options: `install.sh 1.1.3` (pin a version), `--open` (launch after install), `--force` (replace without asking), `--install-dir <path>`.
+Downloads the newest compatible published release, verifies its SHA256 checksum
+against the official release metadata, installs `AerialDrop.app` into
+`/Applications`, and clears the download quarantine (same unsigned-app caveat as
+above). Useful options: `bash install.sh 1.1.9` (pin a compatible version),
+`--open` (launch after install), `--force` (replace without asking), and
+`--install-dir <path>`.
+
+To print the compatible version without installing or opening anything:
+
+```sh
+bash install.sh --print-version
+```
+
+Unknown or incompatible pins, unavailable compatibility metadata, and missing
+verified release assets stop installation before replacing the existing app.
+Automatic selection refuses to downgrade a newer installed version; use an
+explicit compatible version pin if you intend to downgrade.
 
 ### Prebuilt release
 
-Download `AerialDrop-<version>-macOS.zip` from the [Releases](https://github.com/YapWH1208/AerialDrop/releases) page, unzip, and drag `AerialDrop.app` into your Applications folder. It is ad-hoc signed, so if Gatekeeper complains the first time, right-click → Open once, or clear the download quarantine with `xattr -dr com.apple.quarantine /Applications/AerialDrop.app`.
+Choose your macOS version on the [download website](https://yapwh1208.github.io/AerialDrop/#install)
+to get a compatible `AerialDrop-<version>-macOS.zip`, unzip, and drag
+`AerialDrop.app` into your Applications folder. A ZIP downloaded directly from
+the [Releases](https://github.com/YapWH1208/AerialDrop/releases) page does not
+choose a compatible version for you; check the compatibility policy or use
+`bash install.sh --print-version` first. It is ad-hoc signed, so if Gatekeeper
+complains the first time, right-click → Open once, or clear the download
+quarantine with `xattr -dr com.apple.quarantine /Applications/AerialDrop.app`.
 
 ### Build from source
 
+For a fresh source checkout, resolve a compatible release first using the
+downloaded installer above:
+
 ```sh
-git clone https://github.com/YapWH1208/AerialDrop.git
+VERSION="$(bash install.sh --print-version)" || exit 1
+git clone --branch "v$VERSION" --depth 1 https://github.com/YapWH1208/AerialDrop.git
 cd AerialDrop
 swift build -c release
 ```
+
+This checks out the selected release tag in a new clone. For an existing
+checkout, review and preserve your local work before switching to that tag.
+Source builds also need the Swift toolchain and SDK required by that release;
+the selector establishes app compatibility, not toolchain availability.
 
 The binary is produced at `.build/release/AerialDrop`. To build a proper `.app` bundle (signed ad-hoc, with Info.plist):
 
@@ -100,6 +135,29 @@ If a wallpaper change cannot be verified, previous and new pair videos remain pr
 The pipeline is: validate input → build an 80-second video-only composition → decode via `AVAssetReader` → re-encode as HEVC Main10 with temporal sub-layers → generate a HEIF preview at timestamp zero → register in the catalogue → safely update Tahoe's linked Aerial selection → restart `WallpaperAgent` and `WallpaperAerialsExtension`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full flow.
 
 ## Compatibility
+
+[`docs/release-compatibility.json`](docs/release-compatibility.json) is the shared
+installation policy. Each stable version declares a minimum macOS major
+version, an optional inclusive maximum, and supported processor architectures.
+The installer, website, and Homebrew updater combine this policy with published
+GitHub releases and their exact ZIP assets. Versions are compared numerically;
+drafts, prereleases, undeclared releases, and assets without a valid official
+checksum or URL are excluded. Missing or malformed policy data stops selection.
+
+Currently v1.1.9 supports macOS 26 and later on Apple Silicon. macOS 26 users
+therefore receive v1.1.9. If a later release requires macOS 27, macOS 26 users
+remain on the newest eligible release. Day/Night feature checks remain separate
+from whole-app installation compatibility.
+
+Before publishing a release, add its compatibility record alongside the normal
+version and changelog changes. CI checks the source version and package minimum
+OS; release CI additionally checks the tag, bundled Info.plist, and binary
+architectures. Update older records only when compatibility evidence warrants
+it. Removing a record makes that version unavailable to selectors, including
+explicit pins. The Homebrew updater publishes static selections, so users need
+`brew update` after the tap has refreshed. These repository changes take effect
+for public installations after the main repository, Pages site, and tap changes
+have been published.
 
 AerialDrop writes directly to Tahoe's private Aerial catalogue and restarts `WallpaperAgent` and `WallpaperAerialsExtension`. These data formats and processes are not a public API; a future macOS update may change the manifest schema and require an AerialDrop update.
 

@@ -4,32 +4,25 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_root"
 
-version=$(sed -n 's/.*static let shortVersion = "\([^"]*\)".*/\1/p' Sources/AerialDrop/AppVersion.swift)
-if [ -z "$version" ]; then
-    echo "Could not read shortVersion from Sources/AerialDrop/AppVersion.swift" >&2
-    exit 1
-fi
-
-versions=$(
-    {
-        grep -E 'termOut1|termOut4|releaseTag|expectVersion|Options:.*install\.sh|unzipCmd|unzipCopy' docs/index.html
-        grep -E 'rel\.tag_name \|\||applyRelease\(.*null' docs/app.js
-    } | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^v//' | sort -u
-)
-if [ -z "$versions" ]; then
-    echo "No release fallback versions found in docs/index.html or docs/app.js" >&2
-    exit 1
-fi
-
-for found in $versions; do
-    if [ "$found" != "$version" ]; then
-        echo "Website fallback version $found does not match AppVersion.shortVersion $version" >&2
-        exit 1
-    fi
-done
-
-grep -Fq "AerialDrop-$version-macOS.zip" docs/index.html
-grep -Fq "applyRelease(\"v$version\", null)" docs/app.js
-grep -Fq "rel.tag_name || \"v$version\"" docs/app.js
-
-printf 'Website release fallbacks match AerialDrop %s.\n' "$version"
+node <<'NODE'
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const compatibility = require('./docs/compatibility.js');
+const appVersion = fs.readFileSync('Sources/AerialDrop/AppVersion.swift', 'utf8');
+const packageFile = fs.readFileSync('Package.swift', 'utf8');
+const html = fs.readFileSync('docs/index.html', 'utf8');
+const app = fs.readFileSync('docs/app.js', 'utf8');
+const version = appVersion.match(/static let shortVersion\s*=\s*"([^"]+)"/);
+const minimum = packageFile.match(/\.macOS\("([0-9]+)\.0"\)/);
+assert(version, 'missing AppVersion.shortVersion');
+assert(minimum, 'missing Package.swift macOS minimum');
+const policy = compatibility.validatePolicy(JSON.parse(fs.readFileSync('docs/release-compatibility.json', 'utf8')));
+const record = policy.releases.find(release => release.version === version[1]);
+assert(record, `source version ${version[1]} is absent from compatibility policy`);
+assert.equal(record.min_macos, Number(minimum[1]), 'source and policy macOS minima differ');
+assert(record.architectures.includes('arm64'), 'source version lacks Apple Silicon support');
+assert(html.includes(`The current source version is ${version[1]}`), 'site source version guidance is stale');
+assert(!/data-download[^>]*href=|href="[^"]*releases\/latest"[^>]*data-download/.test(html), 'static download must not point to global latest');
+assert(app.includes('window.AerialDropCompatibility.resolveRelease'), 'site must use compatibility resolver');
+console.log(`Website source guidance and compatibility minimum match AerialDrop ${version[1]}.`);
+NODE
