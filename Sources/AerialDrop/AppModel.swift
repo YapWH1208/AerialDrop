@@ -167,7 +167,16 @@ final class AppModel {
                 return "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
             }
         }
-        return "Choices are saved. Apply Day/Night to change the wallpaper."
+        switch (dayNightDraft.dayAssetID, dayNightDraft.nightAssetID) {
+        case (nil, nil):
+            return "Choose wallpapers for Day and Night to get started."
+        case (.some, nil):
+            return "Day choice saved. Choose a Night wallpaper."
+        case (nil, .some):
+            return "Night choice saved. Choose a Day wallpaper."
+        case (.some, .some):
+            return "Choices are saved. Apply Day/Night to change the wallpaper."
+        }
     }
 
     func applyDayNightWallpaper() {

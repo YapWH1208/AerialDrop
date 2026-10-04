@@ -276,6 +276,10 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    Expand and collapse the Day/Night section in a small window, with no draft
    and with both roles selected. Confirm the sidebar, full instructions,
    selectors, Apply button, and cards remain visible or reachable by scrolling.
+   With no active Day/Night pair, confirm an empty draft prompts for both
+   wallpapers and a partial draft identifies the saved role and the missing
+   role. For draft prompts, only a complete draft should suggest Apply. Actual
+   native selection and recovery messages must still take precedence.
    Search for a matching title and for a title with no results, then clear the
    search. Confirm the section remains usable, card keyboard navigation and
    post-import scrolling still work, and operation/bulk-selection banners remain
