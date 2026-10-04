@@ -81,10 +81,13 @@ For a fresh source checkout, resolve a compatible release first using the
 downloaded installer above:
 
 ```sh
-VERSION="$(bash install.sh --print-version)" || exit 1
-git clone --branch "v$VERSION" --depth 1 https://github.com/YapWH1208/AerialDrop.git
-cd AerialDrop
-swift build -c release
+if VERSION="$(bash install.sh --print-version)"; then
+  git clone --branch "v$VERSION" --depth 1 https://github.com/YapWH1208/AerialDrop.git &&
+    cd AerialDrop &&
+    swift build -c release
+else
+  echo "Could not resolve a compatible AerialDrop release."
+fi
 ```
 
 This checks out the selected release tag in a new clone. For an existing
