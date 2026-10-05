@@ -71,19 +71,27 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertNil(h.model.dayNightSectionAttentionToken)
     }
 
-    func testCompactSummaryKeepsMissingPairMediaActionableAfterCollapseAndRelaunch() async throws {
+    func testCompactSummaryKeepsCurrentPairAndSavedDraftMediaActionableAfterCollapseAndRelaunch() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }
         try h.store.configureDayNightPair(h.pair)
-        h.choosePair()
         h.service.selected = .automatic(groupID: ManifestStore.dayNightSubcategoryID)
         h.service.activeIDs = [ManifestStore.dayNightSubcategoryID]
+        h.defaults.set(["dayAssetID": h.thirdID, "nightAssetID": h.nightID], forKey: AppPreferences.dayNightDraftKey)
         await h.model.reload()
+
+        try FileManager.default.removeItem(at: h.paths.videoURL(for: h.thirdID))
+        await h.model.reload()
+        let savedDraftMessage = "Saved choices: The Day video or preview is missing. Reimport it or choose another wallpaper."
+        XCTAssertEqual(h.model.dayNightMediaRecoveryMessages, [savedDraftMessage])
 
         try FileManager.default.removeItem(at: h.paths.videoURL(for: h.dayID))
         await h.model.reload()
-        let recoveryMessage = "The Day video or preview is missing. Reimport it or choose another wallpaper."
-        XCTAssertEqual(h.model.dayNightMediaRecoveryMessage, recoveryMessage)
+        let recoveryMessages = [
+            "Current pair: The Day video or preview is missing. Reimport it or choose another wallpaper.",
+            savedDraftMessage
+        ]
+        XCTAssertEqual(h.model.dayNightMediaRecoveryMessages, recoveryMessages)
         XCTAssertTrue(h.model.dayNightStatusMessage.hasPrefix("Automatic is selected"))
 
         var preference = AppPreferences.dayNightSectionExpansionPreference(defaults: h.defaults)
@@ -101,7 +109,7 @@ final class AppModelDayNightTests: XCTestCase {
             attentionToken: reopened.dayNightSectionAttentionToken,
             preference: &reopenedPreference
         ))
-        XCTAssertEqual(reopened.dayNightMediaRecoveryMessage, recoveryMessage)
+        XCTAssertEqual(reopened.dayNightMediaRecoveryMessages, recoveryMessages)
     }
 
     func testDayNightStatusNormalizesSingleAndFixedPairMemberSelections() async throws {
@@ -131,6 +139,17 @@ final class AppModelDayNightTests: XCTestCase {
         h.service.selectionInspection = AerialSelectionInspection(targets: [
             .init(target: .allSpacesAndDisplays, rawAssetIDs: [h.dayID], recognizedSelection: .single(assetID: h.dayID)),
             .init(target: .systemDefault, rawAssetIDs: [h.nightID], recognizedSelection: .fixedVariant(assetID: h.nightID))
+        ])
+        await h.model.reload()
+        XCTAssertEqual(
+            h.model.dayNightStatusMessage,
+            "Day/Night selections vary across Spaces and displays. Automatic switching is off."
+        )
+
+        h.service.activeIDs = [h.dayID, h.thirdID]
+        h.service.selectionInspection = AerialSelectionInspection(targets: [
+            .init(target: .allSpacesAndDisplays, rawAssetIDs: [h.dayID], recognizedSelection: .single(assetID: h.dayID)),
+            .init(target: .systemDefault, rawAssetIDs: [h.thirdID], recognizedSelection: .single(assetID: h.thirdID))
         ])
         await h.model.reload()
         XCTAssertEqual(

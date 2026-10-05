@@ -57,7 +57,7 @@ struct DayNightWallpaperSection: View {
                 )
             }
 
-            if let recoveryMessage = model.dayNightMediaRecoveryMessage {
+            ForEach(model.dayNightMediaRecoveryMessages, id: \.self) { recoveryMessage in
                 Label {
                     Text(recoveryMessage)
                         .foregroundStyle(.primary)
@@ -106,7 +106,7 @@ struct DayNightWallpaperSection: View {
             if let reason = model.dayNightUnavailableReason {
                 inlineMessage(reason, systemImage: "exclamationmark.triangle")
             } else if let blocker = model.dayNightApplyBlockerMessage,
-                      blocker != model.dayNightMediaRecoveryMessage {
+                      !model.dayNightMediaRecoveryMessages.contains(where: { $0.hasSuffix(blocker) }) {
                 inlineMessage(blocker, systemImage: "exclamationmark.circle")
             }
 

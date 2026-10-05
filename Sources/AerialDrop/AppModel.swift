@@ -137,19 +137,26 @@ final class AppModel {
 
     /// Keeps missing-media recovery visible in the compact Library summary,
     /// including when a previously registered pair no longer matches the draft.
-    var dayNightMediaRecoveryMessage: String? {
-        let choices: [(role: String, id: String?)]
+    var dayNightMediaRecoveryMessages: [String] {
+        var messages: [String] = []
         if let pair = registeredDayNightPair {
-            choices = [("Day", pair.dayAssetID), ("Night", pair.nightAssetID)]
-        } else {
-            choices = [("Day", dayNightDraft.dayAssetID), ("Night", dayNightDraft.nightAssetID)]
+            for (role, id) in [("Day", pair.dayAssetID), ("Night", pair.nightAssetID)] {
+                if let issue = dayNightMediaIssue(for: id, role: role) {
+                    messages.append("Current pair: \(issue)")
+                }
+            }
         }
 
-        for (role, id) in choices {
-            guard let id, let issue = dayNightMediaIssue(for: id, role: role) else { continue }
-            return issue
+        let draftMatchesRegisteredPair = registeredDayNightPair.map {
+            $0.dayAssetID == dayNightDraft.dayAssetID && $0.nightAssetID == dayNightDraft.nightAssetID
+        } ?? false
+        if !draftMatchesRegisteredPair {
+            for (role, id) in [("Day", dayNightDraft.dayAssetID), ("Night", dayNightDraft.nightAssetID)] {
+                guard let id, let issue = dayNightMediaIssue(for: id, role: role) else { continue }
+                messages.append("Saved choices: \(issue)")
+            }
         }
-        return nil
+        return messages
     }
 
     private func dayNightMediaIssue(for id: String, role: String) -> String? {
@@ -210,11 +217,12 @@ final class AppModel {
             }
         }
 
-        if selectedMemberIDs.count == inspection.targets.count,
-           Set(selectedMemberIDs).count == 1,
-           let selectedID = selectedMemberIDs.first {
-            let role = selectedID == pair.dayAssetID ? "Day" : "Night"
-            return "\(role) is selected on all Spaces and displays. Automatic switching is off."
+        if selectedMemberIDs.count == inspection.targets.count {
+            if Set(selectedMemberIDs).count == 1, let selectedID = selectedMemberIDs.first {
+                let role = selectedID == pair.dayAssetID ? "Day" : "Night"
+                return "\(role) is selected on all Spaces and displays. Automatic switching is off."
+            }
+            return "Day/Night selections vary across Spaces and displays. Automatic switching is off."
         }
         guard !selectedMemberIDs.isEmpty else { return nil }
         return "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
