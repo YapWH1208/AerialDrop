@@ -71,6 +71,74 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertNil(h.model.dayNightSectionAttentionToken)
     }
 
+    func testCompactSummaryKeepsMissingPairMediaActionableAfterCollapseAndRelaunch() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        try h.store.configureDayNightPair(h.pair)
+        h.choosePair()
+        h.service.selected = .automatic(groupID: ManifestStore.dayNightSubcategoryID)
+        h.service.activeIDs = [ManifestStore.dayNightSubcategoryID]
+        await h.model.reload()
+
+        try FileManager.default.removeItem(at: h.paths.videoURL(for: h.dayID))
+        await h.model.reload()
+        let recoveryMessage = "The Day video or preview is missing. Reimport it or choose another wallpaper."
+        XCTAssertEqual(h.model.dayNightMediaRecoveryMessage, recoveryMessage)
+        XCTAssertTrue(h.model.dayNightStatusMessage.hasPrefix("Automatic is selected"))
+
+        var preference = AppPreferences.dayNightSectionExpansionPreference(defaults: h.defaults)
+        DayNightSectionExpansionState.recordUserChoice(
+            expanded: false,
+            attentionToken: h.model.dayNightSectionAttentionToken,
+            preference: &preference
+        )
+        AppPreferences.setDayNightSectionExpansionPreference(preference, defaults: h.defaults)
+
+        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        await reopened.reload()
+        var reopenedPreference = AppPreferences.dayNightSectionExpansionPreference(defaults: h.defaults)
+        XCTAssertFalse(DayNightSectionExpansionState.reconcile(
+            attentionToken: reopened.dayNightSectionAttentionToken,
+            preference: &reopenedPreference
+        ))
+        XCTAssertEqual(reopened.dayNightMediaRecoveryMessage, recoveryMessage)
+    }
+
+    func testDayNightStatusNormalizesSingleAndFixedPairMemberSelections() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        try h.store.configureDayNightPair(h.pair)
+        h.choosePair()
+
+        let targetForms: [[AerialSelectionRequest]] = [
+            [.single(assetID: h.dayID), .single(assetID: h.dayID)],
+            [.single(assetID: h.dayID), .fixedVariant(assetID: h.dayID)]
+        ]
+        for forms in targetForms {
+            h.service.activeIDs = [h.dayID]
+            h.service.selectionInspection = AerialSelectionInspection(targets: [
+                .init(target: .allSpacesAndDisplays, rawAssetIDs: [h.dayID], recognizedSelection: forms[0]),
+                .init(target: .systemDefault, rawAssetIDs: [h.dayID], recognizedSelection: forms[1])
+            ])
+            await h.model.reload()
+            XCTAssertEqual(
+                h.model.dayNightStatusMessage,
+                "Day is selected on all Spaces and displays. Automatic switching is off."
+            )
+        }
+
+        h.service.activeIDs = [h.dayID, h.nightID]
+        h.service.selectionInspection = AerialSelectionInspection(targets: [
+            .init(target: .allSpacesAndDisplays, rawAssetIDs: [h.dayID], recognizedSelection: .single(assetID: h.dayID)),
+            .init(target: .systemDefault, rawAssetIDs: [h.nightID], recognizedSelection: .fixedVariant(assetID: h.nightID))
+        ])
+        await h.model.reload()
+        XCTAssertEqual(
+            h.model.dayNightStatusMessage,
+            "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
+        )
+    }
+
     func testSavingRolesPersistsWithoutRegisteringOrActivating() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }

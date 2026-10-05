@@ -130,12 +130,34 @@ final class AppModel {
         }
         guard day != night else { return "Choose different wallpapers for Day and Night." }
         for (role, id) in [("Day", day), ("Night", night)] {
-            guard let wallpaper = wallpapers.first(where: { $0.id == id }) else {
-                return "The saved \(role) wallpaper is missing. Choose another wallpaper."
-            }
-            guard wallpaper.videoExists, wallpaper.thumbnailExists else {
-                return "The \(role) video or preview is missing. Reimport it or choose another wallpaper."
-            }
+            if let issue = dayNightMediaIssue(for: id, role: role) { return issue }
+        }
+        return nil
+    }
+
+    /// Keeps missing-media recovery visible in the compact Library summary,
+    /// including when a previously registered pair no longer matches the draft.
+    var dayNightMediaRecoveryMessage: String? {
+        let choices: [(role: String, id: String?)]
+        if let pair = registeredDayNightPair {
+            choices = [("Day", pair.dayAssetID), ("Night", pair.nightAssetID)]
+        } else {
+            choices = [("Day", dayNightDraft.dayAssetID), ("Night", dayNightDraft.nightAssetID)]
+        }
+
+        for (role, id) in choices {
+            guard let id, let issue = dayNightMediaIssue(for: id, role: role) else { continue }
+            return issue
+        }
+        return nil
+    }
+
+    private func dayNightMediaIssue(for id: String, role: String) -> String? {
+        guard let wallpaper = wallpapers.first(where: { $0.id == id }) else {
+            return "The saved \(role) wallpaper is missing. Choose another wallpaper."
+        }
+        guard wallpaper.videoExists, wallpaper.thumbnailExists else {
+            return "The \(role) video or preview is missing. Reimport it or choose another wallpaper."
         }
         return nil
     }
@@ -157,11 +179,8 @@ final class AppModel {
                     ? "Automatic is selected on all Spaces and displays."
                     : "Automatic is selected. Apply your saved choices to change the current pair."
             }
-            if aerialSelectionInspection?.matches(.fixedVariant(assetID: pair.dayAssetID)) == true {
-                return "Day is selected on all Spaces and displays. Automatic switching is off."
-            }
-            if aerialSelectionInspection?.matches(.fixedVariant(assetID: pair.nightAssetID)) == true {
-                return "Night is selected on all Spaces and displays. Automatic switching is off."
+            if let message = dayNightPairMemberSelectionMessage(for: pair) {
+                return message
             }
             if activeAerialAssetIDs.contains(ManifestStore.dayNightSubcategoryID) {
                 return "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
@@ -177,6 +196,28 @@ final class AppModel {
         case (.some, .some):
             return "Choices are saved. Apply Day/Night to change the wallpaper."
         }
+    }
+
+    private func dayNightPairMemberSelectionMessage(for pair: DayNightWallpaperPair) -> String? {
+        guard let inspection = aerialSelectionInspection, !inspection.targets.isEmpty else { return nil }
+        let selectedMemberIDs = inspection.targets.compactMap { target -> String? in
+            guard let selection = target.recognizedSelection else { return nil }
+            switch selection {
+            case .single(let assetID), .fixedVariant(let assetID):
+                return pair.memberAssetIDs.contains(assetID) ? assetID : nil
+            case .automatic:
+                return nil
+            }
+        }
+
+        if selectedMemberIDs.count == inspection.targets.count,
+           Set(selectedMemberIDs).count == 1,
+           let selectedID = selectedMemberIDs.first {
+            let role = selectedID == pair.dayAssetID ? "Day" : "Night"
+            return "\(role) is selected on all Spaces and displays. Automatic switching is off."
+        }
+        guard !selectedMemberIDs.isEmpty else { return nil }
+        return "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
     }
 
     /// A stable token for setup or selection recovery that should surface in

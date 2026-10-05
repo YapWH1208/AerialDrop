@@ -57,6 +57,19 @@ struct DayNightWallpaperSection: View {
                 )
             }
 
+            if let recoveryMessage = model.dayNightMediaRecoveryMessage {
+                Label {
+                    Text(recoveryMessage)
+                        .foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+            }
+
             if isExpanded {
                 dayNightEditor(model: model)
                     .padding(.top, 2)
@@ -92,7 +105,8 @@ struct DayNightWallpaperSection: View {
 
             if let reason = model.dayNightUnavailableReason {
                 inlineMessage(reason, systemImage: "exclamationmark.triangle")
-            } else if let blocker = model.dayNightApplyBlockerMessage {
+            } else if let blocker = model.dayNightApplyBlockerMessage,
+                      blocker != model.dayNightMediaRecoveryMessage {
                 inlineMessage(blocker, systemImage: "exclamationmark.circle")
             }
 
