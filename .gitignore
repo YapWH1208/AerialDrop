@@ -72,5 +72,10 @@ skills-lock.json
 # Added by code-review-graph
 .code-review-graph/
 .codex/spec-to-pr/
+# Locally generated spec-to-PR workflow artifacts (not product documentation).
+/docs/requirements.md
+/docs/implementation-plan.md
+/docs/implementation-goal.md
+/docs/execution-log.md
 .harness/
 opencode.jsonc
