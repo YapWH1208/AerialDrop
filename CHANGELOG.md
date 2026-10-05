@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.10
+
 - Select the newest compatible published release in the install script, with validated version pins and a read-only `--print-version` option.
 - Add a macOS selector for compatible website downloads and source-build instructions.
 - Share explicit OS and processor requirements with the Homebrew tap updater, and validate release compatibility before packaging and publication.

@@ -51,7 +51,7 @@ bash install.sh
 Downloads the newest compatible published release, verifies its SHA256 checksum
 against the official release metadata, installs `AerialDrop.app` into
 `/Applications`, and clears the download quarantine (same unsigned-app caveat as
-above). Useful options: `bash install.sh 1.1.9` (pin a compatible version),
+above). Useful options: `bash install.sh 1.1.10` (pin a compatible version),
 `--open` (launch after install), `--force` (replace without asking), and
 `--install-dir <path>`.
 
@@ -151,8 +151,8 @@ GitHub releases and their exact ZIP assets. Versions are compared numerically;
 drafts, prereleases, undeclared releases, and assets without a valid official
 checksum or URL are excluded. Missing or malformed policy data stops selection.
 
-Currently v1.1.9 supports macOS 26 and later on Apple Silicon. macOS 26 users
-therefore receive v1.1.9. If a later release requires macOS 27, macOS 26 users
+Currently v1.1.10 supports macOS 26 and later on Apple Silicon. macOS 26 users
+therefore receive v1.1.10. If a later release requires macOS 27, macOS 26 users
 remain on the newest eligible release. Day/Night feature checks remain separate
 from whole-app installation compatibility.
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AerialDrop — your videos, natively on the macOS Tahoe desktop</title>
-<meta name="description" content="Import your MP4/MOV videos into the native macOS Aerial wallpaper catalogue. AerialDrop 1.1.9 adds Day/Night pairs on verified macOS 27 builds, following safer activation and recovery in 1.1.8. Free and open source.">
+<meta name="description" content="Import your MP4/MOV videos into the native macOS Aerial wallpaper catalogue. AerialDrop 1.1.10 selects compatible releases for your Mac, following Day/Night pairs in 1.1.9. Free and open source.">
 <meta name="theme-color" content="#070b10">
 <meta property="og:type" content="website">
 <meta property="og:title" content="AerialDrop — your videos, natively on the macOS Tahoe desktop">
@@ -76,7 +76,7 @@
           </a>
           <a class="btn btn--glass btn--lg" href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">View on GitHub</a>
         </div>
-        <p class="hero__hint">One command. Copy it below or pick your method. <a href="#updates">See what&rsquo;s new in 1.1.8 and 1.1.9.</a></p>
+        <p class="hero__hint">One command. Copy it below or pick your method. <a href="#updates">See what&rsquo;s new in 1.1.10 and 1.1.9.</a></p>
       </div>
 
       <div class="hero__visual reveal">
@@ -124,9 +124,15 @@
     <div class="container container--narrow">
       <header class="section__head reveal">
         <h2>What&rsquo;s new</h2>
-        <p class="section__sub">Day/Night pairs in 1.1.9, with the activation, recovery, and import fixes from 1.1.8.</p>
+        <p class="section__sub">Compatible release selection in 1.1.10, with Day/Night pairs from 1.1.9.</p>
       </header>
       <div class="spec-grid">
+        <article class="spec reveal">
+          <span class="spec__name mono">Version 1.1.10</span>
+          <h3 class="spec__value">Compatible release downloads</h3>
+          <p class="spec__body">The website, install script, and Homebrew tap select the newest published release for your macOS version and processor. Version pins are validated, and downloads are checked against their published SHA-256 checksums.</p>
+          <p class="spec__body"><a href="https://github.com/YapWH1208/AerialDrop/releases/tag/v1.1.10" target="_blank" rel="noopener">Read the 1.1.10 release notes</a></p>
+        </article>
         <article class="spec reveal">
           <span class="spec__name mono">Version 1.1.9</span>
           <h3 class="spec__value">Day/Night wallpaper pairs</h3>
@@ -285,7 +291,7 @@
                     <pre><code>defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString</code></pre>
                     <button class="cmd__copy" type="button" data-copy="defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString">Copy</button>
                   </div>
-                  <p class="expect">Expected version for the selected macOS on Apple Silicon: <code><span id="expectVersion">Run installer to resolve</span></code>. The current source version is 1.1.9; compatibility and publication decide the selected version.</p>
+                  <p class="expect">Expected version for the selected macOS on Apple Silicon: <code><span id="expectVersion">Run installer to resolve</span></code>. The current source version is 1.1.10; compatibility and publication decide the selected version.</p>
                 </div>
               </li>
               <li class="step">
@@ -646,7 +652,7 @@
     <nav aria-label="Footer: project">
       <h4>Project</h4>
       <ul>
-        <li><a href="#updates">1.1.8 &amp; 1.1.9 highlights</a></li>
+        <li><a href="#updates">1.1.9 &amp; 1.1.10 highlights</a></li>
         <li><a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">Source code</a></li>
         <li><a href="https://github.com/YapWH1208/AerialDrop/releases" target="_blank" rel="noopener">Releases</a></li>
         <li><a href="https://github.com/YapWH1208/AerialDrop/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></li>
