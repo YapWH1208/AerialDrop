@@ -130,12 +130,41 @@ final class AppModel {
         }
         guard day != night else { return "Choose different wallpapers for Day and Night." }
         for (role, id) in [("Day", day), ("Night", night)] {
-            guard let wallpaper = wallpapers.first(where: { $0.id == id }) else {
-                return "The saved \(role) wallpaper is missing. Choose another wallpaper."
+            if let issue = dayNightMediaIssue(for: id, role: role) { return issue }
+        }
+        return nil
+    }
+
+    /// Keeps missing-media recovery visible in the compact Library summary,
+    /// including when a previously registered pair no longer matches the draft.
+    var dayNightMediaRecoveryMessages: [String] {
+        var messages: [String] = []
+        if let pair = registeredDayNightPair {
+            for (role, id) in [("Day", pair.dayAssetID), ("Night", pair.nightAssetID)] {
+                if let issue = dayNightMediaIssue(for: id, role: role) {
+                    messages.append("Current pair: \(issue)")
+                }
             }
-            guard wallpaper.videoExists, wallpaper.thumbnailExists else {
-                return "The \(role) video or preview is missing. Reimport it or choose another wallpaper."
+        }
+
+        let draftMatchesRegisteredPair = registeredDayNightPair.map {
+            $0.dayAssetID == dayNightDraft.dayAssetID && $0.nightAssetID == dayNightDraft.nightAssetID
+        } ?? false
+        if !draftMatchesRegisteredPair {
+            for (role, id) in [("Day", dayNightDraft.dayAssetID), ("Night", dayNightDraft.nightAssetID)] {
+                guard let id, let issue = dayNightMediaIssue(for: id, role: role) else { continue }
+                messages.append("Saved choices: \(issue)")
             }
+        }
+        return messages
+    }
+
+    private func dayNightMediaIssue(for id: String, role: String) -> String? {
+        guard let wallpaper = wallpapers.first(where: { $0.id == id }) else {
+            return "The saved \(role) wallpaper is missing. Choose another wallpaper."
+        }
+        guard wallpaper.videoExists, wallpaper.thumbnailExists else {
+            return "The \(role) video or preview is missing. Reimport it or choose another wallpaper."
         }
         return nil
     }
@@ -157,11 +186,8 @@ final class AppModel {
                     ? "Automatic is selected on all Spaces and displays."
                     : "Automatic is selected. Apply your saved choices to change the current pair."
             }
-            if aerialSelectionInspection?.matches(.fixedVariant(assetID: pair.dayAssetID)) == true {
-                return "Day is selected on all Spaces and displays. Automatic switching is off."
-            }
-            if aerialSelectionInspection?.matches(.fixedVariant(assetID: pair.nightAssetID)) == true {
-                return "Night is selected on all Spaces and displays. Automatic switching is off."
+            if let message = dayNightPairMemberSelectionMessage(for: pair) {
+                return message
             }
             if activeAerialAssetIDs.contains(ManifestStore.dayNightSubcategoryID) {
                 return "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
@@ -177,6 +203,83 @@ final class AppModel {
         case (.some, .some):
             return "Choices are saved. Apply Day/Night to change the wallpaper."
         }
+    }
+
+    private func dayNightPairMemberSelectionMessage(for pair: DayNightWallpaperPair) -> String? {
+        guard let inspection = aerialSelectionInspection, !inspection.targets.isEmpty else { return nil }
+        let selectedMemberIDs = inspection.targets.compactMap { target -> String? in
+            guard let selection = target.recognizedSelection else { return nil }
+            switch selection {
+            case .single(let assetID), .fixedVariant(let assetID):
+                return pair.memberAssetIDs.contains(assetID) ? assetID : nil
+            case .automatic:
+                return nil
+            }
+        }
+
+        if selectedMemberIDs.count == inspection.targets.count {
+            if Set(selectedMemberIDs).count == 1, let selectedID = selectedMemberIDs.first {
+                let role = selectedID == pair.dayAssetID ? "Day" : "Night"
+                return "\(role) is selected on all Spaces and displays. Automatic switching is off."
+            }
+            return "Day/Night selections vary across Spaces and displays. Automatic switching is off."
+        }
+        guard !selectedMemberIDs.isEmpty else { return nil }
+        return "Day/Night is selected on some targets. Apply again to select Automatic everywhere."
+    }
+
+    /// A stable token for setup or selection recovery that should surface in
+    /// the compact Library section. A nil token means the summary is healthy
+    /// or Day/Night support is unavailable without pending recovery.
+    var dayNightSectionAttentionToken: String? {
+        if isDayNightRecoveryPending {
+            let protectedIDs = (try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults))?.sorted()
+                ?? ["unreadable"]
+            return "recovery:\(protectedIDs.joined(separator: ":"))"
+        }
+        if isSelectionStatusUnknown, let pair = registeredDayNightPair {
+            return "selection:\(pair.dayAssetID):\(pair.nightAssetID)"
+        }
+        guard dayNightUnavailableReason == nil else { return nil }
+        if let pair = registeredDayNightPair {
+            guard pair.dayAssetID == dayNightDraft.dayAssetID,
+                  pair.nightAssetID == dayNightDraft.nightAssetID else {
+                return "draft:\(pair.dayAssetID):\(pair.nightAssetID):\(dayNightDraft.dayAssetID ?? "-"):\(dayNightDraft.nightAssetID ?? "-")"
+            }
+            if dayNightSelectionNeedsAttention(for: pair) {
+                return "selection:\(pair.dayAssetID):\(pair.nightAssetID)"
+            }
+            if let blocker = dayNightApplyBlockerMessage {
+                return "blocked:\(pair.dayAssetID):\(pair.nightAssetID):\(blocker)"
+            }
+            return nil
+        }
+        return "setup:\(dayNightDraft.dayAssetID ?? "-"):\(dayNightDraft.nightAssetID ?? "-")"
+    }
+
+    private func dayNightSelectionNeedsAttention(for pair: DayNightWallpaperPair) -> Bool {
+        let relatedIDs = pair.memberAssetIDs.union([ManifestStore.dayNightSubcategoryID])
+        guard !activeAerialAssetIDs.isDisjoint(with: relatedIDs) else { return false }
+        guard let inspection = aerialSelectionInspection, !inspection.targets.isEmpty else { return true }
+
+        if inspection.matches(.automatic(groupID: ManifestStore.dayNightSubcategoryID))
+            || inspection.matches(.fixedVariant(assetID: pair.dayAssetID))
+            || inspection.matches(.fixedVariant(assetID: pair.nightAssetID)) {
+            return false
+        }
+
+        let selectedMemberIDs = inspection.targets.compactMap { target -> String? in
+            guard let selection = target.recognizedSelection else { return nil }
+            switch selection {
+            case .single(let assetID), .fixedVariant(let assetID):
+                return pair.memberAssetIDs.contains(assetID) ? assetID : nil
+            case .automatic:
+                return nil
+            }
+        }
+        let allTargetsSelectOneMember = selectedMemberIDs.count == inspection.targets.count
+            && Set(selectedMemberIDs).count == 1
+        return !allTargetsSelectOneMember
     }
 
     func applyDayNightWallpaper() {
@@ -267,6 +370,21 @@ final class AppModel {
 
     var hasActiveManagedWallpaper: Bool {
         wallpapers.contains { activeAerialAssetIDs.contains($0.id) }
+    }
+
+    /// Presentation-only selection details. Safety checks continue to use the
+    /// expanded active IDs and `isWallpaperAlreadySelected(_:)` independently.
+    func wallpaperPresentationState(for wallpaper: ManagedWallpaper) -> WallpaperPresentationState {
+        let pendingAssetIDs = try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
+        return .resolve(
+            wallpaperID: wallpaper.id,
+            pair: registeredDayNightPair,
+            rawSelectionAssetIDs: rawAerialAssetIDs,
+            inspection: aerialSelectionInspection,
+            selectionStatusUnknown: isSelectionStatusUnknown,
+            pendingAssetIDs: pendingAssetIDs,
+            recoveryPending: isDayNightRecoveryPending || !(pendingAssetIDs?.isEmpty ?? false)
+        )
     }
 
     /// Pair membership protects both videos from removal, while setting a

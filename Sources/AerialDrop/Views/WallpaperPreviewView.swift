@@ -5,6 +5,7 @@ struct WallpaperPreviewView: View {
     let isActive: Bool
     let isAlreadySelected: Bool
     let isSelectionStatusUnknown: Bool
+    let presentationState: WallpaperPresentationState
     let isWorking: Bool
     let operationLabel: String?
     let onSetWallpaper: () -> Void
@@ -57,11 +58,11 @@ struct WallpaperPreviewView: View {
 
             Spacer()
 
-            if isActive {
-                Label("Active", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(.tint)
-                    .accessibilityLabel("Active wallpaper")
-            }
+            Label(presentationState.statusLabel, systemImage: "info.circle")
+                .font(.callout)
+                .foregroundStyle(presentationStatusColor)
+                .accessibilityLabel("Wallpaper selection")
+                .accessibilityValue(presentationState.accessibilityDescription)
 
             Button("Done") { dismiss() }
                 .keyboardShortcut(.cancelAction)
@@ -152,10 +153,10 @@ struct WallpaperPreviewView: View {
 
             Spacer()
 
-            Button("Set as Wallpaper", systemImage: "desktopcomputer", action: onSetWallpaper)
+            Button(presentationState.activationTitle, systemImage: "desktopcomputer", action: onSetWallpaper)
                 .buttonStyle(.borderedProminent)
                 .disabled(!actionAvailability.canSetAsWallpaper)
-                .help(actionAvailability.setWallpaperHelp)
+                .help(activationHelp)
         }
     }
 
@@ -167,5 +168,18 @@ struct WallpaperPreviewView: View {
             isSelectionStatusUnknown: isSelectionStatusUnknown,
             isWorking: isWorking
         )
+    }
+
+    private var activationHelp: String {
+        if presentationState.assignment != .single {
+            return presentationState.activationHelp
+        }
+        return actionAvailability.setWallpaperHelp
+    }
+
+    private var presentationStatusColor: Color {
+        presentationState.selection == .selectedEverywhere
+            ? .accentColor
+            : Color(nsColor: .secondaryLabelColor)
     }
 }

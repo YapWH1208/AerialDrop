@@ -7,6 +7,7 @@ struct WallpaperCard: View {
     let isActive: Bool
     let isAlreadySelected: Bool
     let isSelectionStatusUnknown: Bool
+    let presentationState: WallpaperPresentationState
     let isWorking: Bool
     let onSelect: () -> Void
     let onNavigate: (LibraryMoveDirection) -> Void
@@ -29,7 +30,7 @@ struct WallpaperCard: View {
     @FocusState private var moreFocused: Bool
 
     private var showsHoverControls: Bool {
-        hovering || selectionFocus == wallpaper.id || setWallpaperFocused || previewFocused || moreFocused
+        isSelected || hovering || selectionFocus == wallpaper.id || setWallpaperFocused || previewFocused || moreFocused
     }
 
     /// Split out of `body` so its long modifier chain type-checks quickly.
@@ -69,11 +70,9 @@ struct WallpaperCard: View {
         ZStack(alignment: .topTrailing) {
             selectionButton
 
-            if showsHoverControls {
-                hoverControls
-                    .padding(14)
-                    .transition(.opacity)
-            }
+            cardControls
+                .padding(14)
+                .transition(.opacity)
         }
         .padding(8)
         .background {
@@ -90,6 +89,7 @@ struct WallpaperCard: View {
             cardMenu
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: hovering)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isSelected)
         .accessibilityElement(children: .contain)
     }
 
@@ -166,42 +166,47 @@ struct WallpaperCard: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
                 .accessibilityLabel("Installed video is missing")
-        } else if isActive {
-            Label("Active", systemImage: "checkmark.seal.fill")
-                .font(.caption)
-                .foregroundStyle(.tint)
-                .accessibilityLabel("Active wallpaper")
         } else {
-            Label("Installed", systemImage: "checkmark.circle")
+            Label(presentationState.statusLabel, systemImage: statusSymbol)
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Wallpaper installed")
+                .foregroundStyle(statusColor)
+                .accessibilityLabel(presentationState.accessibilityDescription)
         }
     }
 
-    private var hoverControls: some View {
+    private var cardControls: some View {
+        HStack(alignment: .top) {
+            Button(action: onPreview) {
+                Label("Preview", systemImage: "play.fill")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.glass)
+            .controlSize(.small)
+            .focused($previewFocused)
+            .accessibilityLabel("Preview \(wallpaper.title)")
+            .help("Preview wallpaper")
+
+            Spacer(minLength: 8)
+
+            if showsHoverControls {
+                actionControls
+            }
+        }
+    }
+
+    private var actionControls: some View {
         GlassEffectContainer(spacing: 6) {
             HStack(spacing: 6) {
                 Button(action: onSetWallpaper) {
-                    Label("Set as Wallpaper", systemImage: "desktopcomputer")
+                    Label(presentationState.activationTitle, systemImage: "desktopcomputer")
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.glass)
                 .controlSize(.small)
                 .focused($setWallpaperFocused)
                 .disabled(!actionAvailability.canSetAsWallpaper)
-                .accessibilityLabel("Set as Wallpaper")
-                .help(actionAvailability.setWallpaperHelp)
-
-                Button(action: onPreview) {
-                    Label("Preview", systemImage: "play.fill")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.glass)
-                .controlSize(.small)
-                .focused($previewFocused)
-                .accessibilityLabel("Preview")
-                .help("Preview wallpaper")
+                .accessibilityLabel(presentationState.activationTitle)
+                .help(activationHelp)
 
                 Menu {
                     cardMenu
@@ -221,9 +226,9 @@ struct WallpaperCard: View {
     @ViewBuilder
     private var cardMenu: some View {
         Button("Preview", systemImage: "play") { onPreview() }
-        Button("Set as Wallpaper", systemImage: "desktopcomputer") { onSetWallpaper() }
+        Button(presentationState.activationTitle, systemImage: "desktopcomputer") { onSetWallpaper() }
             .disabled(!actionAvailability.canSetAsWallpaper)
-            .help(actionAvailability.setWallpaperHelp)
+            .help(activationHelp)
         Divider()
         Button("Rename…", systemImage: "pencil") { onRename() }
             .disabled(!actionAvailability.canRename)
@@ -273,9 +278,47 @@ struct WallpaperCard: View {
         if !wallpaper.videoExists {
             return "Installed video is missing"
         }
-        if isActive {
-            return "Active wallpaper"
+        return presentationState.accessibilityDescription
+    }
+
+    private var activationHelp: String {
+        if presentationState.assignment != .single {
+            return presentationState.activationHelp
         }
-        return "Wallpaper installed"
+        return actionAvailability.setWallpaperHelp
+    }
+
+    private var statusSymbol: String {
+        switch presentationState.selection {
+        case .selectedEverywhere:
+            "checkmark.seal.fill"
+        case .fixedVariant:
+            presentationState.selectedRoleMatchesAssignment == false ? "circle" : "checkmark.seal.fill"
+        case .selectedOnSomeTargets, .automatic:
+            "arrow.triangle.2.circlepath"
+        case .selectedWithUnknownScope:
+            "questionmark.circle"
+        case .notSelected:
+            "checkmark.circle"
+        case .mixedTargets, .unknown:
+            "questionmark.circle"
+        case .pendingVerification:
+            "clock"
+        }
+    }
+
+    private var statusColor: Color {
+        switch presentationState.selection {
+        case .selectedEverywhere, .automatic:
+            .accentColor
+        case .fixedVariant:
+            if presentationState.selectedRoleMatchesAssignment == false {
+                Color(nsColor: .secondaryLabelColor)
+            } else {
+                .accentColor
+            }
+        case .selectedOnSomeTargets, .selectedWithUnknownScope, .mixedTargets, .unknown, .pendingVerification, .notSelected:
+            Color(nsColor: .secondaryLabelColor)
+        }
     }
 }

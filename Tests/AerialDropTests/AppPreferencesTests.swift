@@ -66,6 +66,51 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(AppPreferences.lastOutputHeightCap(defaults: defaults))
     }
 
+    func testDayNightSectionExpansionPreferenceDefaultsToAutomatic() {
+        XCTAssertNil(defaults.object(forKey: AppPreferences.dayNightSectionExpansionPreferenceKey))
+        XCTAssertEqual(
+            AppPreferences.dayNightSectionExpansionPreference(defaults: defaults),
+            DayNightSectionExpansionPreference()
+        )
+    }
+
+    func testDayNightSectionExpansionPreferenceRoundTripsModeAndAttentionToken() throws {
+        let preferences = [
+            DayNightSectionExpansionPreference(mode: .automatic),
+            DayNightSectionExpansionPreference(mode: .expanded, dismissedAttentionToken: "attention-1"),
+            DayNightSectionExpansionPreference(mode: .collapsed, dismissedAttentionToken: "attention-2")
+        ]
+
+        for preference in preferences {
+            AppPreferences.setDayNightSectionExpansionPreference(preference, defaults: defaults)
+            let reread = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+            XCTAssertEqual(
+                AppPreferences.dayNightSectionExpansionPreference(defaults: reread),
+                preference
+            )
+        }
+    }
+
+    func testMalformedDayNightSectionExpansionPreferenceFallsBackToAutomatic() {
+        let malformedValues: [Any] = [
+            "invalid",
+            ["mode": "unknown"],
+            ["mode": 42],
+            ["mode": "expanded", "dismissedAttentionToken": 42],
+            ["mode": "collapsed", "future-key": true],
+            ["dismissedAttentionToken": "attention-1"]
+        ]
+
+        for value in malformedValues {
+            defaults.set(value, forKey: AppPreferences.dayNightSectionExpansionPreferenceKey)
+            XCTAssertEqual(
+                AppPreferences.dayNightSectionExpansionPreference(defaults: defaults),
+                DayNightSectionExpansionPreference(),
+                String(describing: value)
+            )
+        }
+    }
+
     private let dayID = "11111111-2222-4333-8444-555555555555"
     private let nightID = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"
     private let priorID = "BBBBBBBB-BBBB-4CCC-8DDD-EEEEEEEEEEEE"

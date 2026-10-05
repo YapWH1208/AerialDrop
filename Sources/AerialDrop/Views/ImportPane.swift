@@ -96,7 +96,7 @@ struct ImportPane: View {
                             .disabled(model.isWorking)
                     }
 
-                    if let blocker = model.importBlockerMessage {
+                    if model.selectedVideo != nil, let blocker = model.importBlockerMessage {
                         // Inline reason so a disabled toolbar Import button
                         // is never the only explanation.
                         Label(blocker, systemImage: "exclamationmark.circle")
@@ -385,6 +385,7 @@ private struct ImportSettingsView: View {
 
                             Slider(value: $cropOffset, in: 0...1)
                                 .accessibilityLabel("Crop position")
+                                .accessibilityValue(cropPositionAccessibilityValue(cropOffset))
                                 .help("Position of the visible 16:9 window")
                         }
                     }
@@ -456,6 +457,7 @@ private struct ImportProgressView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                        .accessibilityHidden(true)
 
                     if let etaText {
                         Text(etaText)
@@ -466,6 +468,8 @@ private struct ImportProgressView: View {
                 }
 
                 ProgressView(value: progress)
+                    .accessibilityLabel("Import progress")
+                    .accessibilityValue("\(Int(progress * 100)) percent")
 
                 HStack {
                     Text(canCancel ? cancellableMessage : finishingMessage)
@@ -477,6 +481,7 @@ private struct ImportProgressView: View {
                     if canCancel {
                         Button("Cancel", role: .cancel, action: onCancel)
                             .controlSize(.small)
+                            .keyboardShortcut(.cancelAction)
                     }
                 }
             }

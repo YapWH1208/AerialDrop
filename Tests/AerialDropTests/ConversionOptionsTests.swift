@@ -61,6 +61,16 @@ final class ConversionOptionsTests: XCTestCase {
         XCTAssertEqual(cropPan(cropOffset: 2, sourceSize: source, renderSize: render), 330, accuracy: 0.001)
     }
 
+    func testCropPositionAccessibilityValueNamesPresetsAndDescribesIntermediateOffsets() {
+        XCTAssertEqual(cropPositionAccessibilityValue(0), "Left")
+        XCTAssertEqual(cropPositionAccessibilityValue(0.5), "Centered")
+        XCTAssertEqual(cropPositionAccessibilityValue(1), "Right")
+        XCTAssertEqual(cropPositionAccessibilityValue(0.253), "25 percent from left")
+        XCTAssertEqual(cropPositionAccessibilityValue(-1), "Left")
+        XCTAssertEqual(cropPositionAccessibilityValue(2), "Right")
+        XCTAssertEqual(cropPositionAccessibilityValue(.nan), "Unknown")
+    }
+
     func testBitrateBucketsByRenderHeightAndQuality() {
         XCTAssertEqual(bitrateBps(quality: .standard, renderHeight: 1080), 8_000_000)
         XCTAssertEqual(bitrateBps(quality: .maximum, renderHeight: 1080), 18_000_000)

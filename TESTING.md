@@ -53,7 +53,9 @@ version before evaluating native playback.
    catalogue check has a named loading state instead of an empty pane.
 2. Download an Apple Aerial in System Settings → Wallpaper, return to AerialDrop,
    and choose **Check Again**. Confirm the ready-but-empty Library shows its import
-   action without a search field. After at least one import, confirm search appears.
+   action without a search field. Open Import before choosing a file and confirm
+   **Choose or drop a video** is neutral and has no warning row. After at least one
+   import, confirm Library search appears.
 3. Select a valid source. Confirm the Import pane shows a still-frame preview with
    a crop mask matching the source type, and that resolution, duration, and file
    size appear. Change crop, quality, and output resolution; confirm the preview
@@ -78,13 +80,13 @@ version before evaluating native playback.
    an import. Press Command-Return or click the toolbar **Import Wallpaper** action and
    confirm import begins.
 6. During validation, encoding, or thumbnail generation, confirm progress and
-   **Cancel Import** remain visible in the toolbar even when the Import form is scrolled.
-   Confirm both Escape and the inline/toolbar cancellation actions return to editable
-   state without an error alert. At
-   **Updating the Aerial manifest** and later, confirm Cancel is absent and the UI
-   states that installation is finishing and cannot be cancelled. During the
-   first import, switch to the empty Library: its import action must be disabled.
-   Returning to Import, pressing Import again or dropping a second source must
+   **Cancel** remain in the Import pane when its form is scrolled. Confirm both
+   Escape and the inline action return to editable state without an error alert.
+   Switch to Library during the same run: the status stays above the grid and shows
+   the stage, percentage, available encode estimate, **View Import**, and **Cancel**.
+   At **Updating the Aerial manifest** and later, confirm Cancel is absent and the
+   status says installation is finishing and cannot be cancelled. Returning with
+   **View Import**, pressing Import again, or dropping a second source must
    not replace the running source or its committed crop, quality, resolution,
    name, and activation choice. Cancel, retry, and confirm old encode progress
    callbacks cannot change the new attempt's progress.
@@ -94,10 +96,11 @@ version before evaluating native playback.
    states, confirm the result is the primary content without an empty source chooser or
    stale configuration above it. Verify **View in Library** navigates to Library and
    **Import Another** opens the file chooser.
-8. With VoiceOver enabled, confirm meaningful stage changes are announced without
-   announcing every percentage update, completion moves focus to the result summary,
-   and the activation scope, progress, and completion actions have understandable
-   labels.
+8. With VoiceOver enabled, confirm meaningful stage changes are announced in the
+   Import pane without announcing every percentage update. In Library, confirm the
+   status exposes one labeled progress value, stage, available estimate, and named
+   actions without duplicate percentage announcements. Completion moves focus to the
+   result summary, and the activation scope and completion actions have clear labels.
 
 ## Maintenance and recovery
 
@@ -151,7 +154,7 @@ version before evaluating native playback.
    file type and confirm an immediate **Couldn’t Use This File** alert explains that
    an MP4 or MOV is required.
 6. Choose a video, rename it, then choose a different video; confirm the name field follows the new file.
-7. For an ultrawide source, drag the crop slider between presets and confirm no crop segment is highlighted while the position is between presets, and the preview mask matches the slider.
+7. For an ultrawide source, drag the crop slider between presets and confirm no crop segment is highlighted while the position is between presets, and the preview mask matches the slider. With VoiceOver, confirm its value reads **Left**, **Centered**, **Right**, or the intermediate percentage from the left edge.
 8. Focus a wallpaper card with the keyboard and press Delete: the existing removal
    confirmation appears. Press Delete while typing in the search field and confirm
    nothing is removed.
@@ -168,8 +171,12 @@ version before evaluating native playback.
    confirm arrow keys do not wrap past the first or last visible card.
 10. Rename a wallpaper to another wallpaper’s title and confirm the duplicate-name
     warning appears in the rename alert.
-11. Switch the Library sort between **Title** and **Recently Added**: the newest
-    imports appear first in Recently Added, and the choice survives a relaunch.
+11. Switch the visible Library sort menu between **Title** and **Recently Added**:
+    its closed label tracks the selected order, the newest imports appear first in
+    Recently Added, and the choice survives a relaunch.
+    Before hovering a card, confirm **Preview** is visible. Select a card and move
+    the pointer away; confirm its activation and more actions remain visible, then
+    use keyboard focus to verify they remain available without hover.
 12. On the onboarding screen (missing catalogue), confirm **Open Wallpaper Settings**
     shows the same photo icon as the toolbar’s Wallpaper Settings button.
 13. Open the Settings window and confirm the AerialDrop version and build number are
@@ -304,9 +311,13 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
 8. Check Library Day/Night menus, Apply, fixed-member actions, and pending/
    recovery messages with keyboard navigation and VoiceOver. Confirm previews
    distinguish the two members and communicate their Day/Night roles.
-   Expand and collapse the Day/Night section in a small window, with no draft
-   and with both roles selected. Confirm the sidebar, full instructions,
-   selectors, Apply button, and cards remain visible or reachable by scrolling.
+   In a small window, confirm the compact summary shows thumbnails and names for
+   the registered pair and separately labels different saved choices. Use **Edit**
+   and **Done** to reach the selectors and Apply button. Confirm a manual collapse
+   survives Library navigation and relaunch; initial setup, a changed draft, or
+   pending recovery opens the editor when attention is needed, while a healthy pair
+   stays compact. Keep the sidebar, full instructions, selectors, Apply button, and
+   cards visible or reachable by scrolling.
    With no active Day/Night pair, confirm an empty draft prompts for both
    wallpapers and a partial draft identifies the saved role and the missing
    role. For draft prompts, only a complete draft should suggest Apply. Actual
