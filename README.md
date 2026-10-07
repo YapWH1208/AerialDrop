@@ -5,6 +5,24 @@
 
 AerialDrop imports your own videos into macOS Tahoe's native Aerial (wallpaper) catalogue, so custom videos play as screen savers and lock screen wallpapers using Apple's own playback pipeline — no helper processes, no app-managed player.
 
+## See it in action
+
+Choose an MP4 or MOV, preview its 16:9 framing, then import it into the native Aerial library. AerialDrop prepares the video; macOS handles playback after setup.
+
+![AerialDrop's Import screen before a video is selected](docs/assets/screenshots/import-empty-state.png)
+
+<sub>Choose or drop a video to get started. The original file is never modified.</sub>
+
+![AerialDrop previewing a video before import](docs/assets/screenshots/import-preview.png)
+
+<sub>Preview the framing and choose a name and output quality before importing.</sub>
+
+## Quick start
+
+1. **Prepare macOS once:** In System Settings → Wallpaper, download at least one Apple Aerial wallpaper.
+2. **Choose a video:** In AerialDrop's Import pane, choose or drop an MP4/MOV, then review its crop, name, quality, and output resolution.
+3. **Import and apply:** Choose **Import Wallpaper**. AerialDrop activates it by default; use the Library to preview it or set it again later. macOS handles playback, so you can quit AerialDrop after setup.
+
 ## Features
 
 - **Native catalogue integration** — imports videos as full Tahoe Aerial catalogue entries with HEIF previews, visible under the AerialDrop section in System Settings → Wallpaper.
