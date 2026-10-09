@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#070b10">
+<meta name="description" content="AerialDrop architecture, data ownership, development workflow, and testing guide.">
+<title>Developer guide — AerialDrop</title>
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="icon" type="image/png" href="assets/icon.png">
+<link rel="stylesheet" href="styles.css">
+<script>
+(function () {
+  document.documentElement.classList.add("js");
+  var saved = null;
+  try { saved = localStorage.getItem("ad-theme"); } catch (e) {}
+  var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: light)").matches === false;
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+})();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="nav container" aria-label="Primary">
+    <a class="brand" href="index.html#top">
+      <img class="brand__icon" src="assets/icon.svg" alt="" width="28" height="28">
+      <span class="brand__name">AerialDrop</span>
+    </a>
+    <button class="nav__toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks">
+      <span class="nav__toggle-bar"></span><span class="nav__toggle-bar"></span><span class="nav__toggle-bar"></span>
+      <span class="visually-hidden">Menu</span>
+    </button>
+    <ul class="nav__links" id="navLinks">
+      <li><a href="index.html#install">Install</a></li>
+      <li><a href="index.html#updates">Updates</a></li>
+      <li><a href="index.html#specs">Specs</a></li>
+      <li><a href="index.html#pipeline">Pipeline</a></li>
+      <li><a href="development.html" aria-current="page">Developers</a></li>
+      <li><a href="index.html#faq">FAQ</a></li>
+      <li class="nav__actions">
+        <button class="icon-btn" id="themeToggle" aria-pressed="false" title="Toggle day / night theme">
+          <svg class="icon icon--sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3 5 19"/></svg>
+          <svg class="icon icon--moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>
+          <span class="visually-hidden">Toggle theme</span>
+        </button>
+        <a class="btn btn--ghost btn--sm" href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">GitHub</a>
+      </li>
+    </ul>
+  </nav>
+</header>
+
+<main id="main">
+  <section class="hero" id="top">
+    <div class="container hero__grid">
+      <div class="hero__copy">
+        <p class="hero__eyebrow"><span class="pill">Developer guide</span><span class="pill">Swift 6.2+</span><span class="pill">macOS 26+</span></p>
+        <h1>How AerialDrop fits together.</h1>
+        <p class="hero__lede">A quick map of the app, its native wallpaper integration, the files that own each part, and the checks to run when you change them.</p>
+        <div class="hero__cta">
+          <a class="btn btn--primary" href="#architecture">Read the architecture</a>
+          <a class="btn btn--ghost" href="index.html#pipeline">See the import overview</a>
+        </div>
+        <p class="hero__hint">For the full manual QA matrix, see <a href="https://github.com/YapWH1208/AerialDrop/blob/main/TESTING.md" target="_blank" rel="noopener">TESTING.md</a>.</p>
+      </div>
+      <aside class="hero__visual" aria-label="Application flow overview">
+        <div class="terminal">
+          <div class="terminal__bar">
+            <span class="terminal__dot terminal__dot--r"></span>
+            <span class="terminal__dot terminal__dot--y"></span>
+            <span class="terminal__dot terminal__dot--g"></span>
+            <span class="terminal__title">runtime map</span>
+          </div>
+          <div class="terminal__body">
+            <p class="term-line"><span class="term-prompt">UI</span><span class="term-cmd">ContentView → Import / Library</span></p>
+            <p class="term-line"><span class="term-prompt">→</span><span class="term-cmd">AppModel coordinates the work</span></p>
+            <p class="term-line"><span class="term-prompt">→</span><span class="term-cmd">VideoProcessing creates native media</span></p>
+            <p class="term-line"><span class="term-prompt">→</span><span class="term-cmd">ManifestStore registers the Aerial</span></p>
+            <p class="term-line"><span class="term-prompt">→</span><span class="term-cmd">Wallpaper service applies selection</span></p>
+            <p class="term-line"><span class="term-prompt">OS</span><span class="term-cmd">macOS plays it after setup</span></p>
+          </div>
+        </div>
+        <div class="release-chip"><span class="release-chip__tag">Design boundary</span><span class="release-chip__meta">AerialDrop installs media; Apple&rsquo;s wallpaper services play it.</span></div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section" id="architecture">
+    <div class="container">
+      <header class="section__head">
+        <h2>Architecture map</h2>
+        <p class="section__sub">Start at the app entry point, then follow the injected model into focused services. Each card links to the implementation.</p>
+      </header>
+      <div class="spec-grid">
+        <article class="spec">
+          <span class="spec__name mono">App lifecycle</span>
+          <h3 class="spec__value">AerialDropApp</h3>
+          <p class="spec__body">Creates the shared <code>AppModel</code>, hosts the SwiftUI window, and defines app commands and the Settings scene. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/AerialDropApp.swift" target="_blank" rel="noopener">Open AerialDropApp.swift</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Navigation and screens</span>
+          <h3 class="spec__value">ContentView and Views</h3>
+          <p class="spec__body"><code>ContentView</code> hosts the Library/Import destinations. <code>ImportPane</code> owns import controls and preview presentation; <code>LibraryPane</code> drives catalogue actions. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/ContentView.swift" target="_blank" rel="noopener">ContentView</a> · <a href="https://github.com/YapWH1208/AerialDrop/tree/main/Sources/AerialDrop/Views" target="_blank" rel="noopener">Views directory</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Application state</span>
+          <h3 class="spec__value">AppModel</h3>
+          <p class="spec__body">The main-actor observable coordinator for selected media, import progress, catalogue state, preferences, activation, and recovery. It injects the video processor and wallpaper service so model behavior can be tested. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/AppModel.swift" target="_blank" rel="noopener">Open AppModel.swift</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Media pipeline</span>
+          <h3 class="spec__value">VideoProcessing</h3>
+          <p class="spec__body">The protocol is consumed by <code>AppModel</code>; <code>VideoProcessor</code> validates sources, composes short loops, writes the native MOV, validates its samples, and creates the preview image. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/VideoProcessing.swift" target="_blank" rel="noopener">Protocol</a> · <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/VideoProcessor.swift" target="_blank" rel="noopener">Implementation</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Catalogue ownership</span>
+          <h3 class="spec__value">ManifestStore</h3>
+          <p class="spec__body">Reads and mutates Aerial entries, creates managed video and preview records, validates writes, and keeps recovery backups. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/ManifestStore.swift" target="_blank" rel="noopener">Open ManifestStore.swift</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">System integration</span>
+          <h3 class="spec__value">Wallpaper service</h3>
+          <p class="spec__body"><code>SystemWallpaperService</code> applies the linked selection, refreshes wallpaper processes, and verifies macOS&rsquo;s result. <code>WallpaperProcessController</code> owns restart and fresh-agent checks. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/SystemWallpaperService.swift" target="_blank" rel="noopener">Service</a> · <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/WallpaperProcessController.swift" target="_blank" rel="noopener">Process controller</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Selection ownership</span>
+          <h3 class="spec__value">WallpaperSelectionStore</h3>
+          <p class="spec__body">Owns the private linked wallpaper selection format. It has its own compare-before-write and backup contract, separate from the manifest. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/WallpaperSelectionStore.swift" target="_blank" rel="noopener">Open WallpaperSelectionStore.swift</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Pure import policy</span>
+          <h3 class="spec__value">Geometry and conversion</h3>
+          <p class="spec__body"><code>VideoGeometry</code> handles preferred transforms and display dimensions. <code>ConversionOptions</code> clamps output size and resolves crop and quality choices without upscaling. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/VideoGeometry.swift" target="_blank" rel="noopener">Geometry</a> · <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/ConversionOptions.swift" target="_blank" rel="noopener">Conversion options</a></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--install" id="import-flow">
+    <div class="container">
+      <header class="section__head">
+        <h2>Follow an import</h2>
+        <p class="section__sub">The model commits user choices before starting work, then installs media before activation.</p>
+      </header>
+      <div class="spec-grid">
+        <article class="spec"><span class="spec__name mono">01 · Prepare</span><h3 class="spec__value">ImportPane → AppModel</h3><p class="spec__body">The view gathers a source and conversion choices. Geometry and output policy stay in the pure <code>VideoGeometry</code> and <code>ConversionOptions</code> types.</p></article>
+        <article class="spec"><span class="spec__name mono">02 · Validate</span><h3 class="spec__value">Check the source and destination</h3><p class="spec__body"><code>AppModel.importSelectedVideo()</code> checks readiness, source validity, available storage, and the Tahoe requirement before writing the installed media.</p></article>
+        <article class="spec"><span class="spec__name mono">03 · Process</span><h3 class="spec__value">Encode and verify the loop</h3><p class="spec__body"><code>VideoProcessor</code> normalizes the video to an 80-second native stream. Short sources are encoded once and repeated by passthrough export.</p></article>
+        <article class="spec"><span class="spec__name mono">04 · Register</span><h3 class="spec__value">Write the catalogue entry</h3><p class="spec__body"><code>ManifestStore</code> adds the managed video and preview to the Aerial manifest after validating the candidate and creating a backup.</p></article>
+        <article class="spec"><span class="spec__name mono">05 · Activate</span><h3 class="spec__value">Apply a native selection</h3><p class="spec__body">When requested, the wallpaper service updates the linked selection, refreshes macOS wallpaper processes, and verifies the selected asset.</p></article>
+        <article class="spec"><span class="spec__name mono">06 · Recover or report</span><h3 class="spec__value">Keep ownership explicit</h3><p class="spec__body">Before catalogue installation, failed imports remove their incomplete files. After installation, activation failures preserve the wallpaper and expose a retry path.</p></article>
+      </div>
+      <p class="expect">The landing page has the user-facing <a href="index.html#pipeline">seven-step import walkthrough</a>; this map names the code boundaries behind it.</p>
+    </div>
+  </section>
+
+  <section class="section" id="data-ownership">
+    <div class="container container--narrow">
+      <header class="section__head">
+        <h2>Two private stores, two contracts</h2>
+        <p class="section__sub">Both formats belong to macOS. Keep their mutations and recovery rules separate.</p>
+      </header>
+      <div class="spec-grid">
+        <article class="spec">
+          <span class="spec__name mono">Aerial catalogue</span>
+          <h3 class="spec__value"><code>aerials/manifest/entries.json</code></h3>
+          <p class="spec__body"><code>ManifestStore</code> owns managed catalogue entries. It round-trips through <code>JSONSerialization</code> to preserve unknown keys, checks that the file has not changed before writing, compares foreign entries semantically, and backs up before each write. Backups are under <code>aerials/AerialDropBackups</code>.</p>
+          <p class="spec__body"><a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/ManifestStore.swift" target="_blank" rel="noopener">Manifest implementation</a> · <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/ManifestStoreTests.swift" target="_blank" rel="noopener">Manifest tests</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Linked wallpaper selection</span>
+          <h3 class="spec__value"><code>Store/Index.plist</code></h3>
+          <p class="spec__body"><code>WallpaperSelectionStore</code> owns the private selection plist. It compares the binary plist before writing, preserves unrelated selection values, verifies the written selection, and backs up under <code>Store/AerialDropBackups</code>.</p>
+          <p class="spec__body"><a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/WallpaperSelectionStore.swift" target="_blank" rel="noopener">Selection implementation</a> · <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/WallpaperSelectionStoreTests.swift" target="_blank" rel="noopener">Selection tests</a></p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Paths and preferences</span>
+          <h3 class="spec__value">Inject paths in tests</h3>
+          <p class="spec__body"><code>WallpaperPaths(homeDirectory:)</code> centralizes both store locations. Tests pass a temporary home directory; preference tests use isolated <code>UserDefaults</code>. Never aim tests at a real user's wallpaper catalogue.</p>
+          <p class="spec__body"><a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/WallpaperPaths.swift" target="_blank" rel="noopener">WallpaperPaths</a> · <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/AppPreferencesTests.swift" target="_blank" rel="noopener">Preference tests</a></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--checklist" id="contracts">
+    <div class="container container--narrow">
+      <header class="section__head">
+        <h2>Contracts to keep intact</h2>
+        <p class="section__sub">These details are coupled to macOS&rsquo;s private Aerial reader and catalogue. Check the implementation and testing notes before changing them.</p>
+      </header>
+      <div class="faq">
+        <details class="faq__item" open>
+          <summary>Native video format and loop boundaries</summary>
+          <p>The output is HEVC Main10 at 30 fps, 10-bit full-range YUV, Rec.709, with temporal sub-layers and a 15 fps base layer. It uses a closed 1.9-second GOP. The validator requires a stream at least 79.5 seconds long that starts at PTS zero and has a sync sample at every repeated-loop boundary. Short loops are snapped to whole 30 fps frames before passthrough repetition. See <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/VideoProcessor.swift" target="_blank" rel="noopener">VideoProcessor</a>.</p>
+        </details>
+        <details class="faq__item" open>
+          <summary>Preview image contents</summary>
+          <p>The thumbnail contains HEIF image data and deliberately uses a <code>.png</code> catalogue filename suffix to match Apple&rsquo;s assets. Tahoe detects the image by its contents; do not change the suffix based on the codec. See <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/VideoProcessor.swift" target="_blank" rel="noopener">thumbnail generation</a>.</p>
+        </details>
+        <details class="faq__item" open>
+          <summary>Manifest preservation</summary>
+          <p>Do not convert manifest handling to <code>Codable</code>. Unknown Apple keys must survive round trips. Every mutation validates foreign entries, refuses a concurrent file change, and writes a safety backup before the atomic replacement. See <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/ManifestStore.swift" target="_blank" rel="noopener">manifest mutation</a>.</p>
+        </details>
+        <details class="faq__item" open>
+          <summary>Runtime verification still needs Tahoe</summary>
+          <p><code>VideoProcessor</code> has no unit tests for real encoded streams. On a macOS Tahoe test account, import both short and longer MP4/MOV sources, exercise lock/unlock playback, and inspect <code>WallpaperAerialsExtension</code> logs for <code>VideoSampleReadingErrors</code>. Day/Night application is also gated to verified system builds; imported-pair playback and natural solar switching remain unverified. Follow the current <a href="https://github.com/YapWH1208/AerialDrop/blob/main/TESTING.md" target="_blank" rel="noopener">manual testing matrix</a>.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="change-map">
+    <div class="container">
+      <header class="section__head">
+        <h2>Where to start a change</h2>
+        <p class="section__sub">Find the narrowest owner and its tests before changing a shared flow.</p>
+      </header>
+      <div class="spec-grid">
+        <article class="spec"><span class="spec__name mono">Crop, output size, or quality</span><h3 class="spec__value">Pure policy first</h3><p class="spec__body">Start in <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/ConversionOptions.swift" target="_blank" rel="noopener">ConversionOptions</a> or <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/VideoGeometry.swift" target="_blank" rel="noopener">VideoGeometry</a>; see <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/ConversionOptionsTests.swift" target="_blank" rel="noopener">conversion</a> and <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/VideoGeometryTests.swift" target="_blank" rel="noopener">geometry</a> tests.</p></article>
+        <article class="spec"><span class="spec__name mono">Import sequence or progress</span><h3 class="spec__value">Model behavior</h3><p class="spec__body">Start in <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/AppModel.swift" target="_blank" rel="noopener">AppModel</a> and the Import view; see <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/AppModelWallpaperTests.swift" target="_blank" rel="noopener">AppModel wallpaper tests</a>.</p></article>
+        <article class="spec"><span class="spec__name mono">Catalogue edits or restore</span><h3 class="spec__value">ManifestStore</h3><p class="spec__body">Keep mutations inside <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/ManifestStore.swift" target="_blank" rel="noopener">ManifestStore</a>; cover them in <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/ManifestStoreTests.swift" target="_blank" rel="noopener">ManifestStoreTests</a>.</p></article>
+        <article class="spec"><span class="spec__name mono">Active wallpaper selection</span><h3 class="spec__value">Selection and service</h3><p class="spec__body">Trace <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/WallpaperSelectionStore.swift" target="_blank" rel="noopener">WallpaperSelectionStore</a> and <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/SystemWallpaperService.swift" target="_blank" rel="noopener">SystemWallpaperService</a>; see <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Tests/AerialDropTests/SystemWallpaperServiceTests.swift" target="_blank" rel="noopener">service tests</a>.</p></article>
+        <article class="spec"><span class="spec__name mono">SwiftUI presentation</span><h3 class="spec__value">Views stay focused</h3><p class="spec__body">Change the relevant type in <a href="https://github.com/YapWH1208/AerialDrop/tree/main/Sources/AerialDrop/Views" target="_blank" rel="noopener">Views</a>; keep workflow state and side effects in <code>AppModel</code>.</p></article>
+        <article class="spec"><span class="spec__name mono">Native encoding</span><h3 class="spec__value">Manual Tahoe validation</h3><p class="spec__body">Check <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Sources/AerialDrop/VideoProcessor.swift" target="_blank" rel="noopener">VideoProcessor</a> and the <a href="https://github.com/YapWH1208/AerialDrop/blob/main/TESTING.md" target="_blank" rel="noopener">manual playback matrix</a>; unit tests cannot establish native playback compatibility.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--install" id="development-loop">
+    <div class="container container--narrow">
+      <header class="section__head">
+        <h2>Build and validate locally</h2>
+        <p class="section__sub">Use macOS Tahoe 26, the macOS 26 SDK, and Swift 6.2 or newer. The project uses Swift 6 language mode and strict concurrency.</p>
+      </header>
+      <div class="spec-grid">
+        <article class="spec">
+          <span class="spec__name mono">Core checks</span>
+          <h3 class="spec__value">Build and run tests</h3>
+          <div class="cmd"><pre><code>swift build
+swift test
+swift build -c release</code></pre><button class="cmd__copy" type="button">Copy</button></div>
+          <p class="expect">Run a focused suite with <code>swift test --filter ManifestStoreTests</code>. If XCTest is missing under Command Line Tools, select Xcode with <code>DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer</code>.</p>
+        </article>
+        <article class="spec">
+          <span class="spec__name mono">Package the app</span>
+          <h3 class="spec__value">Build the .app bundle</h3>
+          <div class="cmd"><pre><code>Scripts/build-app.sh</code></pre><button class="cmd__copy" type="button">Copy</button></div>
+          <p class="expect">This creates <code>dist/AerialDrop.app</code> and wipes <code>.build</code> first. Read <a href="https://github.com/YapWH1208/AerialDrop/blob/main/Scripts/build-app.sh" target="_blank" rel="noopener">build-app.sh</a> before using packaging wrappers that also clear <code>dist/</code>.</p>
+        </article>
+      </div>
+      <p class="expect">The authoritative command list and manual scenarios live in <a href="https://github.com/YapWH1208/AerialDrop/blob/main/TESTING.md" target="_blank" rel="noopener">TESTING.md</a>. The existing <a href="https://github.com/YapWH1208/AerialDrop/blob/main/.github/workflows/ci.yml" target="_blank" rel="noopener">CI workflow</a> runs on macOS 26 and includes Swift build, tests, packaging, and distribution checks.</p>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="container">
+      <h2>Follow the code from here.</h2>
+      <p>Use the README for the product and setup path, and TESTING.md for the full manual matrix.</p>
+      <div class="cta__actions">
+        <a class="btn btn--primary btn--lg" href="https://github.com/YapWH1208/AerialDrop/blob/main/README.md" target="_blank" rel="noopener">Read the README</a>
+        <a class="btn btn--glass btn--lg" href="https://github.com/YapWH1208/AerialDrop/blob/main/TESTING.md" target="_blank" rel="noopener">Read testing guide</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="index.html#top"><img class="brand__icon" src="assets/icon.svg" alt="" width="28" height="28"><span class="brand__name">AerialDrop</span></a>
+      <p>Import your own videos into macOS Tahoe&rsquo;s native Aerial catalogue. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/LICENSE" target="_blank" rel="noopener">MIT licensed</a>.</p>
+    </div>
+    <nav aria-label="Footer: project">
+      <h4>Project</h4>
+      <ul>
+        <li><a href="index.html#updates">Release highlights</a></li>
+        <li><a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">Source code</a></li>
+        <li><a href="https://github.com/YapWH1208/AerialDrop/releases" target="_blank" rel="noopener">Releases</a></li>
+        <li><a href="https://github.com/YapWH1208/AerialDrop/actions/workflows/ci.yml" target="_blank" rel="noopener">CI status</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Footer: documentation">
+      <h4>Documentation</h4>
+      <ul>
+        <li><a href="index.html">AerialDrop website</a></li>
+        <li><a href="development.html" aria-current="page">Developer guide</a></li>
+        <li><a href="https://github.com/YapWH1208/AerialDrop/blob/main/README.md" target="_blank" rel="noopener">README</a></li>
+        <li><a href="https://github.com/YapWH1208/AerialDrop/blob/main/TESTING.md" target="_blank" rel="noopener">Testing</a></li>
+      </ul>
+    </nav>
+    <nav aria-label="Footer: legal">
+      <h4>Legal</h4>
+      <ul>
+        <li><a href="https://github.com/YapWH1208/AerialDrop/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a></li>
+        <li><a href="index.html#install">Unsigned-app notice</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="container footer-bottom"><p>&copy; <span id="year">2025</span> AerialDrop contributors &middot; Not affiliated with Apple Inc. &ldquo;macOS&rdquo;, &ldquo;Tahoe&rdquo; and &ldquo;Aerial&rdquo; are trademarks of Apple Inc.</p></div>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
