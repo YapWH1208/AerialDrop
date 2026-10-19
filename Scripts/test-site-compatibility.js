@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, '..');
 const fixture = JSON.parse(fs.readFileSync(path.join(root, 'Tests/DistributionFixtures/compatibility.json'), 'utf8'));
 const source = fs.readFileSync(path.join(root, 'docs/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'docs/index.html'), 'utf8');
+const styles = fs.readFileSync(path.join(root, 'docs/styles.css'), 'utf8');
 
 function element(value = '') {
   const attributes = new Map();
@@ -92,6 +93,31 @@ async function main() {
 
   assert.match(html, /<label for="macosSelect">/);
   assert.match(html, /<noscript>/);
+  assert(!/html\.js\s+\.reveal\s*\{[^}]*opacity:\s*0/s.test(styles), 'head bootstrap must not hide unrevealed content');
+  assert.match(styles, /\.reveal\.in\s*\{[^}]*animation:\s*reveal-in/s, 'initialized reveal should retain its entrance animation');
+  assert.match(styles, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.reveal\.in\s*\{[^}]*animation:\s*none/s,
+    'Reduced Motion must disable the reveal animation');
+
+  const trustSummary = html.indexOf('class="trust-summary"');
+  const firstRunnableCommand = html.indexOf('data-copy=');
+  assert(trustSummary >= 0 && trustSummary < firstRunnableCommand, 'visible trust notice must precede the first runnable command');
+  const summary = html.slice(trustSummary, html.indexOf('</aside>', trustSummary));
+  assert.match(summary, /ad-hoc signed/);
+  assert.match(summary, /not notarized by Apple/);
+  assert.match(summary, /Homebrew and the install script clear/);
+  assert.match(summary, /manual ZIP keeps/);
+  assert.match(summary, /local source build is not a quarantined download/);
+
+  const panelText = id => {
+    const start = html.indexOf(`id="${id}"`);
+    const end = html.indexOf('<!--', start);
+    assert(start >= 0 && end > start, `${id} panel is missing`);
+    return html.slice(start, end);
+  };
+  assert.match(panelText('panel-homebrew'), /clears its download quarantine/);
+  assert.match(panelText('panel-script'), /clears the quarantine/);
+  assert.match(panelText('panel-release'), /keeps its download quarantine/);
+  assert.match(panelText('panel-source'), /without a download quarantine because it was built locally/);
   assert(!/data-download[^>]*href=/.test(html), 'static ZIP link must not target global latest');
   const sourceCommand = html.match(/<pre><code>(VERSION="[\s\S]*?)<\/code><\/pre>\s*<button class="cmd__copy" type="button" data-copy="([^"]+)"/);
   assert(sourceCommand, 'source tag command and copy control are missing');

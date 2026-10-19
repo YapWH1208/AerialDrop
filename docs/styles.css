@@ -865,6 +865,23 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   color: var(--accent);
 }
 
+.trust-summary {
+  margin-top: 22px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-control);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  padding: 12px 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.trust-summary strong {
+  color: var(--warn);
+}
+
 .spec__body code,
 .step__note code,
 .expect code,
@@ -1577,17 +1594,21 @@ html[data-theme="dark"] .icon-btn .icon--moon {
 
 /* ---------------- Scroll reveal ---------------- */
 
-/* Hidden initial state is gated on html.js (set by the inline head script), so
-   content stays visible when JS is disabled or blocked. */
-html.js .reveal {
-  opacity: 0;
-  transform: translateY(16px);
-  transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
+/* Elements remain visible by default. JavaScript opts observed elements into a
+   bounded entrance animation, so blocked or interrupted scripts cannot hide content. */
+.reveal.in {
+  animation: reveal-in 0.7s var(--ease) both;
 }
 
-html.js .reveal.in {
-  opacity: 1;
-  transform: none;
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ---------------- Responsive ---------------- */
@@ -1733,10 +1754,8 @@ html.js .reveal.in {
     scroll-behavior: auto;
   }
 
-  html.js .reveal {
-    opacity: 1;
-    transform: none;
-    transition: none;
+  .reveal.in {
+    animation: none;
   }
 
   .term-cursor {

@@ -17,7 +17,6 @@
 <script>
 /* Apply the saved or system theme before first paint to avoid a flash. */
 (function () {
-  document.documentElement.classList.add("js");
   var saved = null;
   try { saved = localStorage.getItem("ad-theme"); } catch (e) {}
   var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: light)").matches === false;
@@ -70,6 +69,9 @@
         <p class="hero__eyebrow"><span class="pill">macOS 26+</span><span class="pill">Free &amp; open source</span><span class="pill">MIT</span></p>
         <h1>Your videos, natively on the Tahoe desktop.</h1>
         <p class="hero__lede">AerialDrop imports your MP4 or MOV into macOS Tahoe&rsquo;s own Aerial catalogue. Screen saver and lock screen, played by Apple&rsquo;s pipeline. No helper processes, no app-managed player.</p>
+        <aside class="trust-summary" aria-label="Installation security notice">
+          <strong>Before you install:</strong> AerialDrop is ad-hoc signed and not notarized by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine. A manual ZIP keeps it until you approve the first launch or clear it yourself. A local source build is not a quarantined download.
+        </aside>
         <div class="hero__cta">
           <a class="btn btn--primary btn--lg" href="#install">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
@@ -265,7 +267,7 @@
           <div class="panel is-active" id="panel-homebrew" role="tabpanel" aria-labelledby="method-homebrew">
             <div class="panel__head">
               <h3>Homebrew cask</h3>
-              <p>The cask selects the newest compatible release for this Mac. <code>brew upgrade --cask aerialdrop</code> applies future compatible releases.</p>
+              <p>The cask selects the newest compatible release for this Mac, installs it in <code>/Applications</code>, and clears its download quarantine. <code>brew upgrade --cask aerialdrop</code> applies future compatible releases.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -354,7 +356,7 @@
           <div class="panel" id="panel-release" role="tabpanel" aria-labelledby="method-release" hidden>
             <div class="panel__head">
               <h3>Release zip</h3>
-              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. Unzip it into Applications.</p>
+              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. A manual ZIP keeps its download quarantine until you approve the first launch or clear it yourself.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -401,7 +403,7 @@
           <div class="panel" id="panel-source" role="tabpanel" aria-labelledby="method-source" hidden>
             <div class="panel__head">
               <h3>Build from source</h3>
-              <p>Requires full Xcode with Swift 6.2+ and the macOS 26 SDK or later. The packaging script selects Xcode and checks its SDK before clearing build output. The final app lands at <code>dist/AerialDrop.app</code>.</p>
+              <p>Requires full Xcode with Swift 6.2+ and the macOS 26 SDK or later. The packaging script selects Xcode and checks its SDK before clearing build output. The final app lands at <code>dist/AerialDrop.app</code>, ad-hoc signed and without a download quarantine because it was built locally.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -455,8 +457,8 @@
 
       <details class="notice reveal">
         <summary>Before you install: the unsigned-app notice</summary>
-        <p>AerialDrop is ad-hoc signed and <strong>not notarized</strong> by Apple. The install methods above clear the macOS download quarantine, which disables Apple&rsquo;s malware check for this app; you are trusting the publisher instead of Apple. Only install from the official
-        <a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">YapWH1208/AerialDrop</a> repository, and audit the open-source code if you have concerns. The only way to get Apple&rsquo;s own verification is Developer ID notarization, which needs a paid Apple Developer account.</p>
+        <p>AerialDrop is ad-hoc signed and <strong>not notarized</strong> by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine, which bypasses Apple&rsquo;s first-launch malware check for that download. A manual ZIP keeps the quarantine unless you approve the app once or run the provided <code>xattr</code> command; a local source build does not have a download quarantine. Only install from the official
+        <a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">YapWH1208/AerialDrop</a> repository, and audit the open-source code if you have concerns. Apple verification requires Developer ID notarization.</p>
       </details>
     </div>
   </section>
