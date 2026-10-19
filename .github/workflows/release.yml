@@ -32,6 +32,7 @@ jobs:
           node --check docs/compatibility.js
           node --check docs/app.js
           node Scripts/test-site-compatibility.js
+          node Scripts/test-site-interactions.js
           ./Scripts/check-docs-version.sh
 
       - name: Run tests

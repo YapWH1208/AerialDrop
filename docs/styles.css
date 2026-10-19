@@ -1614,6 +1614,37 @@ html[data-theme="dark"] .icon-btn .icon--moon {
 /* ---------------- Responsive ---------------- */
 
 @media (max-width: 960px) {
+  .nav__toggle {
+    display: flex;
+  }
+
+  .nav__links {
+    display: none;
+    position: absolute;
+    top: 60px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 12px 16px 18px;
+    background: var(--header-bg);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    backdrop-filter: blur(18px) saturate(1.4);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .nav__links.open {
+    display: flex;
+  }
+
+  .nav__actions {
+    margin-left: 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    margin-top: 6px;
+  }
+
   .hero__grid {
     grid-template-columns: 1fr;
     gap: 44px;
@@ -1685,37 +1716,6 @@ html[data-theme="dark"] .icon-btn .icon--moon {
     padding: 72px 0;
   }
 
-  .nav__toggle {
-    display: flex;
-  }
-
-  .nav__links {
-    display: none;
-    position: absolute;
-    top: 60px;
-    left: 0;
-    right: 0;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 2px;
-    padding: 12px 16px 18px;
-    background: var(--header-bg);
-    -webkit-backdrop-filter: blur(18px) saturate(1.4);
-    backdrop-filter: blur(18px) saturate(1.4);
-    border-bottom: 1px solid var(--line);
-  }
-
-  .nav__links.open {
-    display: flex;
-  }
-
-  .nav__actions {
-    margin-left: 0;
-    padding-top: 8px;
-    border-top: 1px solid var(--line);
-    margin-top: 6px;
-  }
-
   .hero h1 {
     max-width: none;
   }
@@ -1769,3 +1769,15 @@ html[data-theme="dark"] .icon-btn .icon--moon {
     transition: none;
   }
 }
+
+/* Persistent feedback stays beside its command without changing the Copy label. */
+.copy-status {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.copy-status:empty { margin: 0; }

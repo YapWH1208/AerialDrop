@@ -29,6 +29,7 @@ jobs:
           node --check docs/compatibility.js
           node --check docs/app.js
           node Scripts/test-site-compatibility.js
+          node Scripts/test-site-interactions.js
 
       - name: Verify website release fallback
         run: ./Scripts/check-docs-version.sh
