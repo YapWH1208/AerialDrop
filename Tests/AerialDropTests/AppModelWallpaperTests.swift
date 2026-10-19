@@ -731,6 +731,37 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.refreshCallCount, 1)
     }
 
+    func testBrowsingHistoryIsReadOnlyAndOlderChoiceSurvivesNewerBackup() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-HISTORY-CHOICE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        try store.renameWallpaper(id: wallpaper.id, title: "Second title")
+        try store.renameWallpaper(id: wallpaper.id, title: "Third title")
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service, home: home)
+        let before = try Data(contentsOf: paths.manifest)
+        let filesBefore = try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
+
+        let history = try model.backupHistory()
+        XCTAssertEqual(history.count, 3)
+        let choice = history[1].snapshot()
+        XCTAssertNotNil(choice.content)
+        XCTAssertNotEqual(choice.url, history[0].url)
+        // Browsing and choosing, then cancelling, cannot mutate the catalogue.
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)), Set(filesBefore))
+        XCTAssertEqual(service.refreshCallCount, 0)
+
+        try store.renameWallpaper(id: wallpaper.id, title: "Fourth title")
+        await model.restoreLatestBackup(choice)
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Restored")
+        XCTAssertEqual(model.wallpapers.first?.title, wallpaper.title)
+        XCTAssertEqual(service.refreshCallCount, 1)
+    }
+
     func testRemovingTheHighlightedWallpaperClearsThePendingHighlight() async {
         let wallpaper = makeWallpaper(id: "C0D3X-0015")
         let service = FakeWallpaperService()

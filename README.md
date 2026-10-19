@@ -152,7 +152,7 @@ If a wallpaper change cannot be verified, previous and new pair videos remain pr
 
 - Open Aerial Storage Folder
 - Validate Current Catalogue
-- Restore Latest Backup (uses the backup shown in the confirmation; refused if that backup changes, newer Apple catalogue data would be lost, or a currently active AerialDrop wallpaper would be removed. If active-wallpaper verification fails after the catalogue write, AerialDrop keeps the safety backup and reloads the Library. A concurrent catalogue update remains untouched; the safety backup can be restored if it still passes the foreign-data checks.)
+- Restore Catalogue Backup (choose a backup by date and operation, newest first, then confirm that exact snapshot; cancel without changing anything. Catalogue backups cannot recover deleted videos or thumbnails. Restore is refused if the selected backup changes, newer Apple catalogue data would be lost, or a currently active AerialDrop wallpaper would be removed. If active-wallpaper verification fails after the catalogue write, AerialDrop keeps the safety backup and reloads the Library. A concurrent catalogue update remains untouched; the safety backup can be restored if it still passes the foreign-data checks.)
 - Remove All AerialDrop Wallpapers
 
 ## How it works

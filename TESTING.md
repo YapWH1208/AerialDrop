@@ -104,7 +104,16 @@ version before evaluating native playback.
 
 ## Maintenance and recovery
 
-1. With a managed wallpaper present, open Maintenance -> Restore Latest Backup. Confirm the confirmation shows the backup's date and operation, and that restoring replaces the catalogue (success alert) while the foreign Apple entries stay intact.
+1. With several backups present, open Maintenance -> Restore Catalogue Backup.
+   Confirm dates and operations are listed newest first with the newest selected.
+   Select an older backup, reload the list and confirm that choice stays selected.
+   Cancel and verify the catalogue and backups are unchanged. Reopen, choose the
+   older backup and Continue; confirm its date and operation are shown after the
+   chooser closes. Keep Current Catalogue must also leave everything unchanged.
+   Restore that choice and confirm the success alert and foreign Apple entries.
+   With no backups, show an empty explanation; an unreadable selected backup must
+   keep the chooser open with Reload Backups available. Keyboard and VoiceOver
+   must identify the selected date/operation and reach Cancel and Continue.
    If a newer backup appears after confirmation, the original confirmed backup
    must still be used. If that confirmed file changes, restoration must fail
    without writing a new manifest or backup.
@@ -138,7 +147,7 @@ version before evaluating native playback.
    writer backpressure.
 9. Confirm a warning appears when the wallpaper name matches an existing wallpaper.
 10. After an import completes, View in Library selects and scrolls to the new wallpaper.
-11. During Set as Wallpaper, Remove, Remove All, and Restore Latest Backup, confirm a progress banner with a label stays visible until the operation finishes (both in the Library grid and the preview sheet).
+11. During Set as Wallpaper, Remove, Remove All, and Restore Catalogue Backup, confirm a progress banner with a label stays visible until the operation finishes (both in the Library grid and the preview sheet).
 
 ## Import and Library polish
 

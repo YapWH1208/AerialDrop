@@ -1320,7 +1320,13 @@ final class AppModel {
         manifestStore.latestBackup()
     }
 
-    /// Replaces the current catalogue with the newest AerialDrop backup. The
+    /// Lightweight history; only the chosen entry is read for confirmation.
+    func backupHistory() throws -> [ManifestStore.BackupEntry] {
+        try manifestStore.backupHistory()
+    }
+
+    /// Replaces the current catalogue with the confirmed AerialDrop backup,
+    /// or the newest backup when no explicit snapshot is supplied. The
     /// restore is refused (with nothing changed) if foreign catalogue data
     /// changed since the backup.
     func restoreLatestBackup(_ confirmedBackup: ManifestStore.BackupInfo? = nil) async {

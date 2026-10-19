@@ -7,12 +7,16 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var destination: AppDestination? = .library
     @State private var preImportDestination: AppDestination?
-    @State private var confirmation: ConfirmationKind?
+    @State private var confirmation: ConfirmationRequest?
+    @State private var presentedConfirmation: ConfirmationRequest?
     @State private var presentedAlert: AppAlert?
+    @State private var showingBackupChooser = false
+    @State private var pendingBackupConfirmation: ManifestStore.BackupInfo?
 
     var body: some View {
         @Bindable var model = model
         let alert = presentedAlert
+        let request = presentedConfirmation
         NavigationSplitView {
             List(selection: $destination) {
                 ForEach(AppDestination.allCases) { item in
@@ -130,35 +134,44 @@ struct ContentView: View {
             destination = .importVideo
         }
         .confirmationDialog(
-            confirmationTitle,
-            isPresented: Binding(
-                get: { confirmation != nil },
-                set: { if !$0 { confirmation = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            switch confirmation {
+            confirmationTitle(for: request?.kind),
+            isPresented: confirmationPresentationBinding(for: request),
+            titleVisibility: .visible,
+            presenting: request
+        ) { request in
+            switch request.kind {
             case .removeAll(let requiresAcknowledgement):
                 if requiresAcknowledgement {
-                    Button("Check Again") { retryRemoveAllPreparation() }
+                    Button("Check Again") { retryRemoveAllPreparation(request) }
                     Button("Open Wallpaper Settings") {
-                        confirmation = nil
+                        dismissConfirmation(request)
                         model.openWallpaperSettings()
                     }
                     Button("Remove Anyway", role: .destructive) {
-                        performConfirmation(allowingUnverifiedSelection: true)
+                        performConfirmation(request, allowingUnverifiedSelection: true)
                     }
                 } else {
-                    Button("Remove All", role: .destructive) { performConfirmation() }
+                    Button("Remove All", role: .destructive) { performConfirmation(request) }
                 }
             case .restore:
-                Button("Restore Backup") { performConfirmation() }
-            case nil:
-                EmptyView()
+                Button("Restore Backup") { performConfirmation(request) }
             }
-            Button(confirmationCancelTitle, role: .cancel) { confirmation = nil }
-        } message: {
-            Text(confirmationMessage)
+            Button(confirmationCancelTitle(for: request.kind), role: .cancel) { dismissConfirmation(request) }
+        } message: { request in
+            Text(confirmationMessage(for: request.kind))
+        }
+        .onChange(of: confirmation) { _, value in
+            presentedConfirmation = value
+        }
+        .sheet(isPresented: $showingBackupChooser, onDismiss: presentBackupConfirmation) {
+            BackupChooser {
+                pendingBackupConfirmation = nil
+                showingBackupChooser = false
+            } onChoose: { snapshot in
+                guard showingBackupChooser else { return }
+                pendingBackupConfirmation = snapshot
+                showingBackupChooser = false
+            }
         }
         .fileImporter(
             isPresented: $model.showingFileImporter,
@@ -354,18 +367,12 @@ struct ContentView: View {
             Button("Open Aerial Storage Folder") { model.openStorageFolder() }
             Button("Validate Current Catalogue") { model.validateCatalogue() }
             Divider()
-            Button("Restore Latest Backup…") {
-                if let info = model.latestBackupInfo() {
-                    confirmation = .restore(info)
-                } else {
-                    model.activeAlert = AppAlert(
-                        title: "No Backups Found",
-                        message: "No AerialDrop backups were found."
-                    )
-                }
+            Button("Restore Catalogue Backup…") {
+                pendingBackupConfirmation = nil
+                showingBackupChooser = true
             }
             .disabled(model.isWorking)
-            .help("Replace the current catalogue with the newest AerialDrop backup")
+            .help("Choose a dated AerialDrop catalogue backup to restore")
             Divider()
             Button("Remove All AerialDrop Wallpapers", role: .destructive) {
                 requestRemoveAll()
@@ -391,8 +398,8 @@ struct ContentView: View {
         return "Remove every AerialDrop wallpaper"
     }
 
-    private var confirmationTitle: String {
-        switch confirmation {
+    private func confirmationTitle(for kind: ConfirmationKind?) -> String {
+        switch kind {
         case .removeAll(let requiresAcknowledgement):
             requiresAcknowledgement
                 ? "Remove without checking which wallpaper is active?"
@@ -404,8 +411,8 @@ struct ContentView: View {
         }
     }
 
-    private var confirmationMessage: String {
-        switch confirmation {
+    private func confirmationMessage(for kind: ConfirmationKind?) -> String {
+        switch kind {
         case .removeAll(let requiresAcknowledgement):
             if requiresAcknowledgement {
                 "AerialDrop can’t verify which wallpaper is active. Removing an active wallpaper could leave macOS pointing to missing files. Check again, choose another wallpaper in Wallpaper Settings, or remove anyway."
@@ -419,8 +426,8 @@ struct ContentView: View {
         }
     }
 
-    private var confirmationCancelTitle: String {
-        switch confirmation {
+    private func confirmationCancelTitle(for kind: ConfirmationKind?) -> String {
+        switch kind {
         case .removeAll: "Keep Wallpapers"
         case .restore: "Keep Current Catalogue"
         case nil: "Cancel"
@@ -431,33 +438,53 @@ struct ContentView: View {
         let ids = Set(model.wallpapers.map(\.id))
         switch model.removalReadiness(for: ids) {
         case .verifiedInactive:
-            confirmation = .removeAll(requiresAcknowledgement: false)
+            confirmation = ConfirmationRequest(kind: .removeAll(requiresAcknowledgement: false))
         case .verifiedActive:
             confirmation = nil
             model.reportActiveWallpaperRemovalBlock()
         case .unknown:
-            confirmation = .removeAll(requiresAcknowledgement: true)
+            confirmation = ConfirmationRequest(kind: .removeAll(requiresAcknowledgement: true))
         }
     }
 
-    private func retryRemoveAllPreparation() {
-        confirmation = nil
+    private func retryRemoveAllPreparation(_ request: ConfirmationRequest) {
+        guard confirmation?.id == request.id else { return }
+        dismissConfirmation(request)
         Task {
             await Task.yield()
             requestRemoveAll()
         }
     }
 
-    private func performConfirmation(allowingUnverifiedSelection: Bool = false) {
-        switch confirmation {
+    private func performConfirmation(_ request: ConfirmationRequest, allowingUnverifiedSelection: Bool = false) {
+        guard confirmation?.id == request.id else { return }
+        dismissConfirmation(request)
+        switch request.kind {
         case .removeAll:
             model.removeAll(allowingUnverifiedSelection: allowingUnverifiedSelection)
         case .restore(let info):
             Task { await model.restoreLatestBackup(info) }
-        case nil:
-            break
         }
-        confirmation = nil
+    }
+
+    private func confirmationPresentationBinding(for request: ConfirmationRequest?) -> Binding<Bool> {
+        Binding(
+            get: { request != nil },
+            set: { showing in
+                if !showing, presentedConfirmation?.id == request?.id { presentedConfirmation = nil }
+            }
+        )
+    }
+
+    private func dismissConfirmation(_ request: ConfirmationRequest) {
+        if confirmation?.id == request.id { confirmation = nil }
+        if presentedConfirmation?.id == request.id { presentedConfirmation = nil }
+    }
+
+    private func presentBackupConfirmation() {
+        guard let snapshot = pendingBackupConfirmation else { return }
+        pendingBackupConfirmation = nil
+        confirmation = ConfirmationRequest(kind: .restore(snapshot))
     }
 }
 
@@ -552,16 +579,14 @@ private struct ImportStatusView: View {
 }
 
 /// The single confirmation dialog covers the maintenance flows that need one.
-private enum ConfirmationKind: Identifiable {
+private struct ConfirmationRequest: Identifiable, Equatable {
+    let id = UUID()
+    let kind: ConfirmationKind
+}
+
+private enum ConfirmationKind: Equatable {
     case removeAll(requiresAcknowledgement: Bool)
     case restore(ManifestStore.BackupInfo)
-
-    var id: String {
-        switch self {
-        case .removeAll: "removeAll"
-        case .restore: "restore"
-        }
-    }
 }
 
 private enum AppDestination: String, CaseIterable, Identifiable {
