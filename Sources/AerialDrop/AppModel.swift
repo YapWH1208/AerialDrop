@@ -290,7 +290,18 @@ final class AppModel {
     }
 
     func activateDayNightWallpaper() async {
+        await activateDayNightWallpaper(expectedDraft: dayNightDraft)
+    }
+
+    private func activateDayNightWallpaper(expectedDraft: DayNightWallpaperDraft) async {
         guard !isWorking else { return }
+        guard dayNightDraft == expectedDraft else {
+            activeAlert = AppAlert(
+                title: "Day/Night Choices Changed",
+                message: "Your Day/Night choices changed after this recovery action was created. Review the current choices, then apply them again."
+            )
+            return
+        }
         isWorking = true
         operationLabel = "Applying Day/Night wallpaper…"
         defer { isWorking = false; operationLabel = nil }
@@ -298,7 +309,7 @@ final class AppModel {
             try systemService.validateDayNightSupport()
             dayNightUnavailableReason = nil
             if let blocker = dayNightApplyBlockerMessage { throw AerialDropError.dayNightUnavailable(blocker) }
-            guard let day = dayNightDraft.dayAssetID, let night = dayNightDraft.nightAssetID else {
+            guard let day = expectedDraft.dayAssetID, let night = expectedDraft.nightAssetID else {
                 throw AerialDropError.wallpaperNotFound
             }
             let pair = DayNightWallpaperPair(dayAssetID: day, nightAssetID: night)
@@ -316,7 +327,11 @@ final class AppModel {
             await reload()
         } catch {
             await reload()
-            activeAlert = AppAlert(title: "Couldn’t Apply Day/Night Wallpaper", message: error.localizedDescription)
+            activeAlert = AppAlert(
+                title: "Couldn’t Apply Day/Night Wallpaper",
+                message: error.localizedDescription,
+                actions: [.retryDayNight(expectedDraft), .openWallpaperSettings]
+            )
         }
     }
 
@@ -1232,6 +1247,29 @@ final class AppModel {
         systemService.openWallpaperSettings()
     }
 
+    func dismissAlert(id: AppAlert.ID) {
+        guard activeAlert?.id == id else { return }
+        activeAlert = nil
+    }
+
+    /// Consumes only the alert that displayed the action. Clearing it before
+    /// starting asynchronous work makes repeated clicks harmless, while the ID
+    /// check prevents an old alert from dismissing or acting on a newer one.
+    func performAlertAction(_ action: AppAlertAction, fromAlertID id: AppAlert.ID) {
+        guard !isWorking, activeAlert?.id == id, activeAlert?.actions.contains(action) == true else { return }
+        activeAlert = nil
+        switch action {
+        case .retryDayNight(let draft):
+            Task { await activateDayNightWallpaper(expectedDraft: draft) }
+        case .retryRestore(let backup):
+            Task { await restoreLatestBackup(backup) }
+        case .reloadCatalogue:
+            Task { await refreshCataloguePreservingContent() }
+        case .openWallpaperSettings:
+            openWallpaperSettings()
+        }
+    }
+
     /// The newest AerialDrop catalogue backup, for the restore confirmation.
     func latestBackupInfo() -> ManifestStore.BackupInfo? {
         manifestStore.latestBackup()
@@ -1245,6 +1283,7 @@ final class AppModel {
         isWorking = true
         operationLabel = "Restoring catalogue backup…"
         let previousPair = try? manifestStore.dayNightPair()
+        var attemptedBackup: ManifestStore.BackupInfo?
         defer {
             isWorking = false
             operationLabel = nil
@@ -1257,6 +1296,7 @@ final class AppModel {
                 )
                 return
             }
+            attemptedBackup = info
             do {
                 try refreshActiveSelection()
                 isSelectionStatusUnknown = false
@@ -1288,7 +1328,8 @@ final class AppModel {
                 await reload()
                 activeAlert = AppAlert(
                     title: attentionTitle,
-                    message: message
+                    message: message,
+                    actions: [.reloadCatalogue, .openWallpaperSettings]
                 )
                 return
             }
@@ -1299,9 +1340,21 @@ final class AppModel {
                 message: "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
             )
         } catch {
+            var actions: [AppAlertAction] = [.reloadCatalogue]
+            if let restoreError = error as? AerialDropError,
+               case .backupRestoreRejected = restoreError {
+                // A retry may only carry the bytes the user confirmed. If the
+                // file disappeared or changed, the user must select it again.
+                if let attemptedBackup, let content = attemptedBackup.content,
+                   (try? Data(contentsOf: attemptedBackup.url)) == content {
+                    actions.insert(.retryRestore(attemptedBackup), at: 0)
+                }
+                actions.append(.openWallpaperSettings)
+            }
             activeAlert = AppAlert(
                 title: "Restore Failed",
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                actions: actions
             )
         }
     }

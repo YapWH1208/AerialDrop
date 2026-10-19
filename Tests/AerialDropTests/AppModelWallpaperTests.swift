@@ -4,6 +4,76 @@ import XCTest
 
 @MainActor
 final class AppModelWallpaperTests: XCTestCase {
+    func testStaleAlertDismissalAndActionPreserveNewerFailure() {
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service)
+        let first = AppAlert(title: "First", message: "First failure", actions: [.openWallpaperSettings])
+        let replacement = AppAlert(title: "Second", message: "New failure", actions: [.reloadCatalogue])
+        model.activeAlert = replacement
+
+        model.dismissAlert(id: first.id)
+        model.performAlertAction(.openWallpaperSettings, fromAlertID: first.id)
+
+        XCTAssertEqual(model.activeAlert, replacement)
+        XCTAssertEqual(service.openSettingsCallCount, 0)
+    }
+
+    func testAlertActionMustBeOfferedAndCanOnlyRunOnce() {
+        let service = FakeWallpaperService()
+        let model = makeModel(service: service)
+        let alert = AppAlert(title: "Recovery", message: "Open settings", actions: [.openWallpaperSettings])
+        model.activeAlert = alert
+        model.performAlertAction(.reloadCatalogue, fromAlertID: alert.id)
+        XCTAssertEqual(model.activeAlert, alert)
+
+        model.performAlertAction(.openWallpaperSettings, fromAlertID: alert.id)
+        model.performAlertAction(.openWallpaperSettings, fromAlertID: alert.id)
+
+        XCTAssertNil(model.activeAlert)
+        XCTAssertEqual(service.openSettingsCallCount, 1)
+    }
+
+    func testRestoreRetryRetainsExactSnapshotWhenANewerBackupAppears() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "RESTORE-RETRY-SNAPSHOT")
+        try installManagedWallpaper(wallpaper, in: home)
+        let store = ManifestStore(paths: WallpaperPaths(homeDirectory: home))
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        let model = makeModel(service: service, home: home)
+        await model.restoreLatestBackup(confirmed)
+        let failure = try XCTUnwrap(model.activeAlert)
+        let retry = AppAlertAction.retryRestore(confirmed)
+        XCTAssertTrue(failure.actions.contains(retry))
+
+        try store.renameWallpaper(id: wallpaper.id, title: "A newer backup exists")
+        XCTAssertNotEqual(store.latestBackup()?.url, confirmed.url)
+        service.activeIDs = []
+        model.performAlertAction(retry, fromAlertID: failure.id)
+        await waitUntil { model.activeAlert?.title == "Catalogue Restored" && !model.isWorking }
+
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertEqual(service.refreshCallCount, 1)
+    }
+
+    func testChangedConfirmedBackupRequiresReselectionInsteadOfRetry() async throws {
+        let home = makeTemporaryHome()
+        try installManagedWallpaper(makeWallpaper(id: "RESTORE-RESELECT"), in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        let confirmed = try XCTUnwrap(store.latestBackup())
+        let before = try Data(contentsOf: paths.manifest)
+        try Data("changed backup".utf8).write(to: confirmed.url)
+        let model = makeModel(service: FakeWallpaperService(), home: home)
+
+        await model.restoreLatestBackup(confirmed)
+
+        XCTAssertEqual(model.activeAlert?.title, "Restore Failed")
+        XCTAssertFalse(model.activeAlert?.actions.contains(.retryRestore(confirmed)) ?? true)
+        XCTAssertTrue(model.activeAlert?.actions.contains(.reloadCatalogue) == true)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), before)
+    }
+
     func testImportRequiresAValidatedSelectedVideo() {
         let model = makeModel(service: FakeWallpaperService())
         model.catalogueState = .ready
@@ -524,6 +594,7 @@ final class AppModelWallpaperTests: XCTestCase {
 
         XCTAssertEqual(selectionReads, 6)
         XCTAssertEqual(model.activeAlert?.title, "Restore Needs Attention")
+        XCTAssertEqual(model.activeAlert?.actions, [.reloadCatalogue, .openWallpaperSettings])
         XCTAssertTrue(model.activeAlert?.message.contains("safety backup") == true)
         XCTAssertTrue(model.wallpapers.isEmpty)
         XCTAssertEqual(model.activeAerialAssetIDs, [wallpaper.id])
@@ -560,6 +631,7 @@ final class AppModelWallpaperTests: XCTestCase {
 
         XCTAssertEqual(selectionReads, 6)
         XCTAssertEqual(model.activeAlert?.title, "Catalogue Changed During Restore")
+        XCTAssertEqual(model.activeAlert?.actions, [.reloadCatalogue, .openWallpaperSettings])
         XCTAssertTrue(model.activeAlert?.message.contains("kept the current catalogue untouched") == true)
         XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
         XCTAssertEqual(model.activeAerialAssetIDs, [wallpaper.id])
@@ -592,6 +664,7 @@ final class AppModelWallpaperTests: XCTestCase {
 
         XCTAssertEqual(selectionReads, 6)
         XCTAssertEqual(model.activeAlert?.title, "Restore Status Unknown")
+        XCTAssertEqual(model.activeAlert?.actions, [.reloadCatalogue, .openWallpaperSettings])
         XCTAssertTrue(model.activeAlert?.message.contains("safety backup") == true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: manifestURL.path))
         XCTAssertTrue(model.wallpapers.isEmpty)
@@ -1743,6 +1816,7 @@ private final class FakeWallpaperService: WallpaperServicing {
     var activeIDs: Set<String>
     var activatedAssetIDs: [String] = []
     var refreshCallCount = 0
+    var openSettingsCallCount = 0
     var activationError: Error?
 
     var selectionReadError: Error?
@@ -1787,7 +1861,7 @@ private final class FakeWallpaperService: WallpaperServicing {
         refreshCallCount += 1
     }
 
-    func openWallpaperSettings() { }
+    func openWallpaperSettings() { openSettingsCallCount += 1 }
 
     func openFolder(_: URL) { }
 

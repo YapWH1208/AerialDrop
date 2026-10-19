@@ -8,12 +8,11 @@ struct ContentView: View {
     @State private var destination: AppDestination? = .library
     @State private var preImportDestination: AppDestination?
     @State private var confirmation: ConfirmationKind?
-    @State private var alertPresented = false
-    @State private var alertTitle = "AerialDrop"
-    @State private var alertMessage: String?
+    @State private var presentedAlert: AppAlert?
 
     var body: some View {
         @Bindable var model = model
+        let alert = presentedAlert
         NavigationSplitView {
             List(selection: $destination) {
                 ForEach(AppDestination.allCases) { item in
@@ -65,8 +64,30 @@ struct ContentView: View {
                 maintenanceMenu
             }
         }
-        .alert(alertTitle, isPresented: $alertPresented) { } message: {
-            Text(alertMessage ?? "")
+        .alert(
+            alert?.title ?? "AerialDrop",
+            isPresented: alertPresentationBinding(for: alert),
+            presenting: alert
+        ) { alert in
+            ForEach(alert.actions) { action in
+                Button(action.label) {
+                    dismissPresentedAlert(id: alert.id)
+                    model.performAlertAction(action, fromAlertID: alert.id)
+                }
+            }
+            if !alert.actions.isEmpty {
+                Button("Not Now", role: .cancel) {
+                    dismissPresentedAlert(id: alert.id)
+                    model.dismissAlert(id: alert.id)
+                }
+            } else {
+                Button("OK", role: .cancel) {
+                    dismissPresentedAlert(id: alert.id)
+                    model.dismissAlert(id: alert.id)
+                }
+            }
+        } message: { alert in
+            Text(alert.message)
         }
         .alert(
             "Couldn’t Set Wallpaper",
@@ -83,17 +104,8 @@ struct ContentView: View {
                 ?? "You can retry or choose it in System Settings."
             Text("AerialDrop kept its imported video and catalogue entry, but could not apply it as wallpaper. \(failureMessage)")
         }
-        .onChange(of: model.activeAlert) { _, newValue in
-            if let newValue {
-                alertTitle = newValue.title
-                alertMessage = newValue.message
-                alertPresented = true
-            }
-        }
-        .onChange(of: alertPresented) { _, presented in
-            if !presented && model.activeAlert != nil {
-                model.activeAlert = nil
-            }
+        .onChange(of: model.activeAlert, initial: true) { _, newValue in
+            presentedAlert = newValue
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, !model.isWorking else { return }
@@ -173,6 +185,25 @@ struct ContentView: View {
         }
         .fileDialogMessage("Choose an MP4 or MOV video to turn into a native Aerial wallpaper.")
         .fileDialogConfirmationLabel("Choose Video")
+    }
+
+    /// SwiftUI may finish dismissing an older dialog after a new failure arrives.
+    /// Capture the rendered alert here so that dismissal can only consume that ID.
+    private func alertPresentationBinding(for alert: AppAlert?) -> Binding<Bool> {
+        Binding(
+            get: { alert != nil && presentedAlert?.id == alert?.id },
+            set: { showing in
+                guard !showing, let alert else { return }
+                dismissPresentedAlert(id: alert.id)
+                // SwiftUI can dismiss the presentation before running a button.
+                // Only explicit action/cancel/OK buttons consume model context.
+            }
+        )
+    }
+
+    private func dismissPresentedAlert(id: AppAlert.ID) {
+        guard presentedAlert?.id == id else { return }
+        presentedAlert = nil
     }
 
     @ViewBuilder

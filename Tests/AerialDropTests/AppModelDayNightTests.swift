@@ -4,6 +4,61 @@ import XCTest
 
 @MainActor
 final class AppModelDayNightTests: XCTestCase {
+    func testDayNightRecoveryRetriesCapturedChoicesAndRetainsProtectionUntilSuccess() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        await h.model.reload()
+        h.choosePair()
+        h.service.activationError = AerialDropError.nativeWallpaperRefreshFailed("temporary failure")
+        await h.model.activateDayNightWallpaper()
+        let failure = try XCTUnwrap(h.model.activeAlert)
+        let retry = AppAlertAction.retryDayNight(h.model.dayNightDraft)
+        XCTAssertEqual(failure.actions, [retry, .openWallpaperSettings])
+
+        h.model.performAlertAction(retry, fromAlertID: failure.id)
+        h.model.performAlertAction(retry, fromAlertID: failure.id)
+        await waitForRecovery { h.model.activeAlert != nil && h.model.activeAlert?.id != failure.id }
+        XCTAssertEqual(h.service.typedRequests.count, 2)
+        XCTAssertTrue(h.model.isDayNightRecoveryPending)
+        XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), h.pair.memberAssetIDs)
+
+        let secondFailure = try XCTUnwrap(h.model.activeAlert)
+        h.service.activationError = nil
+        h.model.performAlertAction(retry, fromAlertID: secondFailure.id)
+        await waitForRecovery { h.service.typedRequests.count == 3 && !h.model.isWorking }
+        XCTAssertNil(h.model.activeAlert)
+        XCTAssertFalse(h.model.isDayNightRecoveryPending)
+        XCTAssertTrue(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults).isEmpty)
+    }
+
+    func testDayNightRecoveryDoesNotSilentlyApplyChangedChoices() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        await h.model.reload()
+        h.choosePair()
+        h.service.activationError = AerialDropError.nativeWallpaperRefreshFailed("temporary failure")
+        await h.model.activateDayNightWallpaper()
+        let failure = try XCTUnwrap(h.model.activeAlert)
+        let retry = AppAlertAction.retryDayNight(h.model.dayNightDraft)
+        h.model.dayWallpaperID = h.thirdID
+
+        h.model.performAlertAction(retry, fromAlertID: failure.id)
+        await waitForRecovery { h.model.activeAlert?.title == "Day/Night Choices Changed" }
+
+        XCTAssertEqual(h.service.typedRequests.count, 1)
+        XCTAssertEqual(h.model.dayWallpaperID, h.thirdID)
+        XCTAssertEqual(try h.store.dayNightPair(), h.pair)
+        XCTAssertTrue(h.model.isDayNightRecoveryPending)
+    }
+
+    private func waitForRecovery(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !condition(), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(condition())
+    }
+
     func testDayNightSectionAttentionTracksSetupAndChangedDraft() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }

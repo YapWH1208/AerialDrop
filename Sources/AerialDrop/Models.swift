@@ -28,9 +28,50 @@ extension [ManagedWallpaper] {
 /// A user-facing alert with a workflow- and outcome-scoped title, so the
 /// user can tell what happened (and whether it was a failure) at a glance
 /// instead of reading a body under a generic app-name heading.
-struct AppAlert: Equatable {
+struct AppAlert: Identifiable, Equatable {
+    let id: UUID
     let title: String
     let message: String
+    let actions: [AppAlertAction]
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        message: String,
+        actions: [AppAlertAction] = []
+    ) {
+        self.id = id
+        self.title = title
+        self.message = message
+        self.actions = actions
+    }
+}
+
+/// A recovery command containing only immutable values from the failed
+/// operation. The model executes these commands after checking the alert ID,
+/// so a stale dismissal or repeated click cannot affect a newer alert.
+enum AppAlertAction: Identifiable, Equatable {
+    case retryDayNight(DayNightWallpaperDraft)
+    case retryRestore(ManifestStore.BackupInfo)
+    case reloadCatalogue
+    case openWallpaperSettings
+
+    var id: String {
+        switch self {
+        case .retryDayNight: "retry-day-night"
+        case .retryRestore: "retry-restore"
+        case .reloadCatalogue: "reload-catalogue"
+        case .openWallpaperSettings: "open-wallpaper-settings"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .retryDayNight, .retryRestore: "Try Again"
+        case .reloadCatalogue: "Reload Catalogue"
+        case .openWallpaperSettings: "Open Wallpaper Settings"
+        }
+    }
 }
 
 struct ManagedWallpaper: Identifiable, Hashable {
