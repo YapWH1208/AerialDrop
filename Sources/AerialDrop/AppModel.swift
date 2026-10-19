@@ -44,6 +44,7 @@ final class AppModel {
     /// (activation, removal, remove-all, restore), shown as busy feedback.
     /// Nil while idle or during an import, which has its own progress UI.
     private(set) var operationLabel: String?
+    private(set) var bulkRemovalRecovery: BulkRemovalRecovery?
     /// ID of the most recently completed import; the Library selects and
     /// scrolls to this wallpaper when it appears. Cleared once applied.
     var pendingLibraryHighlightID: String?
@@ -841,6 +842,7 @@ final class AppModel {
         guard !ids.isEmpty else { return }
         isWorking = true
         operationLabel = "Removing \(ids.count) wallpapers…"
+        bulkRemovalRecovery = nil
         defer {
             isWorking = false
             operationLabel = nil
@@ -866,33 +868,74 @@ final class AppModel {
                     firstError = firstError ?? AerialDropError.dayNightUnavailable(message)
                 }
             }
-            if let highlight = pendingLibraryHighlightID, ids.contains(highlight) {
-                pendingLibraryHighlightID = nil
-            }
             await systemService.refresh()
             await reload()
-            if let firstError {
+            clearRemovedBulkHighlight(in: ids)
+            if firstError != nil || catalogueState != .ready {
+                recordBulkRemovalRecovery(requestedIDs: ids)
                 // State exactly how far the bulk removal got so the outcome
                 // never contradicts the confirmed "Remove N" promise.
                 let message: String
                 if catalogueState == .ready {
                     removedCount = initiallyInstalledIDs.subtracting(Set(self.wallpapers.map(\.id))).count
-                    message = "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError.localizedDescription)"
+                    message = "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError?.localizedDescription ?? "")"
                 } else {
-                    message = "The removal status could not be checked. \(firstError.localizedDescription)"
+                    message = "The removal status could not be checked. \(firstError?.localizedDescription ?? "Reload the catalogue before retrying.")"
                 }
                 activeAlert = AppAlert(
                     title: "Couldn’t Remove Wallpapers",
-                    message: message
+                    message: message,
+                    actions: [.reloadCatalogue, .openWallpaperSettings]
                 )
             }
         } catch {
             await reload()
+            clearRemovedBulkHighlight(in: ids)
+            recordBulkRemovalRecovery(requestedIDs: ids)
             activeAlert = AppAlert(
                 title: "Couldn’t Remove Wallpapers",
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                actions: [.reloadCatalogue, .openWallpaperSettings]
             )
         }
+    }
+
+    var bulkRemovalRetryWallpapers: [ManagedWallpaper] {
+        guard catalogueState == .ready, let recovery = bulkRemovalRecovery,
+              recovery.catalogueVerified else { return [] }
+        return wallpapers.filter { recovery.remainingIDs.contains($0.id) }
+    }
+
+    func dismissBulkRemovalRecovery() {
+        guard !isWorking else { return }
+        bulkRemovalRecovery = nil
+    }
+
+    private func recordBulkRemovalRecovery(requestedIDs: Set<String>) {
+        let verified = catalogueState == .ready
+        let remaining = verified ? requestedIDs.intersection(Set(wallpapers.map(\.id))) : requestedIDs
+        bulkRemovalRecovery = remaining.isEmpty ? nil : BulkRemovalRecovery(
+            requestedIDs: requestedIDs,
+            remainingIDs: remaining,
+            catalogueVerified: verified
+        )
+    }
+
+    private func reconcileBulkRemovalRecovery() {
+        guard catalogueState == .ready, let recovery = bulkRemovalRecovery else { return }
+        let remaining = recovery.remainingIDs.intersection(Set(wallpapers.map(\.id)))
+        bulkRemovalRecovery = remaining.isEmpty ? nil : BulkRemovalRecovery(
+            id: recovery.id,
+            requestedIDs: recovery.requestedIDs,
+            remainingIDs: remaining,
+            catalogueVerified: true
+        )
+    }
+
+    private func clearRemovedBulkHighlight(in requestedIDs: Set<String>) {
+        guard catalogueState == .ready, let highlight = pendingLibraryHighlightID,
+              requestedIDs.contains(highlight), !wallpapers.contains(where: { $0.id == highlight }) else { return }
+        pendingLibraryHighlightID = nil
     }
 
     func removeAllWallpapers(
@@ -947,6 +990,7 @@ final class AppModel {
             isSelectionStatusUnknown = true
         }
         refreshDayNightState()
+        reconcileBulkRemovalRecovery()
     }
 
     /// Refreshes a catalogue that is already on screen without replacing it
@@ -989,6 +1033,7 @@ final class AppModel {
             catalogueRefreshState = .failed(refreshError.localizedDescription)
         } else {
             catalogueRefreshState = .idle
+            reconcileBulkRemovalRecovery()
         }
     }
 

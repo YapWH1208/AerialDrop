@@ -1002,6 +1002,115 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(service.refreshCallCount, 0)
     }
 
+    func testPartialBulkRemovalKeepsSurvivorsAndRetryRechecksSelection() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "BULK-RETRY-A")
+        let second = makeWallpaper(id: "BULK-RETRY-B")
+        try installManagedWallpapers([first, second], in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        let service = FakeWallpaperService()
+        service.selectionReadHook = {
+            if let ids = try? store.importedWallpapers().map(\.id), !ids.contains(first.id) {
+                service.activeIDs = [second.id]
+            }
+        }
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+        model.pendingLibraryHighlightID = second.id
+
+        await model.removeWallpapers([first, second])
+
+        let recovery = try XCTUnwrap(model.bulkRemovalRecovery)
+        XCTAssertEqual(recovery.requestedIDs, [first.id, second.id])
+        XCTAssertEqual(recovery.remainingIDs, [second.id])
+        XCTAssertTrue(recovery.catalogueVerified)
+        XCTAssertEqual(model.bulkRemovalRetryWallpapers.map(\.id), [second.id])
+        XCTAssertEqual(model.pendingLibraryHighlightID, second.id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.videoURL(for: first.id).path))
+
+        // A retry cannot inherit permission to remove an active item or an
+        // earlier acknowledgement when current selection is unreadable.
+        service.selectionReadHook = nil
+        await model.removeWallpapers(model.bulkRemovalRetryWallpapers, allowingUnverifiedSelection: true)
+        XCTAssertEqual(model.bulkRemovalRecovery?.remainingIDs, [second.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: second.id).path))
+        service.activeIDs = []
+        service.selectionReadError = TestError.storeUnreadable
+        await model.removeWallpapers(model.bulkRemovalRetryWallpapers)
+        XCTAssertEqual(model.bulkRemovalRecovery?.remainingIDs, [second.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: second.id).path))
+
+        service.selectionReadError = nil
+        await model.removeWallpapers(model.bulkRemovalRetryWallpapers)
+        XCTAssertTrue(model.wallpapers.isEmpty)
+        XCTAssertNil(model.bulkRemovalRecovery)
+        XCTAssertNil(model.pendingLibraryHighlightID)
+    }
+
+    func testUnknownBulkOutcomeRetainsRequestUntilSuccessfulCatalogueRead() async throws {
+        let home = makeTemporaryHome()
+        let first = makeWallpaper(id: "BULK-UNKNOWN-A")
+        let second = makeWallpaper(id: "BULK-UNKNOWN-B")
+        try installManagedWallpapers([first, second], in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths)
+        let service = FakeWallpaperService()
+        service.selectionReadHook = {
+            if let ids = try? store.importedWallpapers().map(\.id), !ids.contains(first.id) {
+                service.activeIDs = [second.id]
+            }
+        }
+        var currentCatalogue: Data?
+        service.refreshHook = {
+            currentCatalogue = try? Data(contentsOf: paths.manifest)
+            try? FileManager.default.removeItem(at: paths.manifest)
+        }
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+        model.pendingLibraryHighlightID = second.id
+
+        await model.removeWallpapers([first, second])
+
+        XCTAssertEqual(model.bulkRemovalRecovery?.remainingIDs, [first.id, second.id])
+        XCTAssertEqual(model.bulkRemovalRecovery?.catalogueVerified, false)
+        XCTAssertTrue(model.bulkRemovalRetryWallpapers.isEmpty)
+        XCTAssertEqual(model.pendingLibraryHighlightID, second.id)
+        service.refreshHook = nil
+        service.selectionReadHook = nil
+        try XCTUnwrap(currentCatalogue).write(to: paths.manifest)
+        await model.reload()
+
+        XCTAssertEqual(model.bulkRemovalRecovery?.remainingIDs, [second.id])
+        XCTAssertEqual(model.bulkRemovalRecovery?.catalogueVerified, true)
+        XCTAssertEqual(model.bulkRemovalRetryWallpapers.map(\.id), [second.id])
+    }
+
+    func testSuccessfulBulkMutationWithFailedReloadDoesNotClaimVerifiedCompletion() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "BULK-READ-FAILURE")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let service = FakeWallpaperService()
+        var committedCatalogue: Data?
+        service.refreshHook = {
+            committedCatalogue = try? Data(contentsOf: paths.manifest)
+            try? FileManager.default.removeItem(at: paths.manifest)
+        }
+        let model = makeModel(service: service, home: home)
+        await model.reload()
+
+        await model.removeWallpapers([wallpaper])
+
+        XCTAssertEqual(model.bulkRemovalRecovery?.remainingIDs, [wallpaper.id])
+        XCTAssertEqual(model.bulkRemovalRecovery?.catalogueVerified, false)
+        XCTAssertTrue(model.activeAlert?.message.contains("status could not be checked") == true)
+        service.refreshHook = nil
+        try XCTUnwrap(committedCatalogue).write(to: paths.manifest)
+        await model.reload()
+        XCTAssertNil(model.bulkRemovalRecovery)
+    }
+
     func testBulkRemoveReportsPartialFailureCounts() async throws {
         let home = makeTemporaryHome()
         let first = makeWallpaper(id: "C0D3X-0130")
@@ -1817,6 +1926,7 @@ private final class FakeWallpaperService: WallpaperServicing {
     var activatedAssetIDs: [String] = []
     var refreshCallCount = 0
     var openSettingsCallCount = 0
+    var refreshHook: (() -> Void)?
     var activationError: Error?
 
     var selectionReadError: Error?
@@ -1859,6 +1969,7 @@ private final class FakeWallpaperService: WallpaperServicing {
 
     func refresh() async {
         refreshCallCount += 1
+        refreshHook?()
     }
 
     func openWallpaperSettings() { openSettingsCallCount += 1 }

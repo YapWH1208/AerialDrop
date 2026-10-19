@@ -74,6 +74,22 @@ enum AppAlertAction: Identifiable, Equatable {
     }
 }
 
+/// Transient recovery context for a confirmed batch. Unknown catalogue status
+/// retains every requested ID until a successful read can identify survivors.
+struct BulkRemovalRecovery: Identifiable, Equatable {
+    let id: UUID
+    let requestedIDs: Set<String>
+    let remainingIDs: Set<String>
+    let catalogueVerified: Bool
+
+    init(id: UUID = UUID(), requestedIDs: Set<String>, remainingIDs: Set<String>, catalogueVerified: Bool) {
+        self.id = id
+        self.requestedIDs = requestedIDs
+        self.remainingIDs = remainingIDs
+        self.catalogueVerified = catalogueVerified
+    }
+}
+
 struct ManagedWallpaper: Identifiable, Hashable {
     let id: String
     let title: String
