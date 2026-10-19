@@ -39,6 +39,12 @@ struct ImportPane: View {
             guard outcome != nil else { return }
             accessibilityStatus = .completion
         }
+        .onChange(of: model.isSelectedVideoValid) { wasValid, isValid in
+            guard !wasValid, isValid, model.selectedVideo != nil else { return }
+            AccessibilityNotification.Announcement(
+                "Video ready to configure."
+            ).post()
+        }
     }
 
     private func importWorkflow(model: AppModel) -> some View {
@@ -73,8 +79,10 @@ struct ImportPane: View {
                             resolution: model.sourceResolution,
                             cropOffset: model.cropOffset,
                             isValid: model.isSelectedVideoValid,
+                            preparationError: model.sourcePreparationError,
                             isDisabled: model.isWorking,
                             onChoose: { model.showingFileImporter = true },
+                            onRetry: model.retrySelectedVideoPreparation,
                             onDrop: { model.chooseVideo($0) }
                         )
                     }
@@ -96,7 +104,9 @@ struct ImportPane: View {
                             .disabled(model.isWorking)
                     }
 
-                    if model.selectedVideo != nil, let blocker = model.importBlockerMessage {
+                    if model.selectedVideo != nil,
+                       model.sourcePreparationError == nil,
+                       let blocker = model.importBlockerMessage {
                         // Inline reason so a disabled toolbar Import button
                         // is never the only explanation.
                         Label(blocker, systemImage: "exclamationmark.circle")
@@ -197,8 +207,10 @@ private struct ImportSourceView: View {
     let resolution: CGSize?
     let cropOffset: Double
     let isValid: Bool
+    let preparationError: String?
     let isDisabled: Bool
     let onChoose: () -> Void
+    let onRetry: () -> Void
     let onDrop: (URL) -> Void
 
     @State private var hovering = false
@@ -289,7 +301,12 @@ private struct ImportSourceView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    if isValid {
+                    if let preparationError {
+                        Label(preparationError, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if isValid {
                         Label("Ready to configure", systemImage: "checkmark.circle")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -297,7 +314,7 @@ private struct ImportSourceView: View {
                         HStack(spacing: 6) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("Validating video…")
+                            Text("Preparing video…")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -306,8 +323,14 @@ private struct ImportSourceView: View {
 
                 Spacer()
 
-                Button("Replace…", systemImage: "arrow.triangle.2.circlepath", action: onChoose)
-                    .disabled(isDisabled)
+                HStack(spacing: 8) {
+                    if preparationError != nil {
+                        Button("Try Again", systemImage: "arrow.clockwise", action: onRetry)
+                            .disabled(isDisabled)
+                    }
+                    Button("Replace…", systemImage: "arrow.triangle.2.circlepath", action: onChoose)
+                        .disabled(isDisabled)
+                }
             }
         }
     }
@@ -371,7 +394,7 @@ private struct ImportSettingsView: View {
                     Text(loopSummary)
                 }
 
-                if isUltrawideSource {
+                if isWiderSource {
                     GridRow(alignment: .top) {
                         settingLabel("Crop")
                         VStack(alignment: .leading, spacing: 8) {
@@ -406,9 +429,9 @@ private struct ImportSettingsView: View {
         }
     }
 
-    private var isUltrawideSource: Bool {
+    private var isWiderSource: Bool {
         guard let sourceResolution else { return false }
-        return isUltrawide(sourceResolution)
+        return isWiderThan16By9(sourceResolution)
     }
 
     private var cropPreset: Binding<Double> {

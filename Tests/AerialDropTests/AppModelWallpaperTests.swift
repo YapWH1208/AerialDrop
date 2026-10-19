@@ -41,7 +41,7 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.importBlockerMessage, "Choose a video to configure.")
 
         model.selectedVideo = URL(fileURLWithPath: "/tmp/source.mov")
-        XCTAssertEqual(model.importBlockerMessage, "Validating the selected video…")
+        XCTAssertEqual(model.importBlockerMessage, "Preparing the selected video…")
 
         model.isSelectedVideoValid = true
         model.title = "Coastline"
@@ -1357,32 +1357,110 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertNil(model.activeAlert)
     }
 
-    func testImportInvalidatesPendingSourceMetadataPublication() async throws {
+    func testImportWaitsForEssentialSourceMetadata() async throws {
         let home = makeTemporaryHome()
         try installEmptyManifest(in: home)
         let processor = SuspendedVideoProcessor(suspendDuration: true)
         let model = makeModel(service: FakeWallpaperService(), home: home, videoProcessor: processor)
         await model.reload()
-        model.chooseVideo(home.appending(path: "source.mov"))
-        await waitUntil { model.isSelectedVideoValid }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while !(await processor.hasPendingDuration), ContinuousClock.now < deadline {
-            await Task.yield()
-        }
-        let hasPendingDuration = await processor.hasPendingDuration
-        XCTAssertTrue(hasPendingDuration)
-        model.sourceResolution = CGSize(width: 1920, height: 1080)
+        let source = home.appending(path: "source.mov")
+        model.chooseVideo(source)
+        await waitUntilAsync { await processor.hasPendingDuration(for: source) }
+
+        XCTAssertTrue(model.isPreparingSelectedVideo)
+        XCTAssertFalse(model.isSelectedVideoValid)
+        XCTAssertFalse(model.canImport)
         model.importSelectedVideo()
-        _ = try await waitForEncode(processor, index: 0)
+        let requestCount = await processor.requestCount
+        XCTAssertEqual(requestCount, 0)
 
-        await processor.completeDuration(99)
+        await processor.completeDuration(99, for: source)
+        await waitUntil { model.isSelectedVideoValid }
+
+        XCTAssertFalse(model.isPreparingSelectedVideo)
+        XCTAssertEqual(model.sourceDuration, 99)
+        XCTAssertEqual(model.sourceResolution, CGSize(width: 1920, height: 1080))
+        XCTAssertTrue(model.canImport)
+    }
+
+    func testImportRemainsBlockedWhileGeometryIsLoading() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let processor = SuspendedVideoProcessor(suspendDisplaySize: true)
+        let model = makeModel(service: FakeWallpaperService(), home: home, videoProcessor: processor)
+        await model.reload()
+        let source = home.appending(path: "source.mov")
+
+        model.chooseVideo(source)
+        await waitUntilAsync { await processor.hasPendingDisplaySize(for: source) }
+
+        XCTAssertTrue(model.isPreparingSelectedVideo)
+        XCTAssertEqual(model.sourceDuration, nil)
+        XCTAssertEqual(model.sourceResolution, nil)
+        XCTAssertFalse(model.isSelectedVideoValid)
+        XCTAssertFalse(model.canImport)
+        model.importSelectedVideo()
+        let requestCount = await processor.requestCount
+        XCTAssertEqual(requestCount, 0)
+
+        await processor.completeDisplaySize(CGSize(width: 2000, height: 1000), for: source)
+        await waitUntil { model.isSelectedVideoValid }
+
+        XCTAssertEqual(model.sourceDuration, 80)
+        XCTAssertEqual(model.sourceResolution, CGSize(width: 2000, height: 1000))
+        XCTAssertTrue(model.canImport)
+    }
+
+    func testReplacementPreventsStaleSourceMetadataPublication() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let processor = SuspendedVideoProcessor(suspendDuration: true)
+        let model = makeModel(service: FakeWallpaperService(), home: home, videoProcessor: processor)
+        await model.reload()
+        let first = home.appending(path: "first.mov")
+        let replacement = home.appending(path: "replacement.mov")
+
+        model.chooseVideo(first)
+        await waitUntilAsync { await processor.hasPendingDuration(for: first) }
+        model.chooseVideo(replacement)
+        await waitUntilAsync { await processor.hasPendingDuration(for: replacement) }
+
+        await processor.completeDuration(35, for: first)
         await drainMainActorCallbacks()
+        XCTAssertEqual(model.selectedVideo, replacement)
         XCTAssertNil(model.sourceDuration)
-        XCTAssertTrue(model.isWorking)
+        XCTAssertFalse(model.isSelectedVideoValid)
 
-        model.cancelImport()
-        await processor.failEncode(0)
-        await waitUntil { !model.isWorking }
+        await processor.completeDuration(80, for: replacement)
+        await waitUntil { model.isSelectedVideoValid }
+        XCTAssertEqual(model.selectedVideo, replacement)
+        XCTAssertEqual(model.sourceDuration, 80)
+    }
+
+    func testPreparationFailureKeepsSelectionAndRetryCanRecover() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let processor = SuspendedVideoProcessor(displaySizeShouldFail: true)
+        let model = makeModel(service: FakeWallpaperService(), home: home, videoProcessor: processor)
+        await model.reload()
+        let source = home.appending(path: "source.mov")
+
+        model.chooseVideo(source)
+        await waitUntil { model.sourcePreparationError != nil }
+
+        XCTAssertEqual(model.selectedVideo, source)
+        XCTAssertFalse(model.isPreparingSelectedVideo)
+        XCTAssertFalse(model.isSelectedVideoValid)
+        XCTAssertFalse(model.canImport)
+        XCTAssertEqual(model.importBlockerMessage, TestError.storeUnreadable.localizedDescription)
+
+        await processor.setDisplaySizeShouldFail(false)
+        model.retrySelectedVideoPreparation()
+        await waitUntil { model.isSelectedVideoValid }
+
+        XCTAssertEqual(model.selectedVideo, source)
+        XCTAssertNil(model.sourcePreparationError)
+        XCTAssertTrue(model.canImport)
     }
 
     private func waitForEncode(_ processor: SuspendedVideoProcessor, index: Int) async throws -> SuspendedVideoProcessor.Request {
@@ -1403,6 +1481,16 @@ final class AppModelWallpaperTests: XCTestCase {
             try? await Task.sleep(for: .milliseconds(5))
         }
         XCTAssertTrue(condition())
+    }
+
+    private func waitUntilAsync(_ condition: () async -> Bool) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !(await condition()), ContinuousClock.now < deadline {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        let completed = await condition()
+        XCTAssertTrue(completed)
     }
 
     private func drainMainActorCallbacks() async {
@@ -1553,14 +1641,28 @@ private actor SuspendedVideoProcessor: VideoProcessing {
     private var requests: [Request] = []
     private var encodeContinuations: [Int: CheckedContinuation<CGSize, Error>] = [:]
     private var progressCallbacks: [Int: @Sendable (Double) -> Void] = [:]
-    private var durationContinuation: CheckedContinuation<Double?, Never>?
+    private var durationContinuations: [URL: CheckedContinuation<Double?, Never>] = [:]
+    private var displaySizeContinuations: [URL: CheckedContinuation<CGSize, Error>] = [:]
     private let suspendDuration: Bool
+    private let suspendDisplaySize: Bool
+    private let duration: Double?
+    private let displaySize: CGSize
+    private var displaySizeShouldFail: Bool
     private(set) var validationCount = 0
     var requestCount: Int { requests.count }
-    var hasPendingDuration: Bool { durationContinuation != nil }
 
-    init(suspendDuration: Bool = false) {
+    init(
+        suspendDuration: Bool = false,
+        suspendDisplaySize: Bool = false,
+        duration: Double? = 80,
+        displaySize: CGSize = CGSize(width: 1920, height: 1080),
+        displaySizeShouldFail: Bool = false
+    ) {
         self.suspendDuration = suspendDuration
+        self.suspendDisplaySize = suspendDisplaySize
+        self.duration = duration
+        self.displaySize = displaySize
+        self.displaySizeShouldFail = displaySizeShouldFail
     }
 
     func validate(source: URL) async throws {
@@ -1568,17 +1670,38 @@ private actor SuspendedVideoProcessor: VideoProcessing {
     }
 
     func effectiveSourceDuration(for source: URL) async -> Double? {
-        guard suspendDuration else { return nil }
-        return await withCheckedContinuation { durationContinuation = $0 }
+        guard suspendDuration else { return duration }
+        return await withCheckedContinuation { durationContinuations[source] = $0 }
     }
 
-    func completeDuration(_ duration: Double) {
-        durationContinuation?.resume(returning: duration)
-        durationContinuation = nil
+    func hasPendingDuration(for source: URL) -> Bool {
+        durationContinuations[source] != nil
+    }
+
+    func completeDuration(_ duration: Double, for source: URL) {
+        durationContinuations.removeValue(forKey: source)?.resume(returning: duration)
     }
 
     func sourceDisplaySize(for source: URL) async throws -> CGSize {
-        CGSize(width: 1920, height: 1080)
+        if displaySizeShouldFail { throw TestError.storeUnreadable }
+        if suspendDisplaySize {
+            return try await withCheckedThrowingContinuation {
+                displaySizeContinuations[source] = $0
+            }
+        }
+        return displaySize
+    }
+
+    func hasPendingDisplaySize(for source: URL) -> Bool {
+        displaySizeContinuations[source] != nil
+    }
+
+    func completeDisplaySize(_ size: CGSize, for source: URL) {
+        displaySizeContinuations.removeValue(forKey: source)?.resume(returning: size)
+    }
+
+    func setDisplaySizeShouldFail(_ shouldFail: Bool) {
+        displaySizeShouldFail = shouldFail
     }
 
     func makeNativeMOV(

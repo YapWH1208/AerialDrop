@@ -24,6 +24,8 @@ final class AppModel {
     var outputHeightCap: Int? = nil
     var sourceResolution: CGSize?
     var sourceDuration: Double?
+    private(set) var isPreparingSelectedVideo = false
+    private(set) var sourcePreparationError: String?
     var activeAerialAssetIDs: Set<String> = []
     /// True when the wallpaper selection store could not be read, so Active
     /// badges may be out of date. Destructive actions require an explicit
@@ -340,12 +342,14 @@ final class AppModel {
         case ready
         case missingVideo
         case validating
+        case preparationFailed
         case missingTitle
     }
 
     private var importReadiness: ImportReadiness {
         if selectedVideo == nil { return .missingVideo }
-        if !isSelectedVideoValid { return .validating }
+        if sourcePreparationError != nil { return .preparationFailed }
+        if isPreparingSelectedVideo || !isSelectedVideoValid { return .validating }
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .missingTitle }
         return .ready
     }
@@ -363,7 +367,8 @@ final class AppModel {
         switch importReadiness {
         case .ready: return nil
         case .missingVideo: return "Choose a video to configure."
-        case .validating: return "Validating the selected video…"
+        case .validating: return "Preparing the selected video…"
+        case .preparationFailed: return sourcePreparationError
         case .missingTitle: return "Enter a wallpaper name to enable Import."
         }
     }
@@ -454,6 +459,24 @@ final class AppModel {
         sourceResolution = nil
         sourceDuration = nil
         isSelectedVideoValid = false
+        sourcePreparationError = nil
+        isPreparingSelectedVideo = true
+        prepareSelectedVideo(url, version: version)
+    }
+
+    func retrySelectedVideoPreparation() {
+        guard !isWorking, let selectedVideo else { return }
+        selectionVersion += 1
+        let version = selectionVersion
+        sourceResolution = nil
+        sourceDuration = nil
+        isSelectedVideoValid = false
+        sourcePreparationError = nil
+        isPreparingSelectedVideo = true
+        prepareSelectedVideo(selectedVideo, version: version)
+    }
+
+    private func prepareSelectedVideo(_ url: URL, version: Int) {
         Task {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
@@ -462,53 +485,68 @@ final class AppModel {
                 try await videoProcessor.validate(source: url)
             } catch {
                 guard version == selectionVersion else { return }
-                activeAlert = AppAlert(
-                    title: "Couldn’t Use This Video",
-                    message: error.localizedDescription
-                )
-                selectedVideo = nil
-                title = ""
+                isPreparingSelectedVideo = false
+                sourcePreparationError = error.localizedDescription
                 isSelectedVideoValid = false
                 return
             }
 
             guard version == selectionVersion else { return }
-            isSelectedVideoValid = true
-
-            // Best-effort metadata for the resolution badge, crop bands and
-            // height caps. A failure here must not reject a file that passed
-            // validation — the import pipeline loads the same track metadata
-            // again and surfaces its own errors there.
-            let asset = AVURLAsset(url: url)
             // Prefer the duration the encoder can actually use (skipping
             // leading unrenderable samples) so the Loop row states the same
             // trim-versus-repeat decision the encode will make.
             let effective = await videoProcessor.effectiveSourceDuration(for: url)
-            let fallback = try? await asset.load(.duration).seconds
-            let seconds = effective ?? fallback
-            if let seconds, seconds.isFinite, seconds > 0 {
-                guard version == selectionVersion else { return }
-                sourceDuration = seconds
-            }
-            guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
-            guard let naturalSize = try? await track.load(.naturalSize) else { return }
-            guard let preferredTransform = try? await track.load(.preferredTransform) else { return }
-            // Mirror VideoProcessor: apply the track transform so the UI
-            // (crop bands, height caps, resolution badge) matches the
-            // encode window for rotated sources.
-            let transformedSize = VideoGeometry.displaySize(
-                naturalSize: naturalSize,
-                preferredTransform: preferredTransform
-            )
             guard version == selectionVersion else { return }
-            if transformedSize.width.isFinite, transformedSize.height.isFinite,
-               transformedSize.width > 0, transformedSize.height > 0 {
-                sourceResolution = transformedSize
-                // A remembered cap that this source would not downscale shows
-                // no picker selection; fall back to Original for it.
-                outputHeightCap = applicableHeightCap(outputHeightCap, sourceSize: transformedSize)
+            let fallback: Double?
+            if effective == nil {
+                fallback = try? await AVURLAsset(url: url).load(.duration).seconds
+                guard version == selectionVersion else { return }
+            } else {
+                fallback = nil
             }
+            let seconds = effective ?? fallback
+            guard let seconds, seconds.isFinite, seconds > 0 else {
+                failSelectedVideoPreparation(
+                    "AerialDrop couldn’t read this video’s duration. Try again or replace the video.",
+                    version: version
+                )
+                return
+            }
+
+            let displaySize: CGSize
+            do {
+                displaySize = try await videoProcessor.sourceDisplaySize(for: url)
+            } catch {
+                guard version == selectionVersion else { return }
+                failSelectedVideoPreparation(error.localizedDescription, version: version)
+                return
+            }
+            guard version == selectionVersion else { return }
+            guard displaySize.width.isFinite, displaySize.height.isFinite,
+                  displaySize.width > 0, displaySize.height > 0 else {
+                failSelectedVideoPreparation(
+                    "AerialDrop couldn’t read this video’s dimensions. Try again or replace the video.",
+                    version: version
+                )
+                return
+            }
+
+            sourceDuration = seconds
+            sourceResolution = displaySize
+            // A remembered cap that this source would not downscale shows no
+            // picker selection; fall back to Original for it.
+            outputHeightCap = applicableHeightCap(outputHeightCap, sourceSize: displaySize)
+            sourcePreparationError = nil
+            isPreparingSelectedVideo = false
+            isSelectedVideoValid = true
         }
+    }
+
+    private func failSelectedVideoPreparation(_ message: String, version: Int) {
+        guard version == selectionVersion else { return }
+        isPreparingSelectedVideo = false
+        isSelectedVideoValid = false
+        sourcePreparationError = message
     }
 
     func cancelImport() {
@@ -518,6 +556,7 @@ final class AppModel {
 
     func importSelectedVideo() {
         guard !isWorking, catalogueState == .ready,
+              !isPreparingSelectedVideo, sourcePreparationError == nil,
               isSelectedVideoValid, let source = selectedVideo else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
@@ -641,6 +680,7 @@ final class AppModel {
                 isSelectedVideoValid = false
                 sourceResolution = nil
                 sourceDuration = nil
+                sourcePreparationError = nil
             } catch {
                 if !manifestInstalled {
                     try? FileManager.default.removeItem(at: videoDestination)

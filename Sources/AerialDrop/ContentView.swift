@@ -294,8 +294,11 @@ struct ContentView: View {
     }
 
     private var importActionHelp: String {
+        if model.sourcePreparationError != nil {
+            return "Retry video preparation or replace the selected video"
+        }
         if !model.isSelectedVideoValid {
-            return "Wait for video validation to finish"
+            return "Wait for video preparation to finish"
         }
         if model.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "Enter a wallpaper name before importing"
