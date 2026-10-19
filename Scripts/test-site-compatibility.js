@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const compatibility = require('../docs/compatibility.js');
 
 const root = path.resolve(__dirname, '..');
@@ -125,6 +127,42 @@ async function main() {
   assert.equal(decode(sourceCommand[1]), decode(sourceCommand[2]), 'source tag copy differs from displayed command');
   assert.match(decode(sourceCommand[1]), /bash install\.sh --print-version/);
   assert.match(decode(sourceCommand[1]), /git clone --branch "v\$VERSION"/);
+
+  const verificationBlocks = Array.from(html.matchAll(/<pre><code>([\s\S]*?)<\/code><\/pre>\s*<button class="cmd__copy"[^>]*data-copy="([^"]+)"/g))
+    .filter(match => /\bls(?: -d)? (?:\/Applications|dist)\/AerialDrop\.app/.test(decode(match[1])));
+  assert.equal(verificationBlocks.length, 4, 'each installation method has one bundle verification');
+  verificationBlocks.forEach(match => {
+    assert.equal(decode(match[1]), decode(match[2]), 'displayed verification and copied command agree');
+    assert.match(decode(match[1]), /(?:^|&& )ls -d (?:\/Applications|dist)\/AerialDrop\.app$/);
+  });
+  ['panel-homebrew', 'panel-script', 'panel-release'].forEach(id => {
+    assert.match(panelText(id), /Expected output: <code>\/Applications\/AerialDrop\.app<\/code>/);
+    assert.match(panelText(id), /No such file or directory/);
+  });
+  assert.match(panelText('panel-source'), /Expected final line: <code>dist\/AerialDrop\.app<\/code>/);
+  assert.match(panelText('panel-source'), /Packaging or launch errors stop the command before this check/);
+  assert.match(panelText('panel-source'), /No such file or directory/);
+
+  // Exercise only ls with isolated bundles; never execute installer/build/open commands.
+  const verificationHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aerialdrop-site-verify-'));
+  try {
+    const relativeBundle = 'dist/AerialDrop.app';
+    const absoluteBundle = path.join(verificationHome, 'Applications/AerialDrop.app');
+    fs.mkdirSync(path.join(verificationHome, relativeBundle, 'Contents'), { recursive: true });
+    fs.mkdirSync(path.join(absoluteBundle, 'Contents'), { recursive: true });
+    for (const target of [relativeBundle, absoluteBundle]) {
+      const present = spawnSync('ls', ['-d', target], { cwd: verificationHome, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
+      assert.equal(present.status, 0);
+      assert.equal(present.stdout.trim(), target, 'ls -d prints the bundle path rather than Contents');
+      fs.rmSync(path.resolve(verificationHome, target), { recursive: true });
+      const missing = spawnSync('ls', ['-d', target], { cwd: verificationHome, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
+      assert.notEqual(missing.status, 0);
+      assert.equal(missing.stdout, '');
+      assert.match(missing.stderr, /No such file or directory/);
+    }
+  } finally {
+    fs.rmSync(verificationHome, { recursive: true, force: true });
+  }
 
   const ui = page(standardFetch());
   assert.equal(ui.ids.unzipCopy.disabled, true);

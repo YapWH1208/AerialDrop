@@ -186,7 +186,7 @@
         <article class="spec reveal">
           <span class="spec__name mono">Safety</span>
           <p class="spec__value">Reversible writes</p>
-          <p class="spec__body">Every catalogue write is backed up first and checked for concurrent changes. Restore Latest Backup rechecks the active wallpaper and refuses changes that would remove it or overwrite unrelated catalogue data.</p>
+          <p class="spec__body">Every catalogue write is backed up first and checked for concurrent changes. Restore Catalogue Backup rechecks the active wallpaper and refuses changes that would remove it or overwrite unrelated catalogue data.</p>
         </article>
         <article class="spec reveal">
           <span class="spec__name mono">Source</span>
@@ -285,10 +285,10 @@
                 <div class="step__content">
                   <h4>Verify it&rsquo;s in place</h4>
                   <div class="cmd">
-                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                    <pre><code>ls -d /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls -d /Applications/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code> and the version:
+                  <p class="expect">Expected output: <code>/Applications/AerialDrop.app</code>. If it is missing, <code>ls</code> reports <code>No such file or directory</code>. Check the version next:
                   <button class="cmd__copy cmd__copy--inline" type="button" data-copy="defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString">Copy</button></p>
                   <div class="cmd">
                     <pre><code>defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString</code></pre>
@@ -343,10 +343,10 @@
                 <div class="step__content">
                   <h4>Verify</h4>
                   <div class="cmd">
-                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                    <pre><code>ls -d /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls -d /Applications/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                  <p class="expect">Expected output: <code>/Applications/AerialDrop.app</code>. If it is missing, <code>ls</code> reports <code>No such file or directory</code>.</p>
                 </div>
               </li>
             </ol>
@@ -390,10 +390,10 @@
                 <div class="step__content">
                   <h4>Verify</h4>
                   <div class="cmd">
-                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                    <pre><code>ls -d /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls -d /Applications/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                  <p class="expect">Expected output: <code>/Applications/AerialDrop.app</code>. If it is missing, <code>ls</code> reports <code>No such file or directory</code>.</p>
                 </div>
               </li>
             </ol>
@@ -444,10 +444,10 @@
                 <div class="step__content">
                   <h4>Package, launch, then verify</h4>
                   <div class="cmd">
-                    <pre><code>Scripts/build-app.sh &amp;&amp; open -n dist/AerialDrop.app &amp;&amp; ls dist/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="Scripts/build-app.sh && open -n dist/AerialDrop.app && ls dist/AerialDrop.app">Copy</button>
+                    <pre><code>Scripts/build-app.sh &amp;&amp; open -n dist/AerialDrop.app &amp;&amp; ls -d dist/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="Scripts/build-app.sh && open -n dist/AerialDrop.app && ls -d dist/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code> &mdash; the app is running.</p>
+                  <p class="expect">Expected final line: <code>dist/AerialDrop.app</code>. This verifies the bundle location. Packaging or launch errors stop the command before this check. Running <code>ls -d dist/AerialDrop.app</code> separately for a missing bundle reports <code>No such file or directory</code>.</p>
                 </div>
               </li>
             </ol>
@@ -616,7 +616,7 @@
         </details>
         <details class="faq__item">
           <summary>Can I restore a backup while an imported wallpaper is active?</summary>
-          <p>Use <strong>Restore Latest Backup</strong> in Maintenance. AerialDrop shows the backup in a confirmation and rechecks the active selection before and during restore. It refuses a restore that would remove the active wallpaper, overwrite unrelated catalogue changes, or replace protected Day/Night media. If verification fails, the safety backup is retained for recovery.</p>
+          <p>Use <strong>Restore Catalogue Backup</strong> in Maintenance. Choose an existing snapshot by date and operation, then confirm the exact backup. This restores catalogue entries only, not deleted video files or the active wallpaper selection. AerialDrop rechecks the active selection before and during restore. It refuses a restore that would remove the active wallpaper, overwrite unrelated catalogue changes, or replace protected Day/Night media. If verification fails, the safety backup is retained for recovery.</p>
         </details>
         <details class="faq__item">
           <summary>Where are my wallpapers stored?</summary>
@@ -624,7 +624,7 @@
         </details>
         <details class="faq__item">
           <summary>What if a future macOS update changes the catalogue format?</summary>
-          <p>The catalogue is a private API, so it could change. Every write is backed up first, and Restore Latest Backup checks the active wallpaper and unrelated catalogue data before restoring. Day/Night application is disabled on unfamiliar builds. A system update may require an AerialDrop update, reimporting, or reapplying your wallpapers.</p>
+          <p>The catalogue is a private API, so it could change. Every write is backed up first, and Restore Catalogue Backup checks the active wallpaper and unrelated catalogue data before restoring. Day/Night application is disabled on unfamiliar builds. A system update may require an AerialDrop update, reimporting, or reapplying your wallpapers.</p>
         </details>
       </div>
     </div>

@@ -11,6 +11,7 @@ python3 Scripts/release_compatibility.py validate
 python3 Scripts/test-release-compatibility.py
 bash Scripts/test-install.sh
 node Scripts/test-site-compatibility.js
+node Scripts/test-site-interactions.js
 Scripts/check-docs-version.sh
 ```
 
@@ -73,6 +74,12 @@ version before evaluating native playback.
    can still be imported while its still preview is unavailable. Replace a source
    while its preview is still loading and confirm late metadata or a late still
    from the old source cannot replace the new preview.
+   With delayed dimensions/duration, Import must remain disabled until both are
+   ready. With unreadable metadata, retain the file and options, show Try Again
+   and Replace Video, and announce readiness once after successful retry.
+   Replace a source during preparation; its late result must never enable Import
+   or overwrite the replacement's metadata. Still-preview failure alone must not
+   block an otherwise prepared source.
 4. Confirm the inline **Set as wallpaper after importing** toggle defaults to on,
    explains that activation covers all Spaces and displays, and retains its value
    after relaunch. Turn it off and confirm the copy says the desktop will not change.
@@ -164,7 +171,7 @@ version before evaluating native playback.
    file type and confirm an immediate **Couldn’t Use This File** alert explains that
    an MP4 or MOV is required.
 6. Choose a video, rename it, then choose a different video; confirm the name field follows the new file.
-7. For an ultrawide source, drag the crop slider between presets and confirm no crop segment is highlighted while the position is between presets, and the preview mask matches the slider. With VoiceOver, confirm its value reads **Left**, **Centered**, **Right**, or the intermediate percentage from the left edge.
+7. For 2:1, 20:9 and ultrawide sources, drag the crop slider between presets and confirm no crop segment is highlighted while the position is between presets, and the preview mask matches the encoded result. A 16:9 source must not show an unnecessary horizontal crop control. With VoiceOver, confirm its value reads **Left**, **Centered**, **Right**, or the intermediate percentage from the left edge.
 8. Focus a wallpaper card with the keyboard and press Delete: the existing removal
    confirmation appears. Press Delete while typing in the search field and confirm
    nothing is removed.
@@ -179,6 +186,12 @@ version before evaluating native playback.
    Shift-Left; the range should grow and contract from the focused end while
    keeping the original anchor. Repeat vertically and after filtering, and
    confirm arrow keys do not wrap past the first or last visible card.
+   Simulate a partial batch failure in an isolated fixture. Keep surviving visible
+   requested items selected and offer Retry Remaining; exclude already removed
+   entries. Search may hide survivors, but retry must confirm the full remaining
+   set. Recheck active/pending protection and any unknown-selection acknowledgement
+   on every retry. A failed catalogue read retains recovery until a successful
+   reload proves what remains; successful completion clears it.
 10. Rename a wallpaper to another wallpaper’s title and confirm the duplicate-name
     warning appears in the rename alert.
 11. Switch the visible Library sort menu between **Title** and **Recently Added**:
@@ -385,8 +398,21 @@ two local mocked installs without downloading a release or touching Applications
    the install-method rail, and the stepper may scroll inside their own regions, and
    their Copy/action controls must remain reachable.
 3. At 320 and 390 pixels, open the mobile menu and reach **Install** by keyboard.
-   In the installer, use Left/Right arrows to change methods and confirm the active
-   tab, focus, panel, and Copy command stay synchronized.
+   In the installer, use Left/Right arrows and Home/End to change methods and confirm
+   the active tab, focus, panel, and Copy command stay synchronized. Select Build
+   from source at desktop width, resize to 320/390, and keep its tab visible without
+   moving focus or scrolling the page vertically.
 4. Block the GitHub release request or disable JavaScript. Confirm the page still
    presents the current bundled release version and valid download/install commands,
    with no stale version token in visible copy.
+   Separately block app.js and make it throw before initialization: every main
+   section must remain readable. Check Reduced Motion with normal scripts too.
+5. Before copying the first install command, confirm signing/notarization and each
+   method's quarantine behavior are visible. Copy by keyboard and pointer: keep
+   focus and the Copy label, and show one polite persistent result beside that
+   command. Deny clipboard access and fail the legacy fallback; manual-copy
+   instructions must stay visible. Rapid repeated copies must keep the newest
+   result. The offline interaction harness covers promise races and fallback focus.
+6. Every bundle verification displays and copies `ls -d` with an expected path that
+   matches its output. An isolated missing bundle reports No such file or directory.
+   Never run installation or delete a real app to test this case.

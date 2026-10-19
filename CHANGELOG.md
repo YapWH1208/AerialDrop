@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Prepare source dimensions and duration before enabling import, with retryable errors and accurate framing controls for every video wider than 16:9.
+- Keep import progress and safe cancellation above scrolling content in Import and Library.
+- Offer contextual Day/Night and restore recovery, retain bulk-removal survivors for a fresh retry, and let users choose a dated catalogue backup before confirmation.
+- Keep installation guidance visible when scripts fail, show signing and quarantine details before commands, and improve copy feedback, keyboard tabs, responsive navigation, and verification instructions.
+
 ## 1.1.10
 
 - Select the newest compatible published release in the install script, with validated version pins and a read-only `--print-version` option.
