@@ -132,7 +132,8 @@ version before evaluating native playback.
    80-second native HEVC Aerial stream**, reports the required and available space,
    and recommends freeing space or lowering quality/resolution. Confirm lowering a
    setting enough to satisfy the requirement permits a retry.
-8. Confirm the Import progress shows an estimated time remaining during the encode stage.
+8. At the minimum window size, scroll the Import form to its bottom during encoding. Confirm the status banner, available time estimate, and Cancel remain visible above the scrolling form. Switch to Library and back; only Library should offer View Import. During final installation, confirm Cancel disappears and the banner explains why.
+   Confirm the Import progress shows an estimated time remaining during the encode stage.
    It must advance monotonically even if encoding pauses and resumes under
    writer backpressure.
 9. Confirm a warning appears when the wallpaper name matches an existing wallpaper.

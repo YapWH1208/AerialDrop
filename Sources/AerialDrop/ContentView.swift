@@ -33,14 +33,14 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 catalogueRefreshBanner
-                if destination == .library && isImportInProgress {
-                    LibraryImportStatusView(
+                if isImportInProgress {
+                    ImportStatusView(
                         stage: model.stage,
                         progress: model.displayProgress,
                         eta: model.encodeETA,
                         canCancel: model.isImportCancellable,
                         onCancel: model.cancelImport,
-                        onViewImport: { destination = .importVideo }
+                        onViewImport: destination == .library ? { destination = .importVideo } : nil
                     )
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
@@ -98,6 +98,10 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, !model.isWorking else { return }
             Task { await model.refreshCataloguePreservingContent() }
+        }
+        .onChange(of: model.stage) { oldStage, newStage in
+            guard oldStage != newStage, model.isWorking, newStage != .finished else { return }
+            AccessibilityNotification.Announcement(newStage.label).post()
         }
         .onChange(of: model.catalogueRefreshState) { _, state in
             if case .failed = state {
@@ -426,13 +430,13 @@ struct ContentView: View {
     }
 }
 
-private struct LibraryImportStatusView: View {
+private struct ImportStatusView: View {
     let stage: ImportStage
     let progress: Double
     let eta: TimeInterval?
     let canCancel: Bool
     let onCancel: () -> Void
-    let onViewImport: () -> Void
+    let onViewImport: (() -> Void)?
 
     var body: some View {
         GroupBox {
@@ -500,8 +504,10 @@ private struct LibraryImportStatusView: View {
                     .help("Cancel before catalogue installation begins")
             }
 
-            Button("View Import", systemImage: "arrow.right", action: onViewImport)
-                .controlSize(.small)
+            if let onViewImport {
+                Button("View Import", systemImage: "arrow.right", action: onViewImport)
+                    .controlSize(.small)
+            }
         }
     }
 

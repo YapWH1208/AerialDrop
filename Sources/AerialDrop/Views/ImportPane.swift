@@ -29,12 +29,6 @@ struct ImportPane: View {
             guard new == .finished, old != .finished else { return nil }
             return importFinishedWithFailure ? .error : .success
         }
-        .onChange(of: model.stage) { oldStage, newStage in
-            guard oldStage != newStage,
-                  model.isWorking,
-                  newStage != .finished else { return }
-            AccessibilityNotification.Announcement(newStage.label).post()
-        }
         .onChange(of: model.importOutcome) { _, outcome in
             guard outcome != nil else { return }
             accessibilityStatus = .completion
@@ -60,16 +54,6 @@ struct ImportPane: View {
                     )
                     .accessibilityFocused($accessibilityStatus, equals: .completion)
                 } else {
-                    if model.isWorking {
-                        ImportProgressView(
-                            stage: model.stage,
-                            progress: model.displayProgress,
-                            eta: model.encodeETA,
-                            canCancel: model.isImportCancellable,
-                            onCancel: { model.cancelImport() }
-                        )
-                    }
-
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Source Video")
                             .font(.headline)
@@ -457,77 +441,6 @@ private struct ImportSettingsView: View {
             .foregroundStyle(.secondary)
             .frame(width: 82, alignment: .trailing)
             .gridColumnAlignment(.trailing)
-    }
-}
-
-private struct ImportProgressView: View {
-    let stage: ImportStage
-    let progress: Double
-    let eta: TimeInterval?
-    let canCancel: Bool
-    let onCancel: () -> Void
-
-    var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 8) {
-                    Label(stage.label, systemImage: stage.icon)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .accessibilityHidden(true)
-
-                    if let etaText {
-                        Text(etaText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-
-                ProgressView(value: progress)
-                    .accessibilityLabel("Import progress")
-                    .accessibilityValue("\(Int(progress * 100)) percent")
-
-                HStack {
-                    Text(canCancel ? cancellableMessage : finishingMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    if canCancel {
-                        Button("Cancel", role: .cancel, action: onCancel)
-                            .controlSize(.small)
-                            .keyboardShortcut(.cancelAction)
-                    }
-                }
-            }
-            .padding(4)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Import progress")
-    }
-
-    private var etaText: String? {
-        guard let eta, eta > 5 else { return nil }
-        if eta >= 60 {
-            return "≈ \(Int(eta / 60)) min left"
-        }
-        return "≈ \(Int(eta)) s left"
-    }
-
-    private var cancellableMessage: String {
-        "The source video stays unchanged. You can cancel before installation begins."
-    }
-
-    private var finishingMessage: String {
-        "Finishing installation. This step can’t be cancelled."
     }
 }
 
