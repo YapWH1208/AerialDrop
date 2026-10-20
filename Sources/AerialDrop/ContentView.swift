@@ -52,22 +52,8 @@ struct ContentView: View {
             }
         }
         .tint(AerialTheme.accent)
-        .toolbar {
-            primaryToolbarContent
-
-            ToolbarItemGroup(placement: .secondaryAction) {
-                Button("Reload Catalogue", systemImage: "arrow.clockwise") {
-                    Task { await model.refreshCataloguePreservingContent() }
-                }
-                .disabled(model.isWorking || model.catalogueRefreshState == .refreshing)
-
-                Button("Wallpaper Settings", systemImage: "photo") {
-                    model.openWallpaperSettings()
-                }
-
-                maintenanceMenu
-            }
-        }
+        .modifier(SourcePreparationAnnouncements(model: model))
+        .toolbar { toolbarContents }
         .alert(
             alert?.title ?? "AerialDrop",
             isPresented: alertPresentationBinding(for: alert),
@@ -118,18 +104,6 @@ struct ContentView: View {
         .onChange(of: model.stage) { oldStage, newStage in
             guard oldStage != newStage, model.isWorking, newStage != .finished else { return }
             AccessibilityNotification.Announcement(newStage.label).post()
-        }
-        .onChange(of: model.isSelectedVideoValid) { wasValid, isValid in
-            guard !wasValid, isValid, model.selectedVideo != nil else { return }
-            AccessibilityNotification.Announcement(
-                "Video ready to configure."
-            ).post()
-        }
-        .onChange(of: model.sourcePreparationError) { _, error in
-            guard let error else { return }
-            AccessibilityNotification.Announcement(
-                "Video preparation failed. \(error)"
-            ).post()
         }
         .onChange(of: model.catalogueRefreshState) { _, state in
             if case .failed = state {
@@ -294,6 +268,24 @@ struct ContentView: View {
     private func beginImport() {
         guard !model.isWorking else { return }
         model.showingFileImporter = true
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContents: some ToolbarContent {
+        primaryToolbarContent
+
+        ToolbarItemGroup(placement: .secondaryAction) {
+            Button("Reload Catalogue", systemImage: "arrow.clockwise") {
+                Task { await model.refreshCataloguePreservingContent() }
+            }
+            .disabled(model.isWorking || model.catalogueRefreshState == .refreshing)
+
+            Button("Wallpaper Settings", systemImage: "photo") {
+                model.openWallpaperSettings()
+            }
+
+            maintenanceMenu
+        }
     }
 
     @ToolbarContentBuilder
