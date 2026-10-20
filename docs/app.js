@@ -104,6 +104,13 @@
       tryLegacy();
     }
   }
+  function clearCopyFeedback(btn) {
+    if (!btn) return;
+    // Invalidate any pending clipboard result before replacing this command.
+    btn.copyRequest = (btn.copyRequest || 0) + 1;
+    if (btn.copyStatus) btn.copyStatus.textContent = "";
+    btn.classList.remove("is-copied", "is-failed");
+  }
   function commandFor(btn) {
     var attr = btn.getAttribute("data-copy");
     if (attr) return attr.replace(/\\n/g, "\n");
@@ -152,7 +159,11 @@
     set("releaseSize", humanSize(asset.size));
     set("unzipCmd", "unzip -q " + asset.name + " -d /Applications");
     var unzipCopy = $("#unzipCopy");
-    if (unzipCopy) { unzipCopy.setAttribute("data-copy", "unzip -q " + asset.name + " -d /Applications"); unzipCopy.disabled = false; }
+    if (unzipCopy) {
+      clearCopyFeedback(unzipCopy);
+      unzipCopy.setAttribute("data-copy", "unzip -q " + asset.name + " -d /Applications");
+      unzipCopy.disabled = false;
+    }
     set("termOut1", "==> Downloading " + asset.name);
     set("termOut4", "✓ aerialdrop " + version + " is ready. Open it, drop in a video.");
     $$("[data-download]").forEach(function (el) {
@@ -170,7 +181,11 @@
     set("termOut1", "==> Selecting a compatible release");
     set("termOut4", "✓ Install the newest compatible release for your Mac.");
     var unzipCopy = $("#unzipCopy");
-    if (unzipCopy) { unzipCopy.removeAttribute("data-copy"); unzipCopy.disabled = true; }
+    if (unzipCopy) {
+      clearCopyFeedback(unzipCopy);
+      unzipCopy.removeAttribute("data-copy");
+      unzipCopy.disabled = true;
+    }
     $$("[data-download]").forEach(function (el) {
       el.removeAttribute("href");
       el.setAttribute("aria-disabled", "true");

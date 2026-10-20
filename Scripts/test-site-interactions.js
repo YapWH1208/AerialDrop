@@ -4,10 +4,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+const compatibility = require('../docs/compatibility.js');
 const source = fs.readFileSync(path.join(__dirname, '../docs/app.js'), 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '../docs/styles.css'), 'utf8');
+const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, '../Tests/DistributionFixtures/compatibility.json'), 'utf8'));
 
-function page({ clipboard, legacy = false } = {}) {
+function page({ clipboard, legacy = false, fetcher } = {}) {
   const listeners = new Map();
   const statuses = [];
   let document, legacyCalls = 0;
@@ -29,15 +31,22 @@ function page({ clipboard, legacy = false } = {}) {
       getAttribute(key) { return attrs.get(key) || null; },
       addEventListener(key, callback) { events.set(key, callback); },
       fire(key, event = {}) { events.get(key)({ preventDefault() { event.prevented = true; }, ...event }); },
+      removeAttribute(key) { attrs.delete(key); },
       focus() { document.activeElement = this; },
       select() { document.activeElement = this; },
       closest() { return this.scope || null; },
-      insertAdjacentElement(position, status) { statuses.push(status); },
+      insertAdjacentElement(position, status) { statuses.push(status); this.copyStatus = status; },
       getBoundingClientRect() { return this.bounds || { left: 0, right: 100 }; }
     };
   }
   const buttons = [element('Copy'), element('Copy')];
   buttons.forEach((button, i) => button.setAttribute('data-copy', 'command-' + i));
+  const ids = Object.fromEntries([
+    'macosSelect', 'customMacos', 'customMacosLabel', 'releaseStatus', 'retryRelease',
+    'releaseTag', 'releaseSize', 'expectVersion', 'unzipCmd', 'unzipCopy', 'termOut1', 'termOut4'
+  ].map(id => [id, element()]));
+  ids.unzipCopy.setAttribute('data-copy', '');
+  ids.unzipCopy.classList.remove('is-copied', 'is-failed');
   const navToggle = element('Menu');
   const navLinks = element();
   const navLink = element('Install');
@@ -64,19 +73,23 @@ function page({ clipboard, legacy = false } = {}) {
     body: { appendChild() {}, removeChild() {} },
     createElement: () => element(),
     execCommand() { legacyCalls++; return legacy; },
-    querySelector: selector => selector === '#installer' ? installer : selector === '#navToggle' ? navToggle : selector === '#navLinks' ? navLinks : null,
-    querySelectorAll: selector => selector === '.cmd__copy, .term-copy' ? buttons : [],
-    getElementById() { return null; }
+    querySelector: selector => selector === '#installer' ? installer : selector === '#navToggle' ? navToggle : selector === '#navLinks' ? navLinks : selector.startsWith('#') ? ids[selector.slice(1)] || null : null,
+    querySelectorAll: selector => selector === '.cmd__copy, .term-copy' ? [...buttons, ids.unzipCopy] : [],
+    getElementById(id) { return ids[id] || null; }
   };
   const window = {
     matchMedia: () => ({ matches: true }),
-    addEventListener: (name, callback) => listeners.set(name, callback)
+    addEventListener: (name, callback) => listeners.set(name, callback),
+    fetch: fetcher,
+    AerialDropCompatibility: compatibility
   };
-  vm.runInNewContext(source, { document, window, navigator: { clipboard }, setTimeout() {}, clearTimeout() {} });
-  return { buttons, methods, panels, statuses, document, rail, navToggle, navLinks, navLink, legacyCalls: () => legacyCalls, resize: () => listeners.get('resize')() };
+  vm.runInNewContext(source, { document, window, navigator: { clipboard }, fetch: fetcher, setTimeout() {}, clearTimeout() {} });
+  return { ids, buttons, methods, panels, statuses, document, rail, navToggle, navLinks, navLink, legacyCalls: () => legacyCalls, resize: () => listeners.get('resize')() };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
+function response(data) { return { ok: true, json: async () => data }; }
+function standardFetch(url) { return Promise.resolve(response(url === 'release-compatibility.json' ? fixture.policy : fixture.catalogues.base)); }
 
 async function main() {
   const tabletRules = styles.slice(styles.indexOf('@media (max-width: 960px)'), styles.indexOf('@media (max-width: 720px)'));
@@ -157,6 +170,33 @@ async function main() {
   const thrown = page({ clipboard: { writeText() { throw new Error('unavailable'); } }, legacy: true });
   thrown.buttons[0].fire('click');
   assert.equal(thrown.statuses[0].textContent, 'Command copied.', 'synchronous API failure falls back');
+
+  for (const copySucceeds of [true, false]) {
+    const releasePage = page({
+      clipboard: { writeText() { return copySucceeds ? Promise.resolve() : Promise.reject(new Error('denied')); } },
+      fetcher: standardFetch
+    });
+    const { ids } = releasePage;
+    const zipCopy = ids.unzipCopy;
+    ids.macosSelect.value = '26';
+    ids.macosSelect.fire('change');
+    await flush();
+    assert.match(zipCopy.getAttribute('data-copy'), /AerialDrop-1\.1\.9-macOS\.zip/);
+    zipCopy.fire('click');
+    await flush();
+    assert(copySucceeds ? zipCopy.classList.contains('is-copied') : zipCopy.classList.contains('is-failed'));
+    assert.notEqual(zipCopy.copyStatus.textContent, '');
+
+    ids.macosSelect.value = '27';
+    ids.macosSelect.fire('change');
+    assert.equal(zipCopy.disabled, true);
+    assert.equal(zipCopy.copyStatus.textContent, '', 'changing release clears old copy feedback immediately');
+    assert.equal(zipCopy.classList.contains('is-copied'), false);
+    assert.equal(zipCopy.classList.contains('is-failed'), false);
+    await flush();
+    assert.match(zipCopy.getAttribute('data-copy'), /AerialDrop-1\.1\.10-macOS\.zip/);
+    assert.equal(zipCopy.copyStatus.textContent, '', 'resolved release does not restore stale copy feedback');
+  }
 
   function selected(index) {
     ui.methods.forEach((method, i) => {
