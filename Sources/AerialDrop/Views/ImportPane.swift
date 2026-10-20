@@ -39,6 +39,12 @@ struct ImportPane: View {
                 "Video ready to configure."
             ).post()
         }
+        .onChange(of: model.sourcePreparationError) { _, error in
+            guard let error else { return }
+            AccessibilityNotification.Announcement(
+                "Video preparation failed. \(error)"
+            ).post()
+        }
     }
 
     private func importWorkflow(model: AppModel) -> some View {
