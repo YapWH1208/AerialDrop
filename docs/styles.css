@@ -1614,11 +1614,24 @@ html[data-theme="dark"] .icon-btn .icon--moon {
 /* ---------------- Responsive ---------------- */
 
 @media (max-width: 960px) {
-  .nav__toggle {
+  .nav {
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+  }
+
+  .nav__toggle.is-enhanced {
     display: flex;
   }
 
   .nav__links {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    padding: 8px 0 12px;
+  }
+
+  .nav__links.is-collapsible {
     display: none;
     position: absolute;
     top: 60px;
@@ -1634,11 +1647,11 @@ html[data-theme="dark"] .icon-btn .icon--moon {
     border-bottom: 1px solid var(--line);
   }
 
-  .nav__links.open {
+  .nav__links.is-collapsible.open {
     display: flex;
   }
 
-  .nav__actions {
+  .nav__links.is-collapsible .nav__actions {
     margin-left: 0;
     padding-top: 8px;
     border-top: 1px solid var(--line);

@@ -18,7 +18,12 @@ function page({ clipboard, legacy = false } = {}) {
       classList: {
         add(...names) { names.forEach(name => classes.add(name)); },
         remove(...names) { names.forEach(name => classes.delete(name)); },
-        toggle(name, on) { if (on) classes.add(name); else classes.delete(name); }
+        contains(name) { return classes.has(name); },
+        toggle(name, force) {
+          const on = force === undefined ? !classes.has(name) : Boolean(force);
+          if (on) classes.add(name); else classes.delete(name);
+          return on;
+        }
       },
       setAttribute(key, value) { attrs.set(key, String(value)); },
       getAttribute(key) { return attrs.get(key) || null; },
@@ -33,6 +38,10 @@ function page({ clipboard, legacy = false } = {}) {
   }
   const buttons = [element('Copy'), element('Copy')];
   buttons.forEach((button, i) => button.setAttribute('data-copy', 'command-' + i));
+  const navToggle = element('Menu');
+  const navLinks = element();
+  const navLink = element('Install');
+  navLinks.querySelectorAll = selector => selector === 'a' ? [navLink] : [];
   const rail = element();
   rail.clientWidth = 320;
   rail.scrollWidth = 600;
@@ -55,7 +64,7 @@ function page({ clipboard, legacy = false } = {}) {
     body: { appendChild() {}, removeChild() {} },
     createElement: () => element(),
     execCommand() { legacyCalls++; return legacy; },
-    querySelector: selector => selector === '#installer' ? installer : null,
+    querySelector: selector => selector === '#installer' ? installer : selector === '#navToggle' ? navToggle : selector === '#navLinks' ? navLinks : null,
     querySelectorAll: selector => selector === '.cmd__copy, .term-copy' ? buttons : [],
     getElementById() { return null; }
   };
@@ -64,19 +73,29 @@ function page({ clipboard, legacy = false } = {}) {
     addEventListener: (name, callback) => listeners.set(name, callback)
   };
   vm.runInNewContext(source, { document, window, navigator: { clipboard }, setTimeout() {}, clearTimeout() {} });
-  return { buttons, methods, panels, statuses, document, rail, legacyCalls: () => legacyCalls, resize: () => listeners.get('resize')() };
+  return { buttons, methods, panels, statuses, document, rail, navToggle, navLinks, navLink, legacyCalls: () => legacyCalls, resize: () => listeners.get('resize')() };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 
 async function main() {
   const tabletRules = styles.slice(styles.indexOf('@media (max-width: 960px)'), styles.indexOf('@media (max-width: 720px)'));
-  assert.match(tabletRules, /\.nav__toggle\s*\{\s*display:\s*flex/, 'navigation toggle must appear before links overflow tablet widths');
-  assert.match(tabletRules, /\.nav__links\s*\{\s*display:\s*none/, 'full navigation collapses at the tablet breakpoint');
-  assert.match(tabletRules, /\.nav__links\.open\s*\{\s*display:\s*flex/, 'collapsed navigation remains available when opened');
+  assert.match(tabletRules, /\.nav__links\s*\{[^}]*flex:\s*1 1 100%/s, 'navigation links get a wrapping fallback row without JavaScript');
+  assert.doesNotMatch(tabletRules, /\.nav__links\s*\{[^}]*display:\s*none/s, 'navigation links stay visible without JavaScript');
+  assert.match(tabletRules, /\.nav__toggle\.is-enhanced\s*\{\s*display:\s*flex/, 'menu toggle appears only after its handler initializes');
+  assert.match(tabletRules, /\.nav__links\.is-collapsible\s*\{[^}]*display:\s*none/s, 'initialized navigation collapses at the tablet breakpoint');
+  assert.match(tabletRules, /\.nav__links\.is-collapsible\.open\s*\{\s*display:\s*flex/, 'collapsed navigation remains available when opened');
   const pending = [];
   const ui = page({ clipboard: { writeText() { const result = deferred(); pending.push(result); return result.promise; } } });
   const [button, other] = ui.buttons;
+  assert(ui.navToggle.classList.contains('is-enhanced'));
+  assert(ui.navLinks.classList.contains('is-collapsible'));
+  ui.navToggle.fire('click');
+  assert(ui.navLinks.classList.contains('open'));
+  assert.equal(ui.navToggle.getAttribute('aria-expanded'), 'true');
+  ui.navLink.fire('click');
+  assert(!ui.navLinks.classList.contains('open'));
+  assert.equal(ui.navToggle.getAttribute('aria-expanded'), 'false');
   assert(ui.statuses.every(status => status.getAttribute('role') === 'status' && !status.textContent));
   assert.equal(button.getAttribute('aria-describedby'), ui.statuses[0].id);
   button.fire('click');

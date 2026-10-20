@@ -36,6 +36,8 @@
         navToggle.setAttribute("aria-expanded", "false");
       });
     });
+    navToggle.classList.add("is-enhanced");
+    navLinks.classList.add("is-collapsible");
   }
 
   /* ---------- Active nav link while scrolling ---------- */
