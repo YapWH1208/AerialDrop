@@ -33,18 +33,6 @@ struct ImportPane: View {
             guard outcome != nil else { return }
             accessibilityStatus = .completion
         }
-        .onChange(of: model.isSelectedVideoValid) { wasValid, isValid in
-            guard !wasValid, isValid, model.selectedVideo != nil else { return }
-            AccessibilityNotification.Announcement(
-                "Video ready to configure."
-            ).post()
-        }
-        .onChange(of: model.sourcePreparationError) { _, error in
-            guard let error else { return }
-            AccessibilityNotification.Announcement(
-                "Video preparation failed. \(error)"
-            ).post()
-        }
     }
 
     private func importWorkflow(model: AppModel) -> some View {
