@@ -70,7 +70,7 @@
         <h1>Your videos, natively on the Tahoe desktop.</h1>
         <p class="hero__lede">AerialDrop imports your MP4 or MOV into macOS Tahoe&rsquo;s own Aerial catalogue. Screen saver and lock screen, played by Apple&rsquo;s pipeline. No helper processes, no app-managed player.</p>
         <aside class="trust-summary" aria-label="Installation security notice">
-          <strong>Before you install:</strong> AerialDrop is ad-hoc signed and not notarized by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine. A manual ZIP keeps it until you approve the first launch or clear it yourself. A local source build is not a quarantined download.
+          <strong>Before you install:</strong> AerialDrop is ad-hoc signed and not notarized by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine. A manual ZIP keeps the quarantine attribute; approving first launch saves a Gatekeeper exception, while removing that attribute separately uses <code>xattr</code>. A local source build is not a quarantined download.
         </aside>
         <div class="hero__cta">
           <a class="btn btn--primary btn--lg" href="#install">
@@ -356,7 +356,7 @@
           <div class="panel" id="panel-release" role="tabpanel" aria-labelledby="method-release" hidden>
             <div class="panel__head">
               <h3>Release zip</h3>
-              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. A manual ZIP keeps its download quarantine until you approve the first launch or clear it yourself.</p>
+              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. A manual ZIP retains its download quarantine. First-launch approval saves a Gatekeeper exception; removing the quarantine attribute is a separate action shown below.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -378,7 +378,7 @@
                 <span class="step__num" aria-hidden="true">2</span>
                 <div class="step__content">
                   <h4>First launch</h4>
-                  <p class="step__note">The app is ad-hoc signed, so Gatekeeper may ask the first time: right-click the app and choose <strong>Open</strong> once, or clear the quarantine:</p>
+                  <p class="step__note">The app is ad-hoc signed, so Gatekeeper may ask the first time. Right-click the app and choose <strong>Open</strong> once to save an approval exception. To remove the quarantine attribute separately, run:</p>
                   <div class="cmd">
                     <pre><code>xattr -dr com.apple.quarantine /Applications/AerialDrop.app</code></pre>
                     <button class="cmd__copy" type="button" data-copy="xattr -dr com.apple.quarantine /Applications/AerialDrop.app">Copy</button>
@@ -593,7 +593,7 @@
         </details>
         <details class="faq__item">
           <summary>Is the app signed or notarized?</summary>
-          <p>It is ad-hoc signed and not notarized. Gatekeeper may complain on first launch: right-click and choose Open once, or clear the quarantine. Only install from the official repository, and audit the open-source code if you have concerns.</p>
+          <p>It is ad-hoc signed and not notarized. Gatekeeper may block the first launch; approving it saves a security exception but does not remove the download quarantine attribute. To remove that attribute manually, use the <code>xattr</code> command in the Release zip instructions. Only install from the official repository, and audit the open-source code if you have concerns.</p>
         </details>
         <details class="faq__item">
           <summary>Does AerialDrop need to keep running after setup?</summary>

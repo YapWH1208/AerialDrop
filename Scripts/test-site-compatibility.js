@@ -107,7 +107,9 @@ async function main() {
   assert.match(summary, /ad-hoc signed/);
   assert.match(summary, /not notarized by Apple/);
   assert.match(summary, /Homebrew and the install script clear/);
-  assert.match(summary, /manual ZIP keeps/);
+  assert.match(summary, /manual ZIP keeps the quarantine attribute/);
+  assert.match(summary, /approving first launch saves a Gatekeeper exception/);
+  assert.match(summary, /removing that attribute separately uses/);
   assert.match(summary, /local source build is not a quarantined download/);
 
   const panelText = id => {
@@ -118,7 +120,9 @@ async function main() {
   };
   assert.match(panelText('panel-homebrew'), /clears its download quarantine/);
   assert.match(panelText('panel-script'), /clears the quarantine/);
-  assert.match(panelText('panel-release'), /keeps its download quarantine/);
+  assert.match(panelText('panel-release'), /retains its download quarantine/);
+  assert.match(panelText('panel-release'), /First-launch approval saves a Gatekeeper exception/);
+  assert.match(panelText('panel-release'), /remove the quarantine attribute separately/);
   assert.match(panelText('panel-source'), /without a download quarantine because it was built locally/);
   assert(!/data-download[^>]*href=/.test(html), 'static ZIP link must not target global latest');
   const sourceCommand = html.match(/<pre><code>(VERSION="[\s\S]*?)<\/code><\/pre>\s*<button class="cmd__copy" type="button" data-copy="([^"]+)"/);
