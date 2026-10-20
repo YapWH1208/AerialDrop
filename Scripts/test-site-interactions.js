@@ -198,6 +198,29 @@ async function main() {
     assert.equal(zipCopy.copyStatus.textContent, '', 'resolved release does not restore stale copy feedback');
   }
 
+  const staleReleaseCopy = deferred();
+  const pendingReleasePage = page({
+    clipboard: { writeText() { return staleReleaseCopy.promise; } },
+    fetcher: standardFetch
+  });
+  const pendingReleaseZipCopy = pendingReleasePage.ids.unzipCopy;
+  pendingReleasePage.ids.macosSelect.value = '26';
+  pendingReleasePage.ids.macosSelect.fire('change');
+  await flush();
+  pendingReleaseZipCopy.fire('click');
+  pendingReleasePage.ids.macosSelect.value = '27';
+  pendingReleasePage.ids.macosSelect.fire('change');
+  assert.equal(pendingReleaseZipCopy.copyStatus.textContent, '', 'release change clears pending copy feedback');
+  await flush();
+  pendingReleasePage.ids.macosSelect.value = '26';
+  pendingReleasePage.ids.macosSelect.fire('change');
+  await flush();
+  assert.match(pendingReleaseZipCopy.getAttribute('data-copy'), /AerialDrop-1\.1\.9-macOS\.zip/);
+  staleReleaseCopy.resolve();
+  await flush();
+  assert.equal(pendingReleaseZipCopy.copyStatus.textContent, '', 'old pending copy cannot restore feedback after returning to its release');
+  assert.equal(pendingReleaseZipCopy.classList.contains('is-copied'), false);
+
   function selected(index) {
     ui.methods.forEach((method, i) => {
       assert.equal(method.getAttribute('aria-selected'), i === index ? 'true' : 'false');
