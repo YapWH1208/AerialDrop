@@ -457,7 +457,7 @@
 
       <details class="notice reveal">
         <summary>Before you install: the unsigned-app notice</summary>
-        <p>AerialDrop is ad-hoc signed and <strong>not notarized</strong> by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine, which bypasses Apple&rsquo;s first-launch malware check for that download. A manual ZIP keeps the quarantine unless you approve the app once or run the provided <code>xattr</code> command; a local source build does not have a download quarantine. Only install from the official
+        <p>AerialDrop is ad-hoc signed and <strong>not notarized</strong> by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine, which bypasses Apple&rsquo;s first-launch malware check for that download. A manual ZIP retains the quarantine attribute. Approving the app saves a Gatekeeper exception but does not remove that attribute; to remove it, run the provided <code>xattr</code> command. A local source build does not have a download quarantine. Only install from the official
         <a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">YapWH1208/AerialDrop</a> repository, and audit the open-source code if you have concerns. Apple verification requires Developer ID notarization.</p>
       </details>
     </div>

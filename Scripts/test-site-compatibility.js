@@ -124,6 +124,12 @@ async function main() {
   assert.match(panelText('panel-release'), /First-launch approval saves a Gatekeeper exception/);
   assert.match(panelText('panel-release'), /remove the quarantine attribute separately/);
   assert.match(panelText('panel-source'), /without a download quarantine because it was built locally/);
+  const securityNoticeStart = html.indexOf('<details class="notice reveal">');
+  const securityNoticeEnd = html.indexOf('</details>', securityNoticeStart);
+  const securityNotice = html.slice(securityNoticeStart, securityNoticeEnd);
+  assert.match(securityNotice, /manual ZIP retains the quarantine attribute/);
+  assert.match(securityNotice, /saves a Gatekeeper exception but does not remove that attribute/);
+  assert.match(securityNotice, /to remove it, run the provided/);
   assert(!/data-download[^>]*href=/.test(html), 'static ZIP link must not target global latest');
   const sourceCommand = html.match(/<pre><code>(VERSION="[\s\S]*?)<\/code><\/pre>\s*<button class="cmd__copy" type="button" data-copy="([^"]+)"/);
   assert(sourceCommand, 'source tag command and copy control are missing');
