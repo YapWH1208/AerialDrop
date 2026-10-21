@@ -93,6 +93,7 @@ struct LibraryPane: View {
             }
         }
         .onAppear {
+            applyBulkRecoverySelection()
             applyPendingHighlight()
             normalizeSelection()
         }
@@ -101,6 +102,9 @@ struct LibraryPane: View {
         }
         .onChange(of: model.wallpapers) { _, _ in
             normalizeSelection()
+        }
+        .onChange(of: model.bulkRemovalRecovery) { _, recovery in
+            if recovery != nil { applyBulkRecoverySelection() }
         }
         .onChange(of: searchText) { _, _ in
             normalizeSelection()
@@ -223,7 +227,9 @@ struct LibraryPane: View {
                 .accessibilityElement(children: .combine)
             }
 
-            if selectedWallpapers.count > 1 {
+            if let recovery = model.bulkRemovalRecovery {
+                bulkRecoveryBanner(recovery)
+            } else if selectedWallpapers.count > 1 {
                 bulkSelectionBanner
             }
 
@@ -274,6 +280,45 @@ struct LibraryPane: View {
         .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .padding(.horizontal, 24)
         .accessibilityElement(children: .contain)
+    }
+
+    private func bulkRecoveryBanner(_ recovery: BulkRemovalRecovery) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(recovery.catalogueVerified
+                ? "\(recovery.remainingIDs.count) \(recovery.remainingIDs.count == 1 ? "wallpaper still needs" : "wallpapers still need") removal."
+                : "Removal status could not be checked. Reload the catalogue before retrying.")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Dismiss") { model.dismissBulkRemovalRecovery() }
+                    .disabled(model.isWorking)
+                if recovery.catalogueVerified {
+                    Button("Retry Remaining…", role: .destructive) {
+                        prepareBulkRemoval(model.bulkRemovalRetryWallpapers)
+                    }
+                    .disabled(model.isWorking || model.bulkRemovalRetryWallpapers.isEmpty)
+                    .help("Review the remaining wallpapers and check active status again before removal")
+                } else {
+                    Button("Reload Catalogue", systemImage: "arrow.clockwise") {
+                        Task { await model.refreshCataloguePreservingContent() }
+                    }
+                    .disabled(model.isWorking || model.catalogueRefreshState == .refreshing)
+                }
+            }
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Removal recovery")
+    }
+
+    private func applyBulkRecoverySelection() {
+        guard let recovery = model.bulkRemovalRecovery else { return }
+        let visibleIDs = filteredWallpapers.map(\.id)
+        selectedIDs = recovery.remainingIDs.intersection(Set(visibleIDs))
+        selectionAnchorID = visibleIDs.first { selectedIDs.contains($0) }
     }
 
     private var canBulkRemove: Bool {
@@ -337,8 +382,6 @@ struct LibraryPane: View {
     private func confirmBulkRemoval(allowingUnverifiedSelection: Bool = false) {
         let wallpapers = pendingBulkRemoval
         cancelBulkRemoval()
-        selectedIDs = []
-        selectionAnchorID = nil
         guard !wallpapers.isEmpty else { return }
         model.remove(
             wallpapers,

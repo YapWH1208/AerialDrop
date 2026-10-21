@@ -138,12 +138,14 @@ func applicableHeightCap(_ cap: Int?, sourceSize: CGSize) -> Int? {
     return cap
 }
 
-/// True when the source is at least 21:9 — the threshold where crop controls
-/// become useful. Sub-21:9 sources crop trivially, so the UI hides them.
-func isUltrawide(_ size: CGSize) -> Bool {
+/// True when fitting the source into the native 16:9 output removes content
+/// from its left and right edges. Even modestly wider sources need the crop
+/// control because the user, rather than a hidden center crop, should choose
+/// which content survives.
+func isWiderThan16By9(_ size: CGSize) -> Bool {
     guard size.width.isFinite, size.height.isFinite,
           size.width > 0, size.height > 0 else { return false }
-    return size.width / size.height >= (21.0 / 9.0) - 0.001
+    return size.width / size.height > (16.0 / 9.0) + 0.001
 }
 
 /// True when the source is narrower than 16:9 (e.g. portrait or 4:3) — the
@@ -155,9 +157,9 @@ func isNarrowerThan16By9(_ size: CGSize) -> Bool {
 }
 
 /// True when the source is not 16:9 — the encode crops it in one direction to
-/// fill the 16:9 frame (horizontally for ultrawide, vertically otherwise).
+/// fill the 16:9 frame (horizontally for wider sources, vertically otherwise).
 func hasCropWindow(_ size: CGSize) -> Bool {
-    isUltrawide(size) || isNarrowerThan16By9(size)
+    isWiderThan16By9(size) || isNarrowerThan16By9(size)
 }
 
 /// The height of the largest 16:9 window that fits inside the source without
@@ -216,7 +218,7 @@ func cropBandFractions(cropOffset: Double, sourceSize: CGSize) -> (left: Double,
 /// Fractions of the preview box height to darken above and below the visible
 /// 16:9 crop window, in 0...1 box space. The window is always vertically
 /// centered — the encode pan is horizontal only — so the bands are symmetric.
-/// Sources narrower than 16:9 only; 16:9 and ultrawide sources return none.
+/// Sources narrower than 16:9 only; 16:9 and wider sources return none.
 func verticalCropBandFractions(sourceSize: CGSize) -> (top: Double, bottom: Double) {
     guard isNarrowerThan16By9(sourceSize) else { return (0, 0) }
     let f = (sourceSize.width / sourceSize.height) / (16.0 / 9.0)

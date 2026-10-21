@@ -169,15 +169,14 @@ final class ConversionOptionsTests: XCTestCase {
         )
     }
 
-    func testIsUltrawide() {
-        XCTAssertTrue(isUltrawide(CGSize(width: 3440, height: 1440)))
-        XCTAssertTrue(isUltrawide(CGSize(width: 2560, height: 1080)))
-        XCTAssertTrue(isUltrawide(CGSize(width: 5120, height: 2160)))
-        XCTAssertTrue(isUltrawide(CGSize(width: 2100, height: 900))) // exact 21:9
-        XCTAssertFalse(isUltrawide(CGSize(width: 1920, height: 1080)))
-        XCTAssertFalse(isUltrawide(CGSize(width: 2048, height: 1152)))
-        XCTAssertFalse(isUltrawide(CGSize(width: 3440, height: 1720))) // 2:1
-        XCTAssertFalse(isUltrawide(CGSize(width: 1000, height: 1000)))
+    func testIsWiderThan16By9IncludesEverySourceThatLosesSideContent() {
+        XCTAssertTrue(isWiderThan16By9(CGSize(width: 3440, height: 1440)))
+        XCTAssertTrue(isWiderThan16By9(CGSize(width: 2100, height: 900))) // 21:9
+        XCTAssertTrue(isWiderThan16By9(CGSize(width: 2000, height: 1000))) // 2:1
+        XCTAssertTrue(isWiderThan16By9(CGSize(width: 2000, height: 900))) // 20:9
+        XCTAssertFalse(isWiderThan16By9(CGSize(width: 1920, height: 1080)))
+        XCTAssertFalse(isWiderThan16By9(CGSize(width: 2048, height: 1152)))
+        XCTAssertFalse(isWiderThan16By9(CGSize(width: 1000, height: 1000)))
     }
 
     func testNearestCropPreset() {
@@ -242,11 +241,11 @@ final class ConversionOptionsTests: XCTestCase {
         XCTAssertEqual(clampedOutputHeight(-5, sourceHeight: 1080), 2)
     }
 
-    func testIsUltrawideRejectsNonFiniteAndDegenerateInputs() {
-        XCTAssertFalse(isUltrawide(CGSize(width: CGFloat.nan, height: 1080)))
-        XCTAssertFalse(isUltrawide(CGSize(width: 0, height: 1080)))
-        XCTAssertFalse(isUltrawide(CGSize(width: 1920, height: 0)))
-        XCTAssertFalse(isUltrawide(CGSize(width: CGFloat.infinity, height: 1080)))
+    func testIsWiderThan16By9RejectsNonFiniteAndDegenerateInputs() {
+        XCTAssertFalse(isWiderThan16By9(CGSize(width: CGFloat.nan, height: 1080)))
+        XCTAssertFalse(isWiderThan16By9(CGSize(width: 0, height: 1080)))
+        XCTAssertFalse(isWiderThan16By9(CGSize(width: 1920, height: 0)))
+        XCTAssertFalse(isWiderThan16By9(CGSize(width: CGFloat.infinity, height: 1080)))
     }
 
     func testIsNarrowerThan16By9() {
@@ -260,10 +259,26 @@ final class ConversionOptionsTests: XCTestCase {
 
     func testHasCropWindow() {
         XCTAssertTrue(hasCropWindow(CGSize(width: 3440, height: 1440))) // ultrawide
+        XCTAssertTrue(hasCropWindow(CGSize(width: 2000, height: 1000))) // 2:1
+        XCTAssertTrue(hasCropWindow(CGSize(width: 2000, height: 900))) // 20:9
         XCTAssertTrue(hasCropWindow(CGSize(width: 1080, height: 1920))) // portrait
         XCTAssertTrue(hasCropWindow(CGSize(width: 1440, height: 1080))) // 4:3
         XCTAssertFalse(hasCropWindow(CGSize(width: 1920, height: 1080))) // exact 16:9
         XCTAssertFalse(hasCropWindow(CGSize(width: 0, height: 1080)))
+    }
+
+    func testModeratelyWideCropBandsAndPanMatchTheEncodedWindow() {
+        let source = CGSize(width: 2000, height: 1000)
+        let render = CGSize(width: 1600, height: 900)
+
+        let left = cropBandFractions(cropOffset: 0, sourceSize: source)
+        let right = cropBandFractions(cropOffset: 1, sourceSize: source)
+        XCTAssertEqual(left.left, 0, accuracy: 0.0001)
+        XCTAssertGreaterThan(left.right, 0)
+        XCTAssertGreaterThan(right.left, 0)
+        XCTAssertEqual(right.right, 0, accuracy: 0.0001)
+        XCTAssertLessThan(cropPan(cropOffset: 0, sourceSize: source, renderSize: render), 0)
+        XCTAssertGreaterThan(cropPan(cropOffset: 1, sourceSize: source, renderSize: render), 0)
     }
 
     func testNaturalWindowHeight() {

@@ -180,6 +180,107 @@ final class ManifestStoreTests: XCTestCase {
         XCTAssertEqual(info.url, renameBackup)
     }
 
+    func testBackupHistoryListsMetadataWithoutSnapshottingContents() throws {
+        let older = paths.backups.appending(path: "entries-20260801-100000-000-import.json")
+        let newer = paths.backups.appending(path: "entries-20260809-181419-745-remove-all-2.json")
+        try Data("older".utf8).write(to: older)
+        try Data("before selection".utf8).write(to: newer)
+        for name in ["notes.json", "entries-invalid-import.json", "entries-20260809-181419-745-import.txt"] {
+            try Data("ignored".utf8).write(to: paths.backups.appending(path: name))
+        }
+
+        let history = try store.backupHistory()
+
+        XCTAssertEqual(history.map(\.url), [newer, older])
+        XCTAssertEqual(history.map(\.operation), ["remove-all-2", "import"])
+        XCTAssertEqual(history.first?.id, newer)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+        XCTAssertEqual(history.first?.date, formatter.date(from: "20260809-181419-745"))
+
+        // Listing retains metadata; the explicit selection captures its current
+        // bytes once, and later changes cannot silently alter that confirmation.
+        let selectedData = Data("at selection".utf8)
+        try selectedData.write(to: newer)
+        let confirmed = try XCTUnwrap(history.first).snapshot()
+        XCTAssertEqual(confirmed.content, selectedData)
+        try Data("after selection".utf8).write(to: newer)
+        XCTAssertEqual(confirmed.content, selectedData)
+    }
+
+    func testBackupHistoryOrdersTimestampThenModificationDateThenName() throws {
+        let olderTimestamp = paths.backups.appending(path: "entries-20260801-100000-000-restore.json")
+        let importBackup = paths.backups.appending(path: "entries-20260809-181419-745-import.json")
+        let renameBackup = paths.backups.appending(path: "entries-20260809-181419-745-rename.json")
+        let removeBackup = paths.backups.appending(path: "entries-20260809-181419-745-remove-all-2.json")
+        let earlierWrite = Date(timeIntervalSince1970: 1_700_000_000)
+        let laterWrite = earlierWrite.addingTimeInterval(1)
+        for url in [olderTimestamp, importBackup, renameBackup, removeBackup] {
+            try Data("{}".utf8).write(to: url)
+        }
+        try FileManager.default.setAttributes([.modificationDate: laterWrite.addingTimeInterval(1)], ofItemAtPath: olderTimestamp.path)
+        try FileManager.default.setAttributes([.modificationDate: laterWrite], ofItemAtPath: importBackup.path)
+        try FileManager.default.setAttributes([.modificationDate: earlierWrite], ofItemAtPath: renameBackup.path)
+        try FileManager.default.setAttributes([.modificationDate: laterWrite], ofItemAtPath: removeBackup.path)
+
+        XCTAssertEqual(try store.backupHistory().map(\.url), [removeBackup, importBackup, renameBackup, olderTimestamp])
+        XCTAssertEqual(store.latestBackup()?.url, removeBackup)
+    }
+
+    func testBackupHistoryDistinguishesEmptyMissingAndUnreadableDirectory() throws {
+        XCTAssertTrue(try store.backupHistory().isEmpty)
+
+        try FileManager.default.removeItem(at: paths.backups)
+        XCTAssertTrue(try store.backupHistory().isEmpty)
+
+        // A regular file in place of the directory reliably fails enumeration
+        // even when tests run as a user who can bypass permission-bit fixtures.
+        try Data("not a directory".utf8).write(to: paths.backups)
+        XCTAssertThrowsError(try store.backupHistory())
+    }
+
+    func testOlderBackupSelectionRestoresItsSnapshotAndPreservesForeignEntries() throws {
+        let id = "12121212-3434-4567-8AAA-999999999990"
+        try Data("video".utf8).write(to: paths.videoURL(for: id))
+        try Data("png".utf8).write(to: paths.thumbnailURL(for: id))
+        try store.addWallpaper(id: id, title: "Older title")
+        let olderData = try Data(contentsOf: paths.manifest)
+        try store.renameWallpaper(id: id, title: "Newer title")
+        let newerData = try Data(contentsOf: paths.manifest)
+        try store.renameWallpaper(id: id, title: "Current title")
+        let before = try json(at: paths.manifest)
+
+        // Keep this fixture's history deterministic, independent of the clock.
+        for name in try FileManager.default.contentsOfDirectory(atPath: paths.backups.path) {
+            try FileManager.default.removeItem(at: paths.backups.appending(path: name))
+        }
+        let older = paths.backups.appending(path: "entries-20260801-100000-000-rename.json")
+        let newer = paths.backups.appending(path: "entries-20260809-181419-745-rename.json")
+        try olderData.write(to: older)
+        try newerData.write(to: newer)
+        let history = try store.backupHistory()
+        XCTAssertEqual(history.map(\.url), [newer, older])
+        let selected = try XCTUnwrap(history.last).snapshot()
+
+        try store.restoreBackup(selected, protectingActiveAssetIDs: { [] })
+
+        XCTAssertEqual(try store.importedWallpapers().first?.title, "Older title")
+        let after = try json(at: paths.manifest)
+        let foreignAssets: ([String: Any]) -> [[String: Any]] = { root in
+            (root["assets"] as? [[String: Any]] ?? []).filter {
+                !(($0["categories"] as? [String]) ?? []).contains(ManifestStore.categoryID)
+            }
+        }
+        let foreignCategories: ([String: Any]) -> [[String: Any]] = { root in
+            (root["categories"] as? [[String: Any]] ?? []).filter {
+                ($0["id"] as? String) != ManifestStore.categoryID
+            }
+        }
+        XCTAssertEqual(canonical(foreignAssets(after)), canonical(foreignAssets(before)))
+        XCTAssertEqual(canonical(foreignCategories(after)), canonical(foreignCategories(before)))
+    }
+
     func testRestoreBackupWrapsMissingManifestAsRejected() throws {
         let backup = paths.backups.appending(path: "entries-20260809-181419-745-import.json")
         try fixtureData().write(to: backup)

@@ -115,38 +115,63 @@ struct ManifestStore {
         }
     }
 
-    /// The newest AerialDrop manifest backup, or nil when none exists.
+    /// Lightweight history metadata. The selected entry captures its bytes
+    /// only when the user proceeds to confirmation.
+    struct BackupEntry: Identifiable, Equatable {
+        let url: URL
+        let date: Date
+        let operation: String
+
+        var id: URL { url }
+
+        func snapshot() -> BackupInfo {
+            BackupInfo(url: url, date: date, operation: operation)
+        }
+    }
+
+    /// AerialDrop manifest history, newest first, without loading backup contents.
+    /// A missing backup directory is empty history; other read errors remain
+    /// visible so the UI can offer a retry instead of claiming no backups exist.
     /// Backups written within the same millisecond share a timestamp, so they
     /// are ordered by the file's modification date (the actual write order);
     /// the full backup name breaks any remaining ties so that directory
     /// enumeration order never decides the winner.
-    func latestBackup() -> BackupInfo? {
-        guard let names = try? fileManager.contentsOfDirectory(atPath: paths.backups.path) else { return nil }
+    func backupHistory() throws -> [BackupEntry] {
+        let names: [String]
+        do {
+            names = try fileManager.contentsOfDirectory(atPath: paths.backups.path)
+        } catch CocoaError.fileReadNoSuchFile {
+            return []
+        }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
 
-        let candidates: [(name: String, url: URL, date: Date, operation: String)] = names.compactMap { name in
+        let candidates: [(entry: BackupEntry, modified: Date, name: String)] = try names.compactMap { name in
             guard name.hasPrefix("entries-"), name.hasSuffix(".json") else { return nil }
             let core = String(name.dropFirst("entries-".count).dropLast(".json".count))
             guard core.count > 20 else { return nil }
             let timestamp = String(core.prefix(19))
             let operation = String(core.dropFirst(20))
             guard let date = formatter.date(from: timestamp) else { return nil }
-            return (name, paths.backups.appending(path: name), date, operation)
+            let url = paths.backups.appending(path: name)
+            let modified = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? date
+            return (BackupEntry(url: url, date: date, operation: operation), modified, name)
         }
 
-        let newest = candidates
+        return candidates
             .sorted { lhs, rhs in
-                guard lhs.date == rhs.date else { return lhs.date > rhs.date }
-                let lhsModified = (try? lhs.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? lhs.date
-                let rhsModified = (try? rhs.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? rhs.date
-                guard lhsModified == rhsModified else { return lhsModified > rhsModified }
+                guard lhs.entry.date == rhs.entry.date else { return lhs.entry.date > rhs.entry.date }
+                guard lhs.modified == rhs.modified else { return lhs.modified > rhs.modified }
                 return lhs.name > rhs.name
             }
-            .first
-        guard let newest else { return nil }
-        return BackupInfo(url: newest.url, date: newest.date, operation: newest.operation)
+            .map(\.entry)
+    }
+
+    /// Compatibility helper that snapshots only the newest backup.
+    func latestBackup() -> BackupInfo? {
+        guard let newest = try? backupHistory().first else { return nil }
+        return newest.snapshot()
     }
 
     /// Replaces the current manifest with the backup's content, after backing

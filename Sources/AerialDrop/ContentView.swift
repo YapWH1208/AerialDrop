@@ -7,13 +7,16 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var destination: AppDestination? = .library
     @State private var preImportDestination: AppDestination?
-    @State private var confirmation: ConfirmationKind?
-    @State private var alertPresented = false
-    @State private var alertTitle = "AerialDrop"
-    @State private var alertMessage: String?
+    @State private var confirmation: ConfirmationRequest?
+    @State private var presentedConfirmation: ConfirmationRequest?
+    @State private var presentedAlert: AppAlert?
+    @State private var showingBackupChooser = false
+    @State private var pendingBackupConfirmation: ManifestStore.BackupInfo?
 
     var body: some View {
         @Bindable var model = model
+        let alert = presentedAlert
+        let request = presentedConfirmation
         NavigationSplitView {
             List(selection: $destination) {
                 ForEach(AppDestination.allCases) { item in
@@ -33,14 +36,14 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 catalogueRefreshBanner
-                if destination == .library && isImportInProgress {
-                    LibraryImportStatusView(
+                if isImportInProgress {
+                    ImportStatusView(
                         stage: model.stage,
                         progress: model.displayProgress,
                         eta: model.encodeETA,
                         canCancel: model.isImportCancellable,
                         onCancel: model.cancelImport,
-                        onViewImport: { destination = .importVideo }
+                        onViewImport: destination == .library ? { destination = .importVideo } : nil
                     )
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
@@ -49,24 +52,32 @@ struct ContentView: View {
             }
         }
         .tint(AerialTheme.accent)
-        .toolbar {
-            primaryToolbarContent
-
-            ToolbarItemGroup(placement: .secondaryAction) {
-                Button("Reload Catalogue", systemImage: "arrow.clockwise") {
-                    Task { await model.refreshCataloguePreservingContent() }
+        .modifier(SourcePreparationAnnouncements(model: model))
+        .toolbar { toolbarContents }
+        .alert(
+            alert?.title ?? "AerialDrop",
+            isPresented: alertPresentationBinding(for: alert),
+            presenting: alert
+        ) { alert in
+            ForEach(alert.actions) { action in
+                Button(action.label) {
+                    dismissPresentedAlert(id: alert.id)
+                    model.performAlertAction(action, fromAlertID: alert.id)
                 }
-                .disabled(model.isWorking || model.catalogueRefreshState == .refreshing)
-
-                Button("Wallpaper Settings", systemImage: "photo") {
-                    model.openWallpaperSettings()
-                }
-
-                maintenanceMenu
             }
-        }
-        .alert(alertTitle, isPresented: $alertPresented) { } message: {
-            Text(alertMessage ?? "")
+            if !alert.actions.isEmpty {
+                Button("Not Now", role: .cancel) {
+                    dismissPresentedAlert(id: alert.id)
+                    model.dismissAlert(id: alert.id)
+                }
+            } else {
+                Button("OK", role: .cancel) {
+                    dismissPresentedAlert(id: alert.id)
+                    model.dismissAlert(id: alert.id)
+                }
+            }
+        } message: { alert in
+            Text(alert.message)
         }
         .alert(
             "Couldn’t Set Wallpaper",
@@ -83,21 +94,16 @@ struct ContentView: View {
                 ?? "You can retry or choose it in System Settings."
             Text("AerialDrop kept its imported video and catalogue entry, but could not apply it as wallpaper. \(failureMessage)")
         }
-        .onChange(of: model.activeAlert) { _, newValue in
-            if let newValue {
-                alertTitle = newValue.title
-                alertMessage = newValue.message
-                alertPresented = true
-            }
-        }
-        .onChange(of: alertPresented) { _, presented in
-            if !presented && model.activeAlert != nil {
-                model.activeAlert = nil
-            }
+        .onChange(of: model.activeAlert, initial: true) { _, newValue in
+            presentedAlert = newValue
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, !model.isWorking else { return }
             Task { await model.refreshCataloguePreservingContent() }
+        }
+        .onChange(of: model.stage) { oldStage, newStage in
+            guard oldStage != newStage, model.isWorking, newStage != .finished else { return }
+            AccessibilityNotification.Announcement(newStage.label).post()
         }
         .onChange(of: model.catalogueRefreshState) { _, state in
             if case .failed = state {
@@ -114,35 +120,44 @@ struct ContentView: View {
             destination = .importVideo
         }
         .confirmationDialog(
-            confirmationTitle,
-            isPresented: Binding(
-                get: { confirmation != nil },
-                set: { if !$0 { confirmation = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            switch confirmation {
+            confirmationTitle(for: request?.kind),
+            isPresented: confirmationPresentationBinding(for: request),
+            titleVisibility: .visible,
+            presenting: request
+        ) { request in
+            switch request.kind {
             case .removeAll(let requiresAcknowledgement):
                 if requiresAcknowledgement {
-                    Button("Check Again") { retryRemoveAllPreparation() }
+                    Button("Check Again") { retryRemoveAllPreparation(request) }
                     Button("Open Wallpaper Settings") {
-                        confirmation = nil
+                        dismissConfirmation(request)
                         model.openWallpaperSettings()
                     }
                     Button("Remove Anyway", role: .destructive) {
-                        performConfirmation(allowingUnverifiedSelection: true)
+                        performConfirmation(request, allowingUnverifiedSelection: true)
                     }
                 } else {
-                    Button("Remove All", role: .destructive) { performConfirmation() }
+                    Button("Remove All", role: .destructive) { performConfirmation(request) }
                 }
             case .restore:
-                Button("Restore Backup") { performConfirmation() }
-            case nil:
-                EmptyView()
+                Button("Restore Backup") { performConfirmation(request) }
             }
-            Button(confirmationCancelTitle, role: .cancel) { confirmation = nil }
-        } message: {
-            Text(confirmationMessage)
+            Button(confirmationCancelTitle(for: request.kind), role: .cancel) { dismissConfirmation(request) }
+        } message: { request in
+            Text(confirmationMessage(for: request.kind))
+        }
+        .onChange(of: confirmation) { _, value in
+            presentedConfirmation = value
+        }
+        .sheet(isPresented: $showingBackupChooser, onDismiss: presentBackupConfirmation) {
+            BackupChooser {
+                pendingBackupConfirmation = nil
+                showingBackupChooser = false
+            } onChoose: { snapshot in
+                guard showingBackupChooser else { return }
+                pendingBackupConfirmation = snapshot
+                showingBackupChooser = false
+            }
         }
         .fileImporter(
             isPresented: $model.showingFileImporter,
@@ -169,6 +184,25 @@ struct ContentView: View {
         }
         .fileDialogMessage("Choose an MP4 or MOV video to turn into a native Aerial wallpaper.")
         .fileDialogConfirmationLabel("Choose Video")
+    }
+
+    /// SwiftUI may finish dismissing an older dialog after a new failure arrives.
+    /// Capture the rendered alert here so that dismissal can only consume that ID.
+    private func alertPresentationBinding(for alert: AppAlert?) -> Binding<Bool> {
+        Binding(
+            get: { alert != nil && presentedAlert?.id == alert?.id },
+            set: { showing in
+                guard !showing, let alert else { return }
+                dismissPresentedAlert(id: alert.id)
+                // SwiftUI can dismiss the presentation before running a button.
+                // Only explicit action/cancel/OK buttons consume model context.
+            }
+        )
+    }
+
+    private func dismissPresentedAlert(id: AppAlert.ID) {
+        guard presentedAlert?.id == id else { return }
+        presentedAlert = nil
     }
 
     @ViewBuilder
@@ -237,6 +271,24 @@ struct ContentView: View {
     }
 
     @ToolbarContentBuilder
+    private var toolbarContents: some ToolbarContent {
+        primaryToolbarContent
+
+        ToolbarItemGroup(placement: .secondaryAction) {
+            Button("Reload Catalogue", systemImage: "arrow.clockwise") {
+                Task { await model.refreshCataloguePreservingContent() }
+            }
+            .disabled(model.isWorking || model.catalogueRefreshState == .refreshing)
+
+            Button("Wallpaper Settings", systemImage: "photo") {
+                model.openWallpaperSettings()
+            }
+
+            maintenanceMenu
+        }
+    }
+
+    @ToolbarContentBuilder
     private var primaryToolbarContent: some ToolbarContent {
         if !isImportInProgress, model.catalogueState == .ready {
             if destination == .importVideo, model.selectedVideo != nil {
@@ -294,8 +346,11 @@ struct ContentView: View {
     }
 
     private var importActionHelp: String {
+        if model.sourcePreparationError != nil {
+            return "Retry video preparation or replace the selected video"
+        }
         if !model.isSelectedVideoValid {
-            return "Wait for video validation to finish"
+            return "Wait for video preparation to finish"
         }
         if model.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "Enter a wallpaper name before importing"
@@ -316,18 +371,12 @@ struct ContentView: View {
             Button("Open Aerial Storage Folder") { model.openStorageFolder() }
             Button("Validate Current Catalogue") { model.validateCatalogue() }
             Divider()
-            Button("Restore Latest Backup…") {
-                if let info = model.latestBackupInfo() {
-                    confirmation = .restore(info)
-                } else {
-                    model.activeAlert = AppAlert(
-                        title: "No Backups Found",
-                        message: "No AerialDrop backups were found."
-                    )
-                }
+            Button("Restore Catalogue Backup…") {
+                pendingBackupConfirmation = nil
+                showingBackupChooser = true
             }
             .disabled(model.isWorking)
-            .help("Replace the current catalogue with the newest AerialDrop backup")
+            .help("Choose a dated AerialDrop catalogue backup to restore")
             Divider()
             Button("Remove All AerialDrop Wallpapers", role: .destructive) {
                 requestRemoveAll()
@@ -353,8 +402,8 @@ struct ContentView: View {
         return "Remove every AerialDrop wallpaper"
     }
 
-    private var confirmationTitle: String {
-        switch confirmation {
+    private func confirmationTitle(for kind: ConfirmationKind?) -> String {
+        switch kind {
         case .removeAll(let requiresAcknowledgement):
             requiresAcknowledgement
                 ? "Remove without checking which wallpaper is active?"
@@ -366,8 +415,8 @@ struct ContentView: View {
         }
     }
 
-    private var confirmationMessage: String {
-        switch confirmation {
+    private func confirmationMessage(for kind: ConfirmationKind?) -> String {
+        switch kind {
         case .removeAll(let requiresAcknowledgement):
             if requiresAcknowledgement {
                 "AerialDrop can’t verify which wallpaper is active. Removing an active wallpaper could leave macOS pointing to missing files. Check again, choose another wallpaper in Wallpaper Settings, or remove anyway."
@@ -381,8 +430,8 @@ struct ContentView: View {
         }
     }
 
-    private var confirmationCancelTitle: String {
-        switch confirmation {
+    private func confirmationCancelTitle(for kind: ConfirmationKind?) -> String {
+        switch kind {
         case .removeAll: "Keep Wallpapers"
         case .restore: "Keep Current Catalogue"
         case nil: "Cancel"
@@ -393,43 +442,63 @@ struct ContentView: View {
         let ids = Set(model.wallpapers.map(\.id))
         switch model.removalReadiness(for: ids) {
         case .verifiedInactive:
-            confirmation = .removeAll(requiresAcknowledgement: false)
+            confirmation = ConfirmationRequest(kind: .removeAll(requiresAcknowledgement: false))
         case .verifiedActive:
             confirmation = nil
             model.reportActiveWallpaperRemovalBlock()
         case .unknown:
-            confirmation = .removeAll(requiresAcknowledgement: true)
+            confirmation = ConfirmationRequest(kind: .removeAll(requiresAcknowledgement: true))
         }
     }
 
-    private func retryRemoveAllPreparation() {
-        confirmation = nil
+    private func retryRemoveAllPreparation(_ request: ConfirmationRequest) {
+        guard confirmation?.id == request.id else { return }
+        dismissConfirmation(request)
         Task {
             await Task.yield()
             requestRemoveAll()
         }
     }
 
-    private func performConfirmation(allowingUnverifiedSelection: Bool = false) {
-        switch confirmation {
+    private func performConfirmation(_ request: ConfirmationRequest, allowingUnverifiedSelection: Bool = false) {
+        guard confirmation?.id == request.id else { return }
+        dismissConfirmation(request)
+        switch request.kind {
         case .removeAll:
             model.removeAll(allowingUnverifiedSelection: allowingUnverifiedSelection)
         case .restore(let info):
             Task { await model.restoreLatestBackup(info) }
-        case nil:
-            break
         }
-        confirmation = nil
+    }
+
+    private func confirmationPresentationBinding(for request: ConfirmationRequest?) -> Binding<Bool> {
+        Binding(
+            get: { request != nil },
+            set: { showing in
+                if !showing, presentedConfirmation?.id == request?.id { presentedConfirmation = nil }
+            }
+        )
+    }
+
+    private func dismissConfirmation(_ request: ConfirmationRequest) {
+        if confirmation?.id == request.id { confirmation = nil }
+        if presentedConfirmation?.id == request.id { presentedConfirmation = nil }
+    }
+
+    private func presentBackupConfirmation() {
+        guard let snapshot = pendingBackupConfirmation else { return }
+        pendingBackupConfirmation = nil
+        confirmation = ConfirmationRequest(kind: .restore(snapshot))
     }
 }
 
-private struct LibraryImportStatusView: View {
+private struct ImportStatusView: View {
     let stage: ImportStage
     let progress: Double
     let eta: TimeInterval?
     let canCancel: Bool
     let onCancel: () -> Void
-    let onViewImport: () -> Void
+    let onViewImport: (() -> Void)?
 
     var body: some View {
         GroupBox {
@@ -497,8 +566,10 @@ private struct LibraryImportStatusView: View {
                     .help("Cancel before catalogue installation begins")
             }
 
-            Button("View Import", systemImage: "arrow.right", action: onViewImport)
-                .controlSize(.small)
+            if let onViewImport {
+                Button("View Import", systemImage: "arrow.right", action: onViewImport)
+                    .controlSize(.small)
+            }
         }
     }
 
@@ -512,16 +583,14 @@ private struct LibraryImportStatusView: View {
 }
 
 /// The single confirmation dialog covers the maintenance flows that need one.
-private enum ConfirmationKind: Identifiable {
+private struct ConfirmationRequest: Identifiable, Equatable {
+    let id = UUID()
+    let kind: ConfirmationKind
+}
+
+private enum ConfirmationKind: Equatable {
     case removeAll(requiresAcknowledgement: Bool)
     case restore(ManifestStore.BackupInfo)
-
-    var id: String {
-        switch self {
-        case .removeAll: "removeAll"
-        case .restore: "restore"
-        }
-    }
 }
 
 private enum AppDestination: String, CaseIterable, Identifiable {

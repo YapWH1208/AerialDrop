@@ -17,7 +17,6 @@
 <script>
 /* Apply the saved or system theme before first paint to avoid a flash. */
 (function () {
-  document.documentElement.classList.add("js");
   var saved = null;
   try { saved = localStorage.getItem("ad-theme"); } catch (e) {}
   var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: light)").matches === false;
@@ -70,6 +69,9 @@
         <p class="hero__eyebrow"><span class="pill">macOS 26+</span><span class="pill">Free &amp; open source</span><span class="pill">MIT</span></p>
         <h1>Your videos, natively on the Tahoe desktop.</h1>
         <p class="hero__lede">AerialDrop imports your MP4 or MOV into macOS Tahoe&rsquo;s own Aerial catalogue. Screen saver and lock screen, played by Apple&rsquo;s pipeline. No helper processes, no app-managed player.</p>
+        <aside class="trust-summary" aria-label="Installation security notice">
+          <strong>Before you install:</strong> AerialDrop is ad-hoc signed and not notarized by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine. A manual ZIP keeps the quarantine attribute; approving first launch saves a Gatekeeper exception, while removing that attribute separately uses <code>xattr</code>. A local source build is not a quarantined download.
+        </aside>
         <div class="hero__cta">
           <a class="btn btn--primary btn--lg" href="#install">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0 4.5-4.5M12 14.5 7.5 10M4 17.5v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>
@@ -184,7 +186,7 @@
         <article class="spec reveal">
           <span class="spec__name mono">Safety</span>
           <p class="spec__value">Reversible writes</p>
-          <p class="spec__body">Every catalogue write is backed up first and checked for concurrent changes. Restore Latest Backup rechecks the active wallpaper and refuses changes that would remove it or overwrite unrelated catalogue data.</p>
+          <p class="spec__body">Every catalogue write is backed up first and checked for concurrent changes. Restore Catalogue Backup rechecks the active wallpaper and refuses changes that would remove it or overwrite unrelated catalogue data.</p>
         </article>
         <article class="spec reveal">
           <span class="spec__name mono">Source</span>
@@ -265,7 +267,7 @@
           <div class="panel is-active" id="panel-homebrew" role="tabpanel" aria-labelledby="method-homebrew">
             <div class="panel__head">
               <h3>Homebrew cask</h3>
-              <p>The cask selects the newest compatible release for this Mac. <code>brew upgrade --cask aerialdrop</code> applies future compatible releases.</p>
+              <p>The cask selects the newest compatible release for this Mac, installs it in <code>/Applications</code>, and clears its download quarantine. <code>brew upgrade --cask aerialdrop</code> applies future compatible releases.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -283,10 +285,10 @@
                 <div class="step__content">
                   <h4>Verify it&rsquo;s in place</h4>
                   <div class="cmd">
-                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                    <pre><code>ls -d /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls -d /Applications/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code> and the version:
+                  <p class="expect">Expected output: <code>/Applications/AerialDrop.app</code>. If it is missing, <code>ls</code> reports <code>No such file or directory</code>. Check the version next:
                   <button class="cmd__copy cmd__copy--inline" type="button" data-copy="defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString">Copy</button></p>
                   <div class="cmd">
                     <pre><code>defaults read /Applications/AerialDrop.app/Contents/Info CFBundleShortVersionString</code></pre>
@@ -341,10 +343,10 @@
                 <div class="step__content">
                   <h4>Verify</h4>
                   <div class="cmd">
-                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                    <pre><code>ls -d /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls -d /Applications/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                  <p class="expect">Expected output: <code>/Applications/AerialDrop.app</code>. If it is missing, <code>ls</code> reports <code>No such file or directory</code>.</p>
                 </div>
               </li>
             </ol>
@@ -354,7 +356,7 @@
           <div class="panel" id="panel-release" role="tabpanel" aria-labelledby="method-release" hidden>
             <div class="panel__head">
               <h3>Release zip</h3>
-              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. Unzip it into Applications.</p>
+              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. A manual ZIP retains its download quarantine. First-launch approval saves a Gatekeeper exception; removing the quarantine attribute is a separate action shown below.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -376,7 +378,7 @@
                 <span class="step__num" aria-hidden="true">2</span>
                 <div class="step__content">
                   <h4>First launch</h4>
-                  <p class="step__note">The app is ad-hoc signed, so Gatekeeper may ask the first time: right-click the app and choose <strong>Open</strong> once, or clear the quarantine:</p>
+                  <p class="step__note">The app is ad-hoc signed, so Gatekeeper may ask the first time. Right-click the app and choose <strong>Open</strong> once to save an approval exception. To remove the quarantine attribute separately, run:</p>
                   <div class="cmd">
                     <pre><code>xattr -dr com.apple.quarantine /Applications/AerialDrop.app</code></pre>
                     <button class="cmd__copy" type="button" data-copy="xattr -dr com.apple.quarantine /Applications/AerialDrop.app">Copy</button>
@@ -388,10 +390,10 @@
                 <div class="step__content">
                   <h4>Verify</h4>
                   <div class="cmd">
-                    <pre><code>ls /Applications/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="ls /Applications/AerialDrop.app">Copy</button>
+                    <pre><code>ls -d /Applications/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="ls -d /Applications/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code></p>
+                  <p class="expect">Expected output: <code>/Applications/AerialDrop.app</code>. If it is missing, <code>ls</code> reports <code>No such file or directory</code>.</p>
                 </div>
               </li>
             </ol>
@@ -401,7 +403,7 @@
           <div class="panel" id="panel-source" role="tabpanel" aria-labelledby="method-source" hidden>
             <div class="panel__head">
               <h3>Build from source</h3>
-              <p>Requires full Xcode with Swift 6.2+ and the macOS 26 SDK or later. The packaging script selects Xcode and checks its SDK before clearing build output. The final app lands at <code>dist/AerialDrop.app</code>.</p>
+              <p>Requires full Xcode with Swift 6.2+ and the macOS 26 SDK or later. The packaging script selects Xcode and checks its SDK before clearing build output. The final app lands at <code>dist/AerialDrop.app</code>, ad-hoc signed and without a download quarantine because it was built locally.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -442,10 +444,10 @@
                 <div class="step__content">
                   <h4>Package, launch, then verify</h4>
                   <div class="cmd">
-                    <pre><code>Scripts/build-app.sh &amp;&amp; open -n dist/AerialDrop.app &amp;&amp; ls dist/AerialDrop.app</code></pre>
-                    <button class="cmd__copy" type="button" data-copy="Scripts/build-app.sh && open -n dist/AerialDrop.app && ls dist/AerialDrop.app">Copy</button>
+                    <pre><code>Scripts/build-app.sh &amp;&amp; open -n dist/AerialDrop.app &amp;&amp; ls -d dist/AerialDrop.app</code></pre>
+                    <button class="cmd__copy" type="button" data-copy="Scripts/build-app.sh && open -n dist/AerialDrop.app && ls -d dist/AerialDrop.app">Copy</button>
                   </div>
-                  <p class="expect">Expected output: <code>AerialDrop.app</code> &mdash; the app is running.</p>
+                  <p class="expect">Expected final line: <code>dist/AerialDrop.app</code>. This verifies the bundle location. Packaging or launch errors stop the command before this check. Running <code>ls -d dist/AerialDrop.app</code> separately for a missing bundle reports <code>No such file or directory</code>.</p>
                 </div>
               </li>
             </ol>
@@ -455,8 +457,8 @@
 
       <details class="notice reveal">
         <summary>Before you install: the unsigned-app notice</summary>
-        <p>AerialDrop is ad-hoc signed and <strong>not notarized</strong> by Apple. The install methods above clear the macOS download quarantine, which disables Apple&rsquo;s malware check for this app; you are trusting the publisher instead of Apple. Only install from the official
-        <a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">YapWH1208/AerialDrop</a> repository, and audit the open-source code if you have concerns. The only way to get Apple&rsquo;s own verification is Developer ID notarization, which needs a paid Apple Developer account.</p>
+        <p>AerialDrop is ad-hoc signed and <strong>not notarized</strong> by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine, which bypasses Apple&rsquo;s first-launch malware check for that download. A manual ZIP retains the quarantine attribute. Approving the app saves a Gatekeeper exception but does not remove that attribute; to remove it, run the provided <code>xattr</code> command. A local source build does not have a download quarantine. Only install from the official
+        <a href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">YapWH1208/AerialDrop</a> repository, and audit the open-source code if you have concerns. Apple verification requires Developer ID notarization.</p>
       </details>
     </div>
   </section>
@@ -591,7 +593,7 @@
         </details>
         <details class="faq__item">
           <summary>Is the app signed or notarized?</summary>
-          <p>It is ad-hoc signed and not notarized. Gatekeeper may complain on first launch: right-click and choose Open once, or clear the quarantine. Only install from the official repository, and audit the open-source code if you have concerns.</p>
+          <p>It is ad-hoc signed and not notarized. Gatekeeper may block the first launch; approving it saves a security exception but does not remove the download quarantine attribute. To remove that attribute manually, use the <code>xattr</code> command in the Release zip instructions. Only install from the official repository, and audit the open-source code if you have concerns.</p>
         </details>
         <details class="faq__item">
           <summary>Does AerialDrop need to keep running after setup?</summary>
@@ -614,7 +616,7 @@
         </details>
         <details class="faq__item">
           <summary>Can I restore a backup while an imported wallpaper is active?</summary>
-          <p>Use <strong>Restore Latest Backup</strong> in Maintenance. AerialDrop shows the backup in a confirmation and rechecks the active selection before and during restore. It refuses a restore that would remove the active wallpaper, overwrite unrelated catalogue changes, or replace protected Day/Night media. If verification fails, the safety backup is retained for recovery.</p>
+          <p>Use <strong>Restore Catalogue Backup</strong> in Maintenance. Choose an existing snapshot by date and operation, then confirm the exact backup. This restores catalogue entries only, not deleted video files or the active wallpaper selection. AerialDrop rechecks the active selection before and during restore. It refuses a restore that would remove the active wallpaper, overwrite unrelated catalogue changes, or replace protected Day/Night media. If verification fails, the safety backup is retained for recovery.</p>
         </details>
         <details class="faq__item">
           <summary>Where are my wallpapers stored?</summary>
@@ -622,7 +624,7 @@
         </details>
         <details class="faq__item">
           <summary>What if a future macOS update changes the catalogue format?</summary>
-          <p>The catalogue is a private API, so it could change. Every write is backed up first, and Restore Latest Backup checks the active wallpaper and unrelated catalogue data before restoring. Day/Night application is disabled on unfamiliar builds. A system update may require an AerialDrop update, reimporting, or reapplying your wallpapers.</p>
+          <p>The catalogue is a private API, so it could change. Every write is backed up first, and Restore Catalogue Backup checks the active wallpaper and unrelated catalogue data before restoring. Day/Night application is disabled on unfamiliar builds. A system update may require an AerialDrop update, reimporting, or reapplying your wallpapers.</p>
         </details>
       </div>
     </div>

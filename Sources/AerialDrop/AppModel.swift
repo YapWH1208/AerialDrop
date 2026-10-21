@@ -24,6 +24,8 @@ final class AppModel {
     var outputHeightCap: Int? = nil
     var sourceResolution: CGSize?
     var sourceDuration: Double?
+    private(set) var isPreparingSelectedVideo = false
+    private(set) var sourcePreparationError: String?
     var activeAerialAssetIDs: Set<String> = []
     /// True when the wallpaper selection store could not be read, so Active
     /// badges may be out of date. Destructive actions require an explicit
@@ -42,6 +44,7 @@ final class AppModel {
     /// (activation, removal, remove-all, restore), shown as busy feedback.
     /// Nil while idle or during an import, which has its own progress UI.
     private(set) var operationLabel: String?
+    private(set) var bulkRemovalRecovery: BulkRemovalRecovery?
     /// ID of the most recently completed import; the Library selects and
     /// scrolls to this wallpaper when it appears. Cleared once applied.
     var pendingLibraryHighlightID: String?
@@ -288,7 +291,18 @@ final class AppModel {
     }
 
     func activateDayNightWallpaper() async {
+        await activateDayNightWallpaper(expectedDraft: dayNightDraft)
+    }
+
+    private func activateDayNightWallpaper(expectedDraft: DayNightWallpaperDraft) async {
         guard !isWorking else { return }
+        guard dayNightDraft == expectedDraft else {
+            activeAlert = AppAlert(
+                title: "Day/Night Choices Changed",
+                message: "Your Day/Night choices changed after this recovery action was created. Review the current choices, then apply them again."
+            )
+            return
+        }
         isWorking = true
         operationLabel = "Applying Day/Night wallpaper…"
         defer { isWorking = false; operationLabel = nil }
@@ -296,7 +310,7 @@ final class AppModel {
             try systemService.validateDayNightSupport()
             dayNightUnavailableReason = nil
             if let blocker = dayNightApplyBlockerMessage { throw AerialDropError.dayNightUnavailable(blocker) }
-            guard let day = dayNightDraft.dayAssetID, let night = dayNightDraft.nightAssetID else {
+            guard let day = expectedDraft.dayAssetID, let night = expectedDraft.nightAssetID else {
                 throw AerialDropError.wallpaperNotFound
             }
             let pair = DayNightWallpaperPair(dayAssetID: day, nightAssetID: night)
@@ -314,7 +328,11 @@ final class AppModel {
             await reload()
         } catch {
             await reload()
-            activeAlert = AppAlert(title: "Couldn’t Apply Day/Night Wallpaper", message: error.localizedDescription)
+            activeAlert = AppAlert(
+                title: "Couldn’t Apply Day/Night Wallpaper",
+                message: error.localizedDescription,
+                actions: [.retryDayNight(expectedDraft), .openWallpaperSettings]
+            )
         }
     }
 
@@ -340,12 +358,14 @@ final class AppModel {
         case ready
         case missingVideo
         case validating
+        case preparationFailed
         case missingTitle
     }
 
     private var importReadiness: ImportReadiness {
         if selectedVideo == nil { return .missingVideo }
-        if !isSelectedVideoValid { return .validating }
+        if sourcePreparationError != nil { return .preparationFailed }
+        if isPreparingSelectedVideo || !isSelectedVideoValid { return .validating }
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .missingTitle }
         return .ready
     }
@@ -363,7 +383,8 @@ final class AppModel {
         switch importReadiness {
         case .ready: return nil
         case .missingVideo: return "Choose a video to configure."
-        case .validating: return "Validating the selected video…"
+        case .validating: return "Preparing the selected video…"
+        case .preparationFailed: return sourcePreparationError
         case .missingTitle: return "Enter a wallpaper name to enable Import."
         }
     }
@@ -454,6 +475,24 @@ final class AppModel {
         sourceResolution = nil
         sourceDuration = nil
         isSelectedVideoValid = false
+        sourcePreparationError = nil
+        isPreparingSelectedVideo = true
+        prepareSelectedVideo(url, version: version)
+    }
+
+    func retrySelectedVideoPreparation() {
+        guard !isWorking, let selectedVideo else { return }
+        selectionVersion += 1
+        let version = selectionVersion
+        sourceResolution = nil
+        sourceDuration = nil
+        isSelectedVideoValid = false
+        sourcePreparationError = nil
+        isPreparingSelectedVideo = true
+        prepareSelectedVideo(selectedVideo, version: version)
+    }
+
+    private func prepareSelectedVideo(_ url: URL, version: Int) {
         Task {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
@@ -462,53 +501,68 @@ final class AppModel {
                 try await videoProcessor.validate(source: url)
             } catch {
                 guard version == selectionVersion else { return }
-                activeAlert = AppAlert(
-                    title: "Couldn’t Use This Video",
-                    message: error.localizedDescription
-                )
-                selectedVideo = nil
-                title = ""
+                isPreparingSelectedVideo = false
+                sourcePreparationError = error.localizedDescription
                 isSelectedVideoValid = false
                 return
             }
 
             guard version == selectionVersion else { return }
-            isSelectedVideoValid = true
-
-            // Best-effort metadata for the resolution badge, crop bands and
-            // height caps. A failure here must not reject a file that passed
-            // validation — the import pipeline loads the same track metadata
-            // again and surfaces its own errors there.
-            let asset = AVURLAsset(url: url)
             // Prefer the duration the encoder can actually use (skipping
             // leading unrenderable samples) so the Loop row states the same
             // trim-versus-repeat decision the encode will make.
             let effective = await videoProcessor.effectiveSourceDuration(for: url)
-            let fallback = try? await asset.load(.duration).seconds
-            let seconds = effective ?? fallback
-            if let seconds, seconds.isFinite, seconds > 0 {
-                guard version == selectionVersion else { return }
-                sourceDuration = seconds
-            }
-            guard let track = try? await asset.loadTracks(withMediaType: .video).first else { return }
-            guard let naturalSize = try? await track.load(.naturalSize) else { return }
-            guard let preferredTransform = try? await track.load(.preferredTransform) else { return }
-            // Mirror VideoProcessor: apply the track transform so the UI
-            // (crop bands, height caps, resolution badge) matches the
-            // encode window for rotated sources.
-            let transformedSize = VideoGeometry.displaySize(
-                naturalSize: naturalSize,
-                preferredTransform: preferredTransform
-            )
             guard version == selectionVersion else { return }
-            if transformedSize.width.isFinite, transformedSize.height.isFinite,
-               transformedSize.width > 0, transformedSize.height > 0 {
-                sourceResolution = transformedSize
-                // A remembered cap that this source would not downscale shows
-                // no picker selection; fall back to Original for it.
-                outputHeightCap = applicableHeightCap(outputHeightCap, sourceSize: transformedSize)
+            let fallback: Double?
+            if effective == nil {
+                fallback = try? await AVURLAsset(url: url).load(.duration).seconds
+                guard version == selectionVersion else { return }
+            } else {
+                fallback = nil
             }
+            let seconds = effective ?? fallback
+            guard let seconds, seconds.isFinite, seconds > 0 else {
+                failSelectedVideoPreparation(
+                    "AerialDrop couldn’t read this video’s duration. Try again or replace the video.",
+                    version: version
+                )
+                return
+            }
+
+            let displaySize: CGSize
+            do {
+                displaySize = try await videoProcessor.sourceDisplaySize(for: url)
+            } catch {
+                guard version == selectionVersion else { return }
+                failSelectedVideoPreparation(error.localizedDescription, version: version)
+                return
+            }
+            guard version == selectionVersion else { return }
+            guard displaySize.width.isFinite, displaySize.height.isFinite,
+                  displaySize.width > 0, displaySize.height > 0 else {
+                failSelectedVideoPreparation(
+                    "AerialDrop couldn’t read this video’s dimensions. Try again or replace the video.",
+                    version: version
+                )
+                return
+            }
+
+            sourceDuration = seconds
+            sourceResolution = displaySize
+            // A remembered cap that this source would not downscale shows no
+            // picker selection; fall back to Original for it.
+            outputHeightCap = applicableHeightCap(outputHeightCap, sourceSize: displaySize)
+            sourcePreparationError = nil
+            isPreparingSelectedVideo = false
+            isSelectedVideoValid = true
         }
+    }
+
+    private func failSelectedVideoPreparation(_ message: String, version: Int) {
+        guard version == selectionVersion else { return }
+        isPreparingSelectedVideo = false
+        isSelectedVideoValid = false
+        sourcePreparationError = message
     }
 
     func cancelImport() {
@@ -518,6 +572,7 @@ final class AppModel {
 
     func importSelectedVideo() {
         guard !isWorking, catalogueState == .ready,
+              !isPreparingSelectedVideo, sourcePreparationError == nil,
               isSelectedVideoValid, let source = selectedVideo else { return }
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty else {
@@ -641,6 +696,7 @@ final class AppModel {
                 isSelectedVideoValid = false
                 sourceResolution = nil
                 sourceDuration = nil
+                sourcePreparationError = nil
             } catch {
                 if !manifestInstalled {
                     try? FileManager.default.removeItem(at: videoDestination)
@@ -786,6 +842,7 @@ final class AppModel {
         guard !ids.isEmpty else { return }
         isWorking = true
         operationLabel = "Removing \(ids.count) wallpapers…"
+        bulkRemovalRecovery = nil
         defer {
             isWorking = false
             operationLabel = nil
@@ -811,33 +868,74 @@ final class AppModel {
                     firstError = firstError ?? AerialDropError.dayNightUnavailable(message)
                 }
             }
-            if let highlight = pendingLibraryHighlightID, ids.contains(highlight) {
-                pendingLibraryHighlightID = nil
-            }
             await systemService.refresh()
             await reload()
-            if let firstError {
+            clearRemovedBulkHighlight(in: ids)
+            if firstError != nil || catalogueState != .ready {
+                recordBulkRemovalRecovery(requestedIDs: ids)
                 // State exactly how far the bulk removal got so the outcome
                 // never contradicts the confirmed "Remove N" promise.
                 let message: String
                 if catalogueState == .ready {
                     removedCount = initiallyInstalledIDs.subtracting(Set(self.wallpapers.map(\.id))).count
-                    message = "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError.localizedDescription)"
+                    message = "Removed \(removedCount) of \(ids.count) wallpapers. \(firstError?.localizedDescription ?? "")"
                 } else {
-                    message = "The removal status could not be checked. \(firstError.localizedDescription)"
+                    message = "The removal status could not be checked. \(firstError?.localizedDescription ?? "Reload the catalogue before retrying.")"
                 }
                 activeAlert = AppAlert(
                     title: "Couldn’t Remove Wallpapers",
-                    message: message
+                    message: message,
+                    actions: [.reloadCatalogue, .openWallpaperSettings]
                 )
             }
         } catch {
             await reload()
+            clearRemovedBulkHighlight(in: ids)
+            recordBulkRemovalRecovery(requestedIDs: ids)
             activeAlert = AppAlert(
                 title: "Couldn’t Remove Wallpapers",
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                actions: [.reloadCatalogue, .openWallpaperSettings]
             )
         }
+    }
+
+    var bulkRemovalRetryWallpapers: [ManagedWallpaper] {
+        guard catalogueState == .ready, let recovery = bulkRemovalRecovery,
+              recovery.catalogueVerified else { return [] }
+        return wallpapers.filter { recovery.remainingIDs.contains($0.id) }
+    }
+
+    func dismissBulkRemovalRecovery() {
+        guard !isWorking else { return }
+        bulkRemovalRecovery = nil
+    }
+
+    private func recordBulkRemovalRecovery(requestedIDs: Set<String>) {
+        let verified = catalogueState == .ready
+        let remaining = verified ? requestedIDs.intersection(Set(wallpapers.map(\.id))) : requestedIDs
+        bulkRemovalRecovery = remaining.isEmpty ? nil : BulkRemovalRecovery(
+            requestedIDs: requestedIDs,
+            remainingIDs: remaining,
+            catalogueVerified: verified
+        )
+    }
+
+    private func reconcileBulkRemovalRecovery() {
+        guard catalogueState == .ready, let recovery = bulkRemovalRecovery else { return }
+        let remaining = recovery.remainingIDs.intersection(Set(wallpapers.map(\.id)))
+        bulkRemovalRecovery = remaining.isEmpty ? nil : BulkRemovalRecovery(
+            id: recovery.id,
+            requestedIDs: recovery.requestedIDs,
+            remainingIDs: remaining,
+            catalogueVerified: true
+        )
+    }
+
+    private func clearRemovedBulkHighlight(in requestedIDs: Set<String>) {
+        guard catalogueState == .ready, let highlight = pendingLibraryHighlightID,
+              requestedIDs.contains(highlight), !wallpapers.contains(where: { $0.id == highlight }) else { return }
+        pendingLibraryHighlightID = nil
     }
 
     func removeAllWallpapers(
@@ -892,6 +990,7 @@ final class AppModel {
             isSelectionStatusUnknown = true
         }
         refreshDayNightState()
+        reconcileBulkRemovalRecovery()
     }
 
     /// Refreshes a catalogue that is already on screen without replacing it
@@ -934,6 +1033,7 @@ final class AppModel {
             catalogueRefreshState = .failed(refreshError.localizedDescription)
         } else {
             catalogueRefreshState = .idle
+            reconcileBulkRemovalRecovery()
         }
     }
 
@@ -1192,12 +1292,41 @@ final class AppModel {
         systemService.openWallpaperSettings()
     }
 
+    func dismissAlert(id: AppAlert.ID) {
+        guard activeAlert?.id == id else { return }
+        activeAlert = nil
+    }
+
+    /// Consumes only the alert that displayed the action. Clearing it before
+    /// starting asynchronous work makes repeated clicks harmless, while the ID
+    /// check prevents an old alert from dismissing or acting on a newer one.
+    func performAlertAction(_ action: AppAlertAction, fromAlertID id: AppAlert.ID) {
+        guard !isWorking, activeAlert?.id == id, activeAlert?.actions.contains(action) == true else { return }
+        activeAlert = nil
+        switch action {
+        case .retryDayNight(let draft):
+            Task { await activateDayNightWallpaper(expectedDraft: draft) }
+        case .retryRestore(let backup):
+            Task { await restoreLatestBackup(backup) }
+        case .reloadCatalogue:
+            Task { await refreshCataloguePreservingContent() }
+        case .openWallpaperSettings:
+            openWallpaperSettings()
+        }
+    }
+
     /// The newest AerialDrop catalogue backup, for the restore confirmation.
     func latestBackupInfo() -> ManifestStore.BackupInfo? {
         manifestStore.latestBackup()
     }
 
-    /// Replaces the current catalogue with the newest AerialDrop backup. The
+    /// Lightweight history; only the chosen entry is read for confirmation.
+    func backupHistory() throws -> [ManifestStore.BackupEntry] {
+        try manifestStore.backupHistory()
+    }
+
+    /// Replaces the current catalogue with the confirmed AerialDrop backup,
+    /// or the newest backup when no explicit snapshot is supplied. The
     /// restore is refused (with nothing changed) if foreign catalogue data
     /// changed since the backup.
     func restoreLatestBackup(_ confirmedBackup: ManifestStore.BackupInfo? = nil) async {
@@ -1205,6 +1334,7 @@ final class AppModel {
         isWorking = true
         operationLabel = "Restoring catalogue backup…"
         let previousPair = try? manifestStore.dayNightPair()
+        var attemptedBackup: ManifestStore.BackupInfo?
         defer {
             isWorking = false
             operationLabel = nil
@@ -1217,6 +1347,7 @@ final class AppModel {
                 )
                 return
             }
+            attemptedBackup = info
             do {
                 try refreshActiveSelection()
                 isSelectionStatusUnknown = false
@@ -1248,7 +1379,8 @@ final class AppModel {
                 await reload()
                 activeAlert = AppAlert(
                     title: attentionTitle,
-                    message: message
+                    message: message,
+                    actions: [.reloadCatalogue, .openWallpaperSettings]
                 )
                 return
             }
@@ -1259,9 +1391,21 @@ final class AppModel {
                 message: "Restored the Aerial catalogue backup from \(info.date.formatted(date: .abbreviated, time: .shortened)) (\(info.operation))."
             )
         } catch {
+            var actions: [AppAlertAction] = [.reloadCatalogue]
+            if let restoreError = error as? AerialDropError,
+               case .backupRestoreRejected = restoreError {
+                // A retry may only carry the bytes the user confirmed. If the
+                // file disappeared or changed, the user must select it again.
+                if let attemptedBackup, let content = attemptedBackup.content,
+                   (try? Data(contentsOf: attemptedBackup.url)) == content {
+                    actions.insert(.retryRestore(attemptedBackup), at: 0)
+                }
+                actions.append(.openWallpaperSettings)
+            }
             activeAlert = AppAlert(
                 title: "Restore Failed",
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                actions: actions
             )
         }
     }

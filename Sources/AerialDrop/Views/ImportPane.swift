@@ -29,12 +29,6 @@ struct ImportPane: View {
             guard new == .finished, old != .finished else { return nil }
             return importFinishedWithFailure ? .error : .success
         }
-        .onChange(of: model.stage) { oldStage, newStage in
-            guard oldStage != newStage,
-                  model.isWorking,
-                  newStage != .finished else { return }
-            AccessibilityNotification.Announcement(newStage.label).post()
-        }
         .onChange(of: model.importOutcome) { _, outcome in
             guard outcome != nil else { return }
             accessibilityStatus = .completion
@@ -54,16 +48,6 @@ struct ImportPane: View {
                     )
                     .accessibilityFocused($accessibilityStatus, equals: .completion)
                 } else {
-                    if model.isWorking {
-                        ImportProgressView(
-                            stage: model.stage,
-                            progress: model.displayProgress,
-                            eta: model.encodeETA,
-                            canCancel: model.isImportCancellable,
-                            onCancel: { model.cancelImport() }
-                        )
-                    }
-
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Source Video")
                             .font(.headline)
@@ -73,8 +57,10 @@ struct ImportPane: View {
                             resolution: model.sourceResolution,
                             cropOffset: model.cropOffset,
                             isValid: model.isSelectedVideoValid,
+                            preparationError: model.sourcePreparationError,
                             isDisabled: model.isWorking,
                             onChoose: { model.showingFileImporter = true },
+                            onRetry: model.retrySelectedVideoPreparation,
                             onDrop: { model.chooseVideo($0) }
                         )
                     }
@@ -96,7 +82,9 @@ struct ImportPane: View {
                             .disabled(model.isWorking)
                     }
 
-                    if model.selectedVideo != nil, let blocker = model.importBlockerMessage {
+                    if model.selectedVideo != nil,
+                       model.sourcePreparationError == nil,
+                       let blocker = model.importBlockerMessage {
                         // Inline reason so a disabled toolbar Import button
                         // is never the only explanation.
                         Label(blocker, systemImage: "exclamationmark.circle")
@@ -197,8 +185,10 @@ private struct ImportSourceView: View {
     let resolution: CGSize?
     let cropOffset: Double
     let isValid: Bool
+    let preparationError: String?
     let isDisabled: Bool
     let onChoose: () -> Void
+    let onRetry: () -> Void
     let onDrop: (URL) -> Void
 
     @State private var hovering = false
@@ -289,7 +279,12 @@ private struct ImportSourceView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    if isValid {
+                    if let preparationError {
+                        Label(preparationError, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if isValid {
                         Label("Ready to configure", systemImage: "checkmark.circle")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -297,7 +292,7 @@ private struct ImportSourceView: View {
                         HStack(spacing: 6) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("Validating video…")
+                            Text("Preparing video…")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -306,8 +301,14 @@ private struct ImportSourceView: View {
 
                 Spacer()
 
-                Button("Replace…", systemImage: "arrow.triangle.2.circlepath", action: onChoose)
-                    .disabled(isDisabled)
+                HStack(spacing: 8) {
+                    if preparationError != nil {
+                        Button("Try Again", systemImage: "arrow.clockwise", action: onRetry)
+                            .disabled(isDisabled)
+                    }
+                    Button("Replace…", systemImage: "arrow.triangle.2.circlepath", action: onChoose)
+                        .disabled(isDisabled)
+                }
             }
         }
     }
@@ -371,7 +372,7 @@ private struct ImportSettingsView: View {
                     Text(loopSummary)
                 }
 
-                if isUltrawideSource {
+                if isWiderSource {
                     GridRow(alignment: .top) {
                         settingLabel("Crop")
                         VStack(alignment: .leading, spacing: 8) {
@@ -406,9 +407,9 @@ private struct ImportSettingsView: View {
         }
     }
 
-    private var isUltrawideSource: Bool {
+    private var isWiderSource: Bool {
         guard let sourceResolution else { return false }
-        return isUltrawide(sourceResolution)
+        return isWiderThan16By9(sourceResolution)
     }
 
     private var cropPreset: Binding<Double> {
@@ -434,77 +435,6 @@ private struct ImportSettingsView: View {
             .foregroundStyle(.secondary)
             .frame(width: 82, alignment: .trailing)
             .gridColumnAlignment(.trailing)
-    }
-}
-
-private struct ImportProgressView: View {
-    let stage: ImportStage
-    let progress: Double
-    let eta: TimeInterval?
-    let canCancel: Bool
-    let onCancel: () -> Void
-
-    var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 8) {
-                    Label(stage.label, systemImage: stage.icon)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .accessibilityHidden(true)
-
-                    if let etaText {
-                        Text(etaText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-
-                ProgressView(value: progress)
-                    .accessibilityLabel("Import progress")
-                    .accessibilityValue("\(Int(progress * 100)) percent")
-
-                HStack {
-                    Text(canCancel ? cancellableMessage : finishingMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    if canCancel {
-                        Button("Cancel", role: .cancel, action: onCancel)
-                            .controlSize(.small)
-                            .keyboardShortcut(.cancelAction)
-                    }
-                }
-            }
-            .padding(4)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Import progress")
-    }
-
-    private var etaText: String? {
-        guard let eta, eta > 5 else { return nil }
-        if eta >= 60 {
-            return "≈ \(Int(eta / 60)) min left"
-        }
-        return "≈ \(Int(eta)) s left"
-    }
-
-    private var cancellableMessage: String {
-        "The source video stays unchanged. You can cancel before installation begins."
-    }
-
-    private var finishingMessage: String {
-        "Finishing installation. This step can’t be cancelled."
     }
 }
 

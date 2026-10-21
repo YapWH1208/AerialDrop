@@ -4,12 +4,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const compatibility = require('../docs/compatibility.js');
 
 const root = path.resolve(__dirname, '..');
 const fixture = JSON.parse(fs.readFileSync(path.join(root, 'Tests/DistributionFixtures/compatibility.json'), 'utf8'));
 const source = fs.readFileSync(path.join(root, 'docs/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'docs/index.html'), 'utf8');
+const styles = fs.readFileSync(path.join(root, 'docs/styles.css'), 'utf8');
 
 function element(value = '') {
   const attributes = new Map();
@@ -92,6 +95,41 @@ async function main() {
 
   assert.match(html, /<label for="macosSelect">/);
   assert.match(html, /<noscript>/);
+  assert(!/html\.js\s+\.reveal\s*\{[^}]*opacity:\s*0/s.test(styles), 'head bootstrap must not hide unrevealed content');
+  assert.match(styles, /\.reveal\.in\s*\{[^}]*animation:\s*reveal-in/s, 'initialized reveal should retain its entrance animation');
+  assert.match(styles, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.reveal\.in\s*\{[^}]*animation:\s*none/s,
+    'Reduced Motion must disable the reveal animation');
+
+  const trustSummary = html.indexOf('class="trust-summary"');
+  const firstRunnableCommand = html.indexOf('data-copy=');
+  assert(trustSummary >= 0 && trustSummary < firstRunnableCommand, 'visible trust notice must precede the first runnable command');
+  const summary = html.slice(trustSummary, html.indexOf('</aside>', trustSummary));
+  assert.match(summary, /ad-hoc signed/);
+  assert.match(summary, /not notarized by Apple/);
+  assert.match(summary, /Homebrew and the install script clear/);
+  assert.match(summary, /manual ZIP keeps the quarantine attribute/);
+  assert.match(summary, /approving first launch saves a Gatekeeper exception/);
+  assert.match(summary, /removing that attribute separately uses/);
+  assert.match(summary, /local source build is not a quarantined download/);
+
+  const panelText = id => {
+    const start = html.indexOf(`id="${id}"`);
+    const end = html.indexOf('<!--', start);
+    assert(start >= 0 && end > start, `${id} panel is missing`);
+    return html.slice(start, end);
+  };
+  assert.match(panelText('panel-homebrew'), /clears its download quarantine/);
+  assert.match(panelText('panel-script'), /clears the quarantine/);
+  assert.match(panelText('panel-release'), /retains its download quarantine/);
+  assert.match(panelText('panel-release'), /First-launch approval saves a Gatekeeper exception/);
+  assert.match(panelText('panel-release'), /remove the quarantine attribute separately/);
+  assert.match(panelText('panel-source'), /without a download quarantine because it was built locally/);
+  const securityNoticeStart = html.indexOf('<details class="notice reveal">');
+  const securityNoticeEnd = html.indexOf('</details>', securityNoticeStart);
+  const securityNotice = html.slice(securityNoticeStart, securityNoticeEnd);
+  assert.match(securityNotice, /manual ZIP retains the quarantine attribute/);
+  assert.match(securityNotice, /saves a Gatekeeper exception but does not remove that attribute/);
+  assert.match(securityNotice, /to remove it, run the provided/);
   assert(!/data-download[^>]*href=/.test(html), 'static ZIP link must not target global latest');
   const sourceCommand = html.match(/<pre><code>(VERSION="[\s\S]*?)<\/code><\/pre>\s*<button class="cmd__copy" type="button" data-copy="([^"]+)"/);
   assert(sourceCommand, 'source tag command and copy control are missing');
@@ -99,6 +137,42 @@ async function main() {
   assert.equal(decode(sourceCommand[1]), decode(sourceCommand[2]), 'source tag copy differs from displayed command');
   assert.match(decode(sourceCommand[1]), /bash install\.sh --print-version/);
   assert.match(decode(sourceCommand[1]), /git clone --branch "v\$VERSION"/);
+
+  const verificationBlocks = Array.from(html.matchAll(/<pre><code>([\s\S]*?)<\/code><\/pre>\s*<button class="cmd__copy"[^>]*data-copy="([^"]+)"/g))
+    .filter(match => /\bls(?: -d)? (?:\/Applications|dist)\/AerialDrop\.app/.test(decode(match[1])));
+  assert.equal(verificationBlocks.length, 4, 'each installation method has one bundle verification');
+  verificationBlocks.forEach(match => {
+    assert.equal(decode(match[1]), decode(match[2]), 'displayed verification and copied command agree');
+    assert.match(decode(match[1]), /(?:^|&& )ls -d (?:\/Applications|dist)\/AerialDrop\.app$/);
+  });
+  ['panel-homebrew', 'panel-script', 'panel-release'].forEach(id => {
+    assert.match(panelText(id), /Expected output: <code>\/Applications\/AerialDrop\.app<\/code>/);
+    assert.match(panelText(id), /No such file or directory/);
+  });
+  assert.match(panelText('panel-source'), /Expected final line: <code>dist\/AerialDrop\.app<\/code>/);
+  assert.match(panelText('panel-source'), /Packaging or launch errors stop the command before this check/);
+  assert.match(panelText('panel-source'), /No such file or directory/);
+
+  // Exercise only ls with isolated bundles; never execute installer/build/open commands.
+  const verificationHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aerialdrop-site-verify-'));
+  try {
+    const relativeBundle = 'dist/AerialDrop.app';
+    const absoluteBundle = path.join(verificationHome, 'Applications/AerialDrop.app');
+    fs.mkdirSync(path.join(verificationHome, relativeBundle, 'Contents'), { recursive: true });
+    fs.mkdirSync(path.join(absoluteBundle, 'Contents'), { recursive: true });
+    for (const target of [relativeBundle, absoluteBundle]) {
+      const present = spawnSync('ls', ['-d', target], { cwd: verificationHome, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
+      assert.equal(present.status, 0);
+      assert.equal(present.stdout.trim(), target, 'ls -d prints the bundle path rather than Contents');
+      fs.rmSync(path.resolve(verificationHome, target), { recursive: true });
+      const missing = spawnSync('ls', ['-d', target], { cwd: verificationHome, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
+      assert.notEqual(missing.status, 0);
+      assert.equal(missing.stdout, '');
+      assert.match(missing.stderr, /No such file or directory/);
+    }
+  } finally {
+    fs.rmSync(verificationHome, { recursive: true, force: true });
+  }
 
   const ui = page(standardFetch());
   assert.equal(ui.ids.unzipCopy.disabled, true);

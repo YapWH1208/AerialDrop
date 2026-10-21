@@ -36,6 +36,8 @@
         navToggle.setAttribute("aria-expanded", "false");
       });
     });
+    navToggle.classList.add("is-enhanced");
+    navLinks.classList.add("is-collapsible");
   }
 
   /* ---------- Active nav link while scrolling ---------- */
@@ -60,44 +62,54 @@
 
   /* ---------- Clipboard helpers ---------- */
   function legacyCopy(text) {
+    var previous = document.activeElement;
     var ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
     ta.style.opacity = "0";
     document.body.appendChild(ta);
-    ta.select();
-    var ok = false;
-    try { ok = document.execCommand("copy"); } catch (e) {}
-    document.body.removeChild(ta);
-    return ok;
-  }
-  function copyText(text, btn, doneText) {
-    function flash(label, cls) {
-      if (!btn) return;
-      var original = btn.textContent;
-      btn.textContent = label;
-      btn.classList.add(cls);
-      setTimeout(function () {
-        btn.textContent = original;
-        btn.classList.remove(cls);
-      }, 1600);
+    try {
+      ta.select();
+      return document.execCommand("copy");
+    } catch (e) {
+      return false;
+    } finally {
+      document.body.removeChild(ta);
+      if (previous && previous.focus) previous.focus({ preventScroll: true });
     }
-    var okLabel = doneText || "Copied \u2713";
+  }
+  function copyText(text, btn) {
+    if (!btn || btn.disabled || !text) return;
+    var request = (btn.copyRequest || 0) + 1;
+    btn.copyRequest = request;
+    var status = btn.copyStatus;
+    status.textContent = "";
+    btn.classList.remove("is-copied", "is-failed");
+    function current() {
+      return btn.copyRequest === request && !btn.disabled && commandFor(btn) === text;
+    }
+    function report(ok) {
+      if (!current()) return;
+      btn.classList.add(ok ? "is-copied" : "is-failed");
+      status.textContent = ok ? "Command copied." : "Couldn’t copy. Select the command text and press ⌘C or Ctrl+C to copy it manually.";
+    }
     function tryLegacy() {
-      if (legacyCopy(text)) {
-        flash(okLabel, "is-copied");
-      } else {
-        flash("Copy failed", "is-failed");
-      }
+      if (current()) report(legacyCopy(text));
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(
-        function () { flash(okLabel, "is-copied"); },
-        tryLegacy
-      );
+      try {
+        navigator.clipboard.writeText(text).then(function () { report(true); }, tryLegacy);
+      } catch (e) { tryLegacy(); }
     } else {
       tryLegacy();
     }
+  }
+  function clearCopyFeedback(btn) {
+    if (!btn) return;
+    // Invalidate any pending clipboard result before replacing this command.
+    btn.copyRequest = (btn.copyRequest || 0) + 1;
+    if (btn.copyStatus) btn.copyStatus.textContent = "";
+    btn.classList.remove("is-copied", "is-failed");
   }
   function commandFor(btn) {
     var attr = btn.getAttribute("data-copy");
@@ -105,7 +117,16 @@
     var code = btn.parentElement ? btn.parentElement.querySelector("code") : null;
     return code ? code.innerText : "";
   }
-  $$(".cmd__copy, .term-copy").forEach(function (btn) {
+  $$(".cmd__copy, .term-copy").forEach(function (btn, index) {
+    var status = document.createElement("span");
+    status.className = "copy-status";
+    status.id = "copy-status-" + index;
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-atomic", "true");
+    var scope = btn.closest(".cmd, .term-line--cmd") || btn;
+    scope.insertAdjacentElement("afterend", status);
+    btn.copyStatus = status;
+    btn.setAttribute("aria-describedby", status.id);
     btn.addEventListener("click", function () {
       copyText(commandFor(btn), btn);
     });
@@ -138,7 +159,11 @@
     set("releaseSize", humanSize(asset.size));
     set("unzipCmd", "unzip -q " + asset.name + " -d /Applications");
     var unzipCopy = $("#unzipCopy");
-    if (unzipCopy) { unzipCopy.setAttribute("data-copy", "unzip -q " + asset.name + " -d /Applications"); unzipCopy.disabled = false; }
+    if (unzipCopy) {
+      clearCopyFeedback(unzipCopy);
+      unzipCopy.setAttribute("data-copy", "unzip -q " + asset.name + " -d /Applications");
+      unzipCopy.disabled = false;
+    }
     set("termOut1", "==> Downloading " + asset.name);
     set("termOut4", "✓ aerialdrop " + version + " is ready. Open it, drop in a video.");
     $$("[data-download]").forEach(function (el) {
@@ -156,7 +181,11 @@
     set("termOut1", "==> Selecting a compatible release");
     set("termOut4", "✓ Install the newest compatible release for your Mac.");
     var unzipCopy = $("#unzipCopy");
-    if (unzipCopy) { unzipCopy.removeAttribute("data-copy"); unzipCopy.disabled = true; }
+    if (unzipCopy) {
+      clearCopyFeedback(unzipCopy);
+      unzipCopy.removeAttribute("data-copy");
+      unzipCopy.disabled = true;
+    }
     $$("[data-download]").forEach(function (el) {
       el.removeAttribute("href");
       el.setAttribute("aria-disabled", "true");
@@ -304,7 +333,17 @@
   if (installer) {
     var methods = $$(".method", installer);
     var panels = $$(".panel", installer);
+    var rail = $(".installer__rail", installer);
+    var selectedMethod = methods.filter(function (m) { return m.getAttribute("aria-selected") === "true"; })[0] || methods[0];
+    function keepMethodVisible() {
+      if (!rail || !selectedMethod || rail.scrollWidth <= rail.clientWidth) return;
+      var bounds = rail.getBoundingClientRect();
+      var tab = selectedMethod.getBoundingClientRect();
+      if (tab.left < bounds.left) rail.scrollLeft += tab.left - bounds.left;
+      else if (tab.right > bounds.right) rail.scrollLeft += tab.right - bounds.right;
+    }
     function selectMethod(method) {
+      selectedMethod = method;
       methods.forEach(function (m) {
         var on = m === method;
         m.classList.toggle("is-active", on);
@@ -316,20 +355,22 @@
         p.classList.toggle("is-active", on);
         p.hidden = !on;
       });
+      keepMethodVisible();
     }
+    if (selectedMethod) selectMethod(selectedMethod);
+    window.addEventListener("resize", keepMethodVisible);
     methods.forEach(function (method) {
       method.addEventListener("click", function () { selectMethod(method); });
       method.addEventListener("keydown", function (e) {
-        var idx = methods.indexOf(method);
-        if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        var idx = methods.indexOf(method), next = null;
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % methods.length;
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (idx - 1 + methods.length) % methods.length;
+        if (e.key === "Home") next = 0;
+        if (e.key === "End") next = methods.length - 1;
+        if (next !== null) {
           e.preventDefault();
-          selectMethod(methods[(idx + 1) % methods.length]);
-          methods[(idx + 1) % methods.length].focus();
-        }
-        if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-          e.preventDefault();
-          selectMethod(methods[(idx - 1 + methods.length) % methods.length]);
-          methods[(idx - 1 + methods.length) % methods.length].focus();
+          methods[next].focus({ preventScroll: true });
+          selectMethod(methods[next]);
         }
       });
     });
