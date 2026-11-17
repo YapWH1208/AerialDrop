@@ -1,6 +1,19 @@
 import Foundation
 import CoreFoundation
 
+enum ManifestCompatibilityRepairError: LocalizedError {
+    case committed(String)
+    case superseded(String)
+    case outcomeUnknown(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .committed(let message), .superseded(let message), .outcomeUnknown(let message):
+            return message
+        }
+    }
+}
+
 struct ManifestStore {
     // Stable IDs let the app find and manage only its own catalogue entries.
     static let categoryID = "A0D92C42-1E4D-47E5-9AB6-9C76B7914DF1"
@@ -15,9 +28,129 @@ struct ManifestStore {
 
     private let fileManager = FileManager.default
     let paths: WallpaperPaths
+    private let bundledManifestReader: () throws -> Data
+    private let beforeCompatibilityWrite: (() throws -> Void)?
+    private let afterCompatibilityWrite: (() throws -> Void)?
+    private let compatibilityWriter: (Data, URL) throws -> Void
 
-    init(paths: WallpaperPaths = WallpaperPaths()) {
+    init(
+        paths: WallpaperPaths = WallpaperPaths(),
+        bundledManifestReader: @escaping () throws -> Data = {
+            try Data(contentsOf: URL(fileURLWithPath:
+                "/System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/Resources/entries.json"))
+        },
+        beforeCompatibilityWrite: (() throws -> Void)? = nil,
+        afterCompatibilityWrite: (() throws -> Void)? = nil,
+        compatibilityWriter: @escaping (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }
+    ) {
         self.paths = paths
+        self.bundledManifestReader = bundledManifestReader
+        self.beforeCompatibilityWrite = beforeCompatibilityWrite
+        self.afterCompatibilityWrite = afterCompatibilityWrite
+        self.compatibilityWriter = compatibilityWriter
+    }
+
+    /// Inspects snapshots without modifying the catalogue or restarting services.
+    func assessCatalogueCompatibility() throws -> AerialCatalogueCompatibility.Assessment {
+        try requireManifest()
+        return try AerialCatalogueCompatibility.assess(
+            installed: Data(contentsOf: paths.manifest), bundled: bundledManifestReader()
+        )
+    }
+
+    /// Promotes only the manifest version after validating both catalogue snapshots.
+    /// A concurrent writer can still race the final compare and atomic replacement;
+    /// never restore over an unexpected post-write catalogue.
+    @discardableResult
+    func repairCatalogueCompatibility() throws -> Bool {
+        try requireManifest()
+        let originalData = try Data(contentsOf: paths.manifest)
+        let bundledData = try bundledManifestReader()
+        let assessment = try AerialCatalogueCompatibility.assess(installed: originalData, bundled: bundledData)
+        guard case .promotion(let version) = assessment else {
+            guard try Data(contentsOf: paths.manifest) == originalData,
+                  try bundledManifestReader() == bundledData else {
+                throw AerialDropError.manifestChangedDuringOperation
+            }
+            return false
+        }
+
+        let originalRoot = try loadRoot(from: originalData)
+        var candidateRoot = originalRoot
+        candidateRoot["version"] = version
+        // This repair alone may change the top-level version. The regular
+        // foreign-data comparison still checks every other field and entry.
+        var expectedRoot = originalRoot
+        expectedRoot["version"] = version
+        try validateCandidate(candidateRoot, preservingForeignEntriesFrom: expectedRoot, requireManagedFiles: false)
+        let candidateData = try JSONSerialization.data(
+            withJSONObject: candidateRoot, options: [.prettyPrinted, .withoutEscapingSlashes]
+        )
+        _ = try loadRoot(from: candidateData)
+
+        guard try Data(contentsOf: paths.manifest) == originalData,
+              try bundledManifestReader() == bundledData else {
+            throw AerialDropError.manifestChangedDuringOperation
+        }
+        try fileManager.createDirectory(at: paths.backups, withIntermediateDirectories: true)
+        let backup = try backupManifest(data: originalData, operation: "compatibility")
+        try beforeCompatibilityWrite?()
+        guard try Data(contentsOf: paths.manifest) == originalData,
+              try bundledManifestReader() == bundledData else {
+            throw AerialDropError.manifestChangedDuringOperation
+        }
+        do {
+            try compatibilityWriter(candidateData, paths.manifest)
+            try afterCompatibilityWrite?()
+        } catch {
+            // Atomic replacement can have completed even if the operation later
+            // reports an error. Classify the observed state, retain the backup,
+            // and never try to roll back over another writer's changes.
+            let observed: Data
+            do {
+                observed = try Data(contentsOf: paths.manifest)
+            } catch {
+                throw ManifestCompatibilityRepairError.outcomeUnknown(
+                    "The compatibility update could not be verified. Reload the catalogue; the safety backup \(backup.lastPathComponent) was retained."
+                )
+            }
+            if observed == candidateData {
+                throw ManifestCompatibilityRepairError.committed(
+                    "The compatibility update was written but could not be fully verified. Reload the catalogue; the safety backup \(backup.lastPathComponent) was retained."
+                )
+            }
+            if observed != originalData {
+                throw ManifestCompatibilityRepairError.superseded(
+                    "The catalogue changed during compatibility repair. Reload it; the safety backup \(backup.lastPathComponent) was retained."
+                )
+            }
+            throw ManifestCompatibilityRepairError.outcomeUnknown(
+                "The compatibility update failed and the previous catalogue remains on disk. Reload it; the safety backup \(backup.lastPathComponent) was retained. \(error.localizedDescription)"
+            )
+        }
+        let writtenData: Data
+        do {
+            writtenData = try Data(contentsOf: paths.manifest)
+        } catch {
+            throw ManifestCompatibilityRepairError.outcomeUnknown(
+                "The compatibility update could not be verified. Reload the catalogue; the safety backup \(backup.lastPathComponent) was retained."
+            )
+        }
+        guard writtenData == candidateData else {
+            throw ManifestCompatibilityRepairError.superseded(
+                "The catalogue changed after compatibility repair. Reload it; the safety backup \(backup.lastPathComponent) was retained."
+            )
+        }
+        do {
+            try validateCandidate(
+                loadRoot(from: writtenData), preservingForeignEntriesFrom: expectedRoot, requireManagedFiles: false
+            )
+        } catch {
+            throw ManifestCompatibilityRepairError.outcomeUnknown(
+                "The compatibility update could not be validated. Reload the catalogue; the safety backup \(backup.lastPathComponent) was retained."
+            )
+        }
+        return true
     }
 
     func prepareDirectories() throws {
