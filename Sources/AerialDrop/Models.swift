@@ -140,6 +140,7 @@ enum ImportActivationResult: Equatable {
     case activatedEverywhere
     case installedOnly
     case activationFailed
+    case compatibilityNeedsAttention
 }
 
 struct ImportOutcome: Equatable {

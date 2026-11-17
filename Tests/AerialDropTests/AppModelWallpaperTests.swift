@@ -1428,6 +1428,165 @@ final class AppModelWallpaperTests: XCTestCase {
         XCTAssertEqual(model.activeAlert?.title, "Catalogue Valid")
     }
 
+    func testRepairIsAvailableForAnAlreadySelectedWallpaper() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "ACTIVE-REPAIR")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        var bundled = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: paths.manifest)) as? [String: Any])
+        bundled["version"] = 2
+        let bundledData = try JSONSerialization.data(withJSONObject: bundled)
+        let store = ManifestStore(paths: paths, bundledManifestReader: { bundledData })
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        let model = AppModel(paths: paths, manifestStore: store, systemService: service, automaticallyReload: false)
+
+        await model.reload()
+        XCTAssertTrue(model.isWallpaperAlreadySelected(wallpaper))
+        await model.performCatalogueCompatibilityRepair()
+
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Updated")
+        XCTAssertEqual(service.refreshCallCount, 1)
+        XCTAssertEqual(try store.assessCatalogueCompatibility(), .current)
+        XCTAssertTrue(model.isWallpaperAlreadySelected(wallpaper))
+        await model.performCatalogueCompatibilityRepair()
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Already Current")
+        XCTAssertEqual(service.refreshCallCount, 2)
+    }
+
+    func testReloadReportsEligibleRepairWithoutChangingCatalogue() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "READ-ONLY-STATUS")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let original = try Data(contentsOf: paths.manifest)
+        var bundled = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+        bundled["version"] = 2
+        let bundledData = try JSONSerialization.data(withJSONObject: bundled)
+        let store = ManifestStore(paths: paths, bundledManifestReader: { bundledData })
+        let model = AppModel(paths: paths, manifestStore: store, systemService: FakeWallpaperService(), automaticallyReload: false)
+        await model.reload()
+        XCTAssertEqual(model.catalogueCompatibilityStatus, .repairAvailable)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        model.validateCatalogue()
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Problem")
+        XCTAssertEqual(model.activeAlert?.message, CatalogueRepairNeeded.required.localizedDescription)
+        await model.refreshCataloguePreservingContent()
+        XCTAssertEqual(model.catalogueCompatibilityStatus, .repairAvailable)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+    }
+
+    func testCompatibilityReadFailureKeepsLoadedLibraryAndReportsStatus() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "UNREADABLE-STATUS")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let store = ManifestStore(paths: paths, bundledManifestReader: { throw TestError.storeUnreadable })
+        let model = AppModel(paths: paths, manifestStore: store, systemService: FakeWallpaperService(), automaticallyReload: false)
+        await model.reload()
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        XCTAssertEqual(model.catalogueCompatibilityStatus, .unavailable(TestError.storeUnreadable.localizedDescription))
+        await model.refreshCataloguePreservingContent()
+        XCTAssertEqual(model.wallpapers.map(\.id), [wallpaper.id])
+        XCTAssertEqual(model.catalogueCompatibilityStatus, .unavailable(TestError.storeUnreadable.localizedDescription))
+    }
+
+    func testRepairConflictKeepsCatalogueUnchanged() async throws {
+        let home = makeTemporaryHome()
+        let wallpaper = makeWallpaper(id: "CONFLICT-REPAIR")
+        try installManagedWallpaper(wallpaper, in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let original = try Data(contentsOf: paths.manifest)
+        var bundled = try XCTUnwrap(JSONSerialization.jsonObject(with: original) as? [String: Any])
+        bundled["version"] = 2
+        var assets = try XCTUnwrap(bundled["assets"] as? [[String: Any]])
+        assets[0]["url-4K-SDR-240FPS"] = "https://example.invalid/different.mov"
+        bundled["assets"] = assets
+        let bundledData = try JSONSerialization.data(withJSONObject: bundled)
+        let store = ManifestStore(paths: paths, bundledManifestReader: { bundledData })
+        let service = FakeWallpaperService(activeIDs: [wallpaper.id])
+        let model = AppModel(paths: paths, manifestStore: store, systemService: service, automaticallyReload: false)
+
+        await model.performCatalogueCompatibilityRepair()
+
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Repair Catalogue")
+        XCTAssertEqual(service.refreshCallCount, 0)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+    }
+
+    func testImportPreflightStopsBeforeEncodingWhenCompatibilityCheckFails() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let processor = SuspendedVideoProcessor()
+        let model = AppModel(
+            paths: WallpaperPaths(homeDirectory: home),
+            catalogueCompatibilityOverride: { throw TestError.storeUnreadable },
+            systemService: FakeWallpaperService(), videoProcessor: processor,
+            automaticallyReload: false
+        )
+        await model.reload()
+        model.selectedVideo = home.appending(path: "source.mov")
+        model.isSelectedVideoValid = true
+        model.title = "Example"
+        model.importSelectedVideo()
+        await waitUntil { model.activeAlert != nil }
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Import the Video")
+        let request = await processor.request(at: 0)
+        XCTAssertNil(request)
+    }
+
+    func testImportKeepsMediaWhenCompatibilityChangesAfterManifestWrite() async throws {
+        let home = makeTemporaryHome()
+        try installEmptyManifest(in: home)
+        let paths = WallpaperPaths(homeDirectory: home)
+        let initial = try Data(contentsOf: paths.manifest)
+        var changedRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: initial) as? [String: Any])
+        changedRoot["version"] = 2
+        let changed = try JSONSerialization.data(withJSONObject: changedRoot)
+        let store = ManifestStore(paths: paths, bundledManifestReader: {
+            let data = try Data(contentsOf: paths.manifest)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let assets = try XCTUnwrap(root["assets"] as? [[String: Any]])
+            return assets.isEmpty ? initial : changed
+        })
+        let processor = SuspendedVideoProcessor()
+        let model = AppModel(paths: paths, manifestStore: store, systemService: FakeWallpaperService(),
+                             videoProcessor: processor, automaticallyReload: false,
+                             availableCapacityProvider: { _ in nil })
+        await model.reload()
+        model.selectedVideo = home.appending(path: "source.mov")
+        model.isSelectedVideoValid = true
+        model.title = "Race"
+        model.sourceResolution = CGSize(width: 1920, height: 1080)
+        model.importSelectedVideo()
+        let request = try await waitForEncode(processor, index: 0)
+        try await processor.completeEncode(0)
+        await waitUntil { !model.isWorking }
+
+        let id = request.destination.deletingPathExtension().lastPathComponent
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.videoURL(for: id).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: id).path))
+        XCTAssertEqual(try store.importedWallpapers().map(\.id), [id])
+        XCTAssertEqual(model.activeAlert?.title, "Couldn’t Import the Video")
+        XCTAssertTrue(model.activeAlert?.message.contains("files and backup were kept") == true)
+    }
+
+    func testInstalledOnlyCompatibilityFailureDoesNotOfferActivationRetry() async {
+        let home = makeTemporaryHome()
+        let service = FakeWallpaperService()
+        let model = AppModel(
+            paths: WallpaperPaths(homeDirectory: home),
+            catalogueCompatibilityOverride: { throw TestError.storeUnreadable },
+            systemService: service, automaticallyReload: false
+        )
+        let result = await model.applyPostImportWallpaperSetting(
+            to: makeWallpaper(id: "NO-AUTO-ACTIVATION"), automaticallyActivate: false
+        )
+        XCTAssertEqual(result, .compatibilityNeedsAttention)
+        XCTAssertNil(model.activationFailure)
+        XCTAssertEqual(model.activeAlert?.title, "Catalogue Needs Attention")
+        XCTAssertTrue(service.activatedAssetIDs.isEmpty)
+    }
+
     func testImportReservesBusyStateAndCapturesDraftBeforeTaskStarts() async throws {
         let home = makeTemporaryHome()
         let existing = makeWallpaper(id: "BUSY-EXISTING")
@@ -1721,6 +1880,7 @@ final class AppModelWallpaperTests: XCTestCase {
         let temporaryHome = home ?? makeTemporaryHome()
         return AppModel(
             paths: WallpaperPaths(homeDirectory: temporaryHome),
+            catalogueCompatibilityOverride: {},
             systemService: service,
             videoProcessor: videoProcessor,
             automaticallyReload: false,

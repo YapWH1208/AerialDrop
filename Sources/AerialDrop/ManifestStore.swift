@@ -1,6 +1,14 @@
 import Foundation
 import CoreFoundation
 
+enum CatalogueRepairNeeded: LocalizedError {
+    case required
+
+    var errorDescription: String? {
+        "macOS may not load this catalogue. Choose Repair Catalogue Compatibility in the Maintenance menu."
+    }
+}
+
 enum ManifestCompatibilityRepairError: LocalizedError {
     case committed(String)
     case superseded(String)
@@ -32,6 +40,8 @@ struct ManifestStore {
     private let beforeCompatibilityWrite: (() throws -> Void)?
     private let afterCompatibilityWrite: (() throws -> Void)?
     private let compatibilityWriter: (Data, URL) throws -> Void
+    private let afterImportCompatibilityCheck: (() throws -> Void)?
+    private let importWriter: (Data, URL) throws -> Void
 
     init(
         paths: WallpaperPaths = WallpaperPaths(),
@@ -41,13 +51,17 @@ struct ManifestStore {
         },
         beforeCompatibilityWrite: (() throws -> Void)? = nil,
         afterCompatibilityWrite: (() throws -> Void)? = nil,
-        compatibilityWriter: @escaping (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }
+        compatibilityWriter: @escaping (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) },
+        afterImportCompatibilityCheck: (() throws -> Void)? = nil,
+        importWriter: @escaping (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }
     ) {
         self.paths = paths
         self.bundledManifestReader = bundledManifestReader
         self.beforeCompatibilityWrite = beforeCompatibilityWrite
         self.afterCompatibilityWrite = afterCompatibilityWrite
         self.compatibilityWriter = compatibilityWriter
+        self.afterImportCompatibilityCheck = afterImportCompatibilityCheck
+        self.importWriter = importWriter
     }
 
     /// Inspects snapshots without modifying the catalogue or restarting services.
@@ -391,7 +405,7 @@ struct ManifestStore {
         }
     }
 
-    func addWallpaper(id: String, title: String, width: Int = 0, height: Int = 0) throws {
+    func addWallpaper(id: String, title: String, width: Int = 0, height: Int = 0, requiringCompatibleCatalogue: Bool = false) throws {
         try validateManagedID(id)
         try requireManifest()
         try prepareDirectories()
@@ -405,7 +419,7 @@ struct ManifestStore {
             throw AerialDropError.installedFileMissing(thumbnailURL)
         }
 
-        try mutateManifest(operation: "import") { root in
+        try mutateManifest(operation: "import", requiringCompatibleCatalogue: requiringCompatibleCatalogue) { root in
             guard var assets = root["assets"] as? [[String: Any]] else {
                 throw AerialDropError.malformedManifest("missing top-level assets array")
             }
@@ -877,9 +891,23 @@ struct ManifestStore {
         operation: String,
         requireManagedFiles: Bool = true,
         commitValidation: (() throws -> Void)? = nil,
+        requiringCompatibleCatalogue: Bool = false,
         mutation: (inout [String: Any]) throws -> Void
     ) throws {
         let originalData = try Data(contentsOf: paths.manifest)
+        let bundledData = try requiringCompatibleCatalogue ? bundledManifestReader() : nil
+        if let bundledData {
+            guard try AerialCatalogueCompatibility.assess(installed: originalData, bundled: bundledData) == .current else {
+                throw CatalogueRepairNeeded.required
+            }
+        }
+        func checkCompatibilitySnapshot(_ expected: Data) throws {
+            guard let bundledData else { return }
+            guard try Data(contentsOf: paths.manifest) == expected,
+                  try bundledManifestReader() == bundledData else {
+                throw AerialDropError.manifestChangedDuringOperation
+            }
+        }
         let originalRoot = try loadRoot(from: originalData)
         try validateBaseManifest(originalRoot)
         // Candidate-only validation misses unsafe IDs whose entries are removed or dropped
@@ -912,18 +940,42 @@ struct ManifestStore {
         }
 
         try commitValidation?()
+        try checkCompatibilitySnapshot(originalData)
         let backup = try backupManifest(data: originalData, operation: operation)
         // Backup creation takes time. Check the selection again after it finishes,
         // and remove only our new backup if the operation has become unsafe.
         do {
             try commitValidation?()
+            try checkCompatibilitySnapshot(originalData)
         } catch {
             try fileManager.removeItem(at: backup)
             throw error
         }
-        try candidateData.write(to: paths.manifest, options: .atomic)
+        func importOutcomeAfterWriteFailure() -> AerialDropError {
+            guard let current = try? Data(contentsOf: paths.manifest) else {
+                return .manifestMutationOutcomeUnknown("Reload the catalogue. The safety backup \(backup.lastPathComponent) was retained.")
+            }
+            if current == candidateData {
+                return .manifestMutationCommitted("Reload the catalogue. The safety backup \(backup.lastPathComponent) was retained.")
+            }
+            if current != originalData {
+                return .manifestMutationSuperseded("Reload the catalogue. The safety backup \(backup.lastPathComponent) was retained.")
+            }
+            return .manifestMutationOutcomeUnknown("Reload the catalogue. The safety backup \(backup.lastPathComponent) was retained.")
+        }
+        do {
+            if requiringCompatibleCatalogue {
+                try importWriter(candidateData, paths.manifest)
+            } else {
+                try candidateData.write(to: paths.manifest, options: .atomic)
+            }
+        } catch {
+            if requiringCompatibleCatalogue { throw importOutcomeAfterWriteFailure() }
+            throw error
+        }
         do {
             try commitValidation?()
+            try checkCompatibilitySnapshot(candidateData)
         } catch {
             do {
                 let latestData = try Data(contentsOf: paths.manifest)
@@ -959,16 +1011,22 @@ struct ManifestStore {
             }
         }
 
-        let writtenData = try Data(contentsOf: paths.manifest)
-        guard writtenData == candidateData else {
-            throw AerialDropError.manifestChangedDuringOperation
+        do {
+            if requiringCompatibleCatalogue { try afterImportCompatibilityCheck?() }
+            let writtenData = try Data(contentsOf: paths.manifest)
+            guard writtenData == candidateData else {
+                throw AerialDropError.manifestChangedDuringOperation
+            }
+            let writtenRoot = try loadRoot(from: writtenData)
+            try validateCandidate(
+                writtenRoot,
+                preservingForeignEntriesFrom: originalRoot,
+                requireManagedFiles: requireManagedFiles
+            )
+        } catch {
+            if requiringCompatibleCatalogue { throw importOutcomeAfterWriteFailure() }
+            throw error
         }
-        let writtenRoot = try loadRoot(from: writtenData)
-        try validateCandidate(
-            writtenRoot,
-            preservingForeignEntriesFrom: originalRoot,
-            requireManagedFiles: requireManagedFiles
-        )
     }
 
     private func loadRoot(from data: Data) throws -> [String: Any] {

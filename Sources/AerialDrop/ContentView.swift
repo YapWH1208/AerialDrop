@@ -370,6 +370,9 @@ struct ContentView: View {
         Menu("Maintenance", systemImage: "ellipsis.circle") {
             Button("Open Aerial Storage Folder") { model.openStorageFolder() }
             Button("Validate Current Catalogue") { model.validateCatalogue() }
+            Button("Repair Catalogue Compatibility") { model.repairCatalogueCompatibility() }
+                .disabled(model.isWorking)
+                .help("Check and repair the catalogue for this macOS version")
             Divider()
             Button("Restore Catalogue Backup…") {
                 pendingBackupConfirmation = nil

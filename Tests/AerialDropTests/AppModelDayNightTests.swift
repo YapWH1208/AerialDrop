@@ -157,7 +157,7 @@ final class AppModelDayNightTests: XCTestCase {
         )
         AppPreferences.setDayNightSectionExpansionPreference(preference, defaults: h.defaults)
 
-        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
         await reopened.reload()
         var reopenedPreference = AppPreferences.dayNightSectionExpansionPreference(defaults: h.defaults)
         XCTAssertFalse(DayNightSectionExpansionState.reconcile(
@@ -223,7 +223,7 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: h.paths.manifest), before)
         XCTAssertNil(try h.store.dayNightPair())
         XCTAssertTrue(h.service.typedRequests.isEmpty)
-        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
         XCTAssertEqual(reopened.dayWallpaperID, h.dayID)
         XCTAssertEqual(reopened.nightWallpaperID, h.nightID)
     }
@@ -263,7 +263,7 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertEqual(try h.store.dayNightPair()?.dayAssetID, h.thirdID)
         XCTAssertTrue(h.model.isDayNightRecoveryPending)
         XCTAssertEqual(h.model.activeAlert?.title, "Couldn’t Apply Day/Night Wallpaper")
-        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
         await reopened.reload()
         XCTAssertTrue(reopened.isDayNightRecoveryPending)
         XCTAssertEqual(reopened.removalReadiness(for: [h.dayID]), .verifiedActive)
@@ -408,7 +408,7 @@ final class AppModelDayNightTests: XCTestCase {
         try AppPreferences.protectDayNightAssetIDs(h.pair.memberAssetIDs, defaults: h.defaults)
         h.service.activeIDs = [h.thirdID]
         h.service.selected = .single(assetID: h.thirdID)
-        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
         await reopened.reload()
         let wallpaper = h.wallpaper(h.thirdID)
         XCTAssertNil(try h.store.dayNightPair())
@@ -440,7 +440,7 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertTrue(h.defaults.synchronize())
         h.service.activeIDs = [h.thirdID]
         h.service.selected = .single(assetID: h.thirdID)
-        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
         await reopened.reload()
         let wallpaper = h.wallpaper(h.thirdID)
         XCTAssertNil(try h.store.dayNightPair())
@@ -492,7 +492,7 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: h.paths.videoURL(for: h.dayID).path))
         XCTAssertTrue(h.model.activeAlert?.message.contains("Removed 1 of 1") == true)
         XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), h.pair.memberAssetIDs)
-        let reopened = AppModel(paths: h.paths, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+        let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
         await reopened.reload()
         XCTAssertTrue(reopened.isDayNightRecoveryPending)
         XCTAssertEqual(reopened.removalReadiness(for: [h.dayID]), .verifiedActive)
@@ -626,7 +626,7 @@ private final class DayNightModelHarness {
             try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: id))
             try store.addWallpaper(id: id, title: id)
         }
-        model = AppModel(paths: paths, systemService: service, automaticallyReload: false, preferencesDefaults: defaults)
+        model = AppModel(paths: paths, catalogueCompatibilityOverride: {}, systemService: service, automaticallyReload: false, preferencesDefaults: defaults)
     }
 
     func cleanup() {

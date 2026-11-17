@@ -17,7 +17,7 @@ enum AerialCatalogueCompatibility {
             case .invalidCatalogue:
                 return "The wallpaper catalogues could not be checked. Open Wallpaper Settings and try again."
             case .incompatibleCatalogue:
-                return "The wallpaper catalogues differ, so AerialDrop cannot safely update them. Open Wallpaper Settings and try again."
+                return "The macOS and installed wallpaper catalogues differ. AerialDrop can’t safely update the catalogue. Use a built-in wallpaper or check for an AerialDrop update."
             }
         }
     }

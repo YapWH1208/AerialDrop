@@ -103,7 +103,7 @@ struct ImportPane: View {
     }
 
     private var importFinishedWithFailure: Bool {
-        model.importOutcome?.activationResult == .activationFailed
+        model.importOutcome?.requiresAttention ?? false
     }
 
     /// The encoded frame size and an estimated output size for the 80-second
@@ -448,11 +448,11 @@ private struct ImportSuccessView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: outcome.activationResult == .activationFailed
+                    Image(systemName: outcome.requiresAttention
                         ? "exclamationmark.circle.fill"
                         : "checkmark.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(outcome.activationResult == .activationFailed ? Color.orange : Color.green)
+                        .foregroundStyle(outcome.requiresAttention ? Color.orange : Color.green)
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 5) {
@@ -481,25 +481,33 @@ private struct ImportSuccessView: View {
 }
 
 private extension ImportOutcome {
+    var requiresAttention: Bool {
+        activationResult == .activationFailed || activationResult == .compatibilityNeedsAttention
+    }
+
     var completionTitle: String {
         switch activationResult {
         case .activatedEverywhere:
-            "Imported and Set as Wallpaper"
+            "Imported and Selected as Wallpaper"
         case .installedOnly:
             "Imported Without Changing Wallpaper"
         case .activationFailed:
             "Imported; Activation Needs Attention"
+        case .compatibilityNeedsAttention:
+            "Imported; Catalogue Needs Attention"
         }
     }
 
     var completionMessage: String {
         switch activationResult {
         case .activatedEverywhere:
-            "“\(wallpaper.title)” is active across all Spaces and displays."
+            "“\(wallpaper.title)” was selected for all Spaces and displays. Check Wallpaper Settings to confirm it appears."
         case .installedOnly:
-            "“\(wallpaper.title)” was added to the native Aerial catalogue. Your current wallpaper was not changed."
+            "“\(wallpaper.title)” was added to the wallpaper catalogue. Your current wallpaper was not changed."
         case .activationFailed:
             "“\(wallpaper.title)” was installed, but could not be applied. You can retry from the recovery alert or Library."
+        case .compatibilityNeedsAttention:
+            "“\(wallpaper.title)” was installed, but its catalogue needs attention. Use Repair Catalogue Compatibility in Maintenance."
         }
     }
 
