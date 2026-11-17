@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Check Aerial catalogue compatibility against the bundled macOS manifest, safely repair eligible older versions, and make recovery available for existing wallpapers. Conflicting Apple records are left unchanged for safety.
 - Prepare source dimensions and duration before enabling import, with retryable errors and accurate framing controls for every video wider than 16:9.
 - Keep import progress and safe cancellation above scrolling content in Import and Library.
 - Offer contextual Day/Night and restore recovery, retain bulk-removal survivors for a fresh retry, and let users choose a dated catalogue backup before confirmation.
