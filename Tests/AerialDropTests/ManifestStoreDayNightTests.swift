@@ -146,6 +146,31 @@ final class ManifestStoreDayNightTests: XCTestCase {
         }
     }
 
+    func testReplacementUsesPreviewBackedOrdinaryRepresentative() throws {
+        for id in ["OLD-DAY", "OLD-NIGHT", "OTHER", "NEW-DAY"] {
+            try install(id: id, title: id)
+        }
+        try store.configureDayNightPair(.init(dayAssetID: "OLD-DAY", nightAssetID: "OLD-NIGHT"))
+        try FileManager.default.removeItem(at: paths.thumbnailURL(for: "OLD-DAY"))
+
+        let replacement = DayNightWallpaperPair(dayAssetID: "NEW-DAY", nightAssetID: "OLD-NIGHT")
+        try store.configureDayNightPair(replacement) { _ in }
+
+        let root = try json(at: paths.manifest)
+        let category = try XCTUnwrap((root["categories"] as? [[String: Any]])?.first {
+            ($0["id"] as? String) == ManifestStore.categoryID
+        })
+        XCTAssertEqual(category["representativeAssetID"] as? String, "NEW-DAY")
+        XCTAssertEqual(category["previewImage"] as? String, paths.thumbnailURL(for: "NEW-DAY").absoluteString)
+
+        let subcategories = try XCTUnwrap(category["subcategories"] as? [[String: Any]])
+        let ordinary = try XCTUnwrap(subcategories.first {
+            ($0["id"] as? String) == ManifestStore.subcategoryID
+        })
+        XCTAssertEqual(ordinary["representativeAssetID"] as? String, "OTHER")
+        XCTAssertEqual(ordinary["previewImage"] as? String, paths.thumbnailURL(for: "OTHER").absoluteString)
+    }
+
     func testConfigureDoesNotWriteIfReplacementMediaDisappearsDuringProtection() throws {
         for id in ["OLD-DAY", "OLD-NIGHT", "NEW-DAY"] {
             try install(id: id, title: id)

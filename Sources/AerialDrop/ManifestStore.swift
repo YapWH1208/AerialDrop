@@ -538,7 +538,8 @@ struct ManifestStore {
                 categories,
                 assets: assets,
                 preferredRepresentativeAssetID: existingRepresentative,
-                pair: pair
+                pair: pair,
+                preferPreviewBackedRepresentatives: true
             )
 
             root["assets"] = assets
@@ -790,12 +791,25 @@ struct ManifestStore {
     private func makeCategory(
         representativeAssetID id: String,
         managedAssetIDs: [String],
-        pair: DayNightWallpaperPair?
+        pair: DayNightWallpaperPair?,
+        preferPreviewBackedRepresentatives: Bool = false
     ) -> [String: Any] {
         let preview = paths.thumbnailURL(for: id).absoluteString
         let ordinaryIDs = managedAssetIDs.filter { pair?.memberAssetIDs.contains($0) != true }
+        let preferredOrdinaryID = ordinaryIDs.contains(id) ? id : nil
+        let previewBackedOrdinaryIDs = preferPreviewBackedRepresentatives
+            ? ordinaryIDs.filter(hasManagedPreview(for:))
+            : []
+        let ordinaryRepresentative: String?
+        if preferPreviewBackedRepresentatives {
+            ordinaryRepresentative = preferredOrdinaryID.flatMap {
+                hasManagedPreview(for: $0) ? $0 : nil
+            } ?? previewBackedOrdinaryIDs.first ?? ordinaryIDs.first
+        } else {
+            ordinaryRepresentative = preferredOrdinaryID ?? ordinaryIDs.first
+        }
         var subcategories = [[String: Any]]()
-        if let ordinaryRepresentative = ordinaryIDs.contains(id) ? id : ordinaryIDs.first {
+        if let ordinaryRepresentative {
             subcategories.append([
                 "id": Self.subcategoryID,
                 "localizedNameKey": Self.categoryName,
@@ -844,23 +858,42 @@ struct ManifestStore {
         _ categories: [[String: Any]],
         assets: [[String: Any]],
         preferredRepresentativeAssetID: String?,
-        pair: DayNightWallpaperPair?
+        pair: DayNightWallpaperPair?,
+        preferPreviewBackedRepresentatives: Bool = false
     ) -> [[String: Any]] {
         let managedIDs = assets.compactMap { asset -> String? in
             guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else { return nil }
             return asset["id"] as? String
         }
         var rebuilt = categories.filter { ($0["id"] as? String) != Self.categoryID }
-        guard let representative = preferredRepresentativeAssetID.flatMap({ managedIDs.contains($0) ? $0 : nil })
-            ?? managedIDs.first else {
+        let existingRepresentative = preferredRepresentativeAssetID.flatMap {
+            managedIDs.contains($0) ? $0 : nil
+        }
+        let previewBackedIDs = preferPreviewBackedRepresentatives
+            ? managedIDs.filter(hasManagedPreview(for:))
+            : []
+        let representative: String?
+        if preferPreviewBackedRepresentatives {
+            representative = existingRepresentative.flatMap {
+                hasManagedPreview(for: $0) ? $0 : nil
+            } ?? previewBackedIDs.first ?? existingRepresentative ?? managedIDs.first
+        } else {
+            representative = existingRepresentative ?? managedIDs.first
+        }
+        guard let representative else {
             return rebuilt
         }
         rebuilt.append(makeCategory(
             representativeAssetID: representative,
             managedAssetIDs: managedIDs,
-            pair: pair
+            pair: pair,
+            preferPreviewBackedRepresentatives: preferPreviewBackedRepresentatives
         ))
         return rebuilt
+    }
+
+    private func hasManagedPreview(for id: String) -> Bool {
+        fileManager.fileExists(atPath: paths.thumbnailURL(for: id).path)
     }
 
     /// Drops AerialDrop-owned assets whose installed files are missing while leaving foreign
