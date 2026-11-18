@@ -4,6 +4,12 @@ import Foundation
 import Observation
 import UniformTypeIdentifiers
 
+enum CatalogueCompatibilityStatus: Equatable {
+    case current
+    case repairAvailable
+    case unavailable(String)
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -12,6 +18,7 @@ final class AppModel {
     var wallpapers: [ManagedWallpaper] = []
     var catalogueState: CatalogueState = .loading
     var catalogueRefreshState: CatalogueRefreshState = .idle
+    private(set) var catalogueCompatibilityStatus: CatalogueCompatibilityStatus?
     var stage: ImportStage = .idle
     var isWorking = false
     var activeAlert: AppAlert?
@@ -56,6 +63,7 @@ final class AppModel {
 
     private let paths: WallpaperPaths
     private let manifestStore: ManifestStore
+    private let catalogueCompatibilityOverride: (() throws -> Void)?
     private let videoProcessor: any VideoProcessing
     private let systemService: any WallpaperServicing
     private let automaticActivationEnabled: () -> Bool
@@ -64,6 +72,8 @@ final class AppModel {
 
     init(
         paths: WallpaperPaths = WallpaperPaths(),
+        manifestStore: ManifestStore? = nil,
+        catalogueCompatibilityOverride: (() throws -> Void)? = nil,
         systemService: (any WallpaperServicing)? = nil,
         videoProcessor: any VideoProcessing = VideoProcessor(),
         automaticallyReload: Bool = true,
@@ -86,9 +96,11 @@ final class AppModel {
         }
     ) {
         self.paths = paths
-        manifestStore = ManifestStore(paths: paths)
+        let store = manifestStore ?? ManifestStore(paths: paths)
+        self.manifestStore = store
+        self.catalogueCompatibilityOverride = catalogueCompatibilityOverride
         self.systemService = systemService ?? SystemWallpaperService(
-            selectionStore: WallpaperSelectionStore(paths: paths)
+            selectionStore: WallpaperSelectionStore(paths: paths), manifestStore: store
         )
         self.videoProcessor = videoProcessor
         self.automaticActivationEnabled = automaticActivationEnabled
@@ -307,6 +319,7 @@ final class AppModel {
         operationLabel = "Applying Day/Night wallpaper…"
         defer { isWorking = false; operationLabel = nil }
         do {
+            try ensureCatalogueCompatibility(repair: true)
             try systemService.validateDayNightSupport()
             dayNightUnavailableReason = nil
             if let blocker = dayNightApplyBlockerMessage { throw AerialDropError.dayNightUnavailable(blocker) }
@@ -323,6 +336,7 @@ final class AppModel {
             })
             let expectedProtection = try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
             try await systemService.activateAerial(.automatic(groupID: ManifestStore.dayNightSubcategoryID), verifyingPair: pair)
+            try ensureCatalogueCompatibility(repair: false, requireCurrent: true)
             try AppPreferences.clearPendingDayNightAssetIDs(expectingAssetIDs: expectedProtection, defaults: preferencesDefaults)
             dismissActivationFailure()
             await reload()
@@ -628,6 +642,7 @@ final class AppModel {
             do {
                 try Task.checkCancellation()
                 try requireTahoe()
+                try ensureCatalogueCompatibility(repair: false)
                 stage = .validating
                 try await videoProcessor.validate(source: source)
                 try Task.checkCancellation()
@@ -670,11 +685,13 @@ final class AppModel {
 
                 try Task.checkCancellation()
                 stage = .updatingManifest
+                try ensureCatalogueCompatibility(repair: true)
                 try manifestStore.addWallpaper(
                     id: id,
                     title: cleanTitle,
                     width: Int(encodedSize.width),
-                    height: Int(encodedSize.height)
+                    height: Int(encodedSize.height),
+                    requiringCompatibleCatalogue: catalogueCompatibilityOverride == nil
                 )
                 manifestInstalled = true
 
@@ -698,7 +715,18 @@ final class AppModel {
                 sourceDuration = nil
                 sourcePreparationError = nil
             } catch {
-                if !manifestInstalled {
+                let uncertainMutation: Bool
+                if let error = error as? AerialDropError {
+                    switch error {
+                    case .manifestMutationCommitted, .manifestMutationSuperseded, .manifestMutationOutcomeUnknown:
+                        uncertainMutation = true
+                    default:
+                        uncertainMutation = false
+                    }
+                } else {
+                    uncertainMutation = false
+                }
+                if !manifestInstalled && !uncertainMutation {
                     try? FileManager.default.removeItem(at: videoDestination)
                     try? FileManager.default.removeItem(at: thumbnailDestination)
                 }
@@ -979,9 +1007,11 @@ final class AppModel {
             try manifestStore.requireManifest()
             wallpapers = try manifestStore.importedWallpapers()
             catalogueState = .ready
+            refreshCatalogueCompatibilityStatus()
         } catch {
             wallpapers = []
             catalogueState = .unavailable(error.localizedDescription)
+            catalogueCompatibilityStatus = nil
         }
         do {
             try refreshActiveSelection()
@@ -1016,6 +1046,7 @@ final class AppModel {
             try manifestStore.requireManifest()
             let refreshedWallpapers = try manifestStore.importedWallpapers()
             wallpapers = refreshedWallpapers
+            refreshCatalogueCompatibilityStatus()
             refreshError = nil
         } catch {
             refreshError = error
@@ -1106,7 +1137,14 @@ final class AppModel {
             }
         } else {
             await systemService.refresh()
-            activationResult = .installedOnly
+            do {
+                try ensureCatalogueCompatibility(repair: false, requireCurrent: true)
+                activationResult = .installedOnly
+            } catch {
+                activeAlert = AppAlert(title: "Catalogue Needs Attention", message: error.localizedDescription,
+                                       actions: [.openWallpaperSettings])
+                activationResult = .compatibilityNeedsAttention
+            }
         }
         await reload()
         importOutcome = ImportOutcome(
@@ -1177,6 +1215,7 @@ final class AppModel {
     }
 
     private func activateSingleWallpaperSafely(_ wallpaper: ManagedWallpaper) async throws {
+        try ensureCatalogueCompatibility(repair: true)
         let pair = try manifestStore.dayNightPair()
         let pending: Set<String>?
         let malformedProtection: NSObject?
@@ -1192,6 +1231,7 @@ final class AppModel {
         }
         guard pair != nil || pending == nil || pending?.isEmpty == false else {
             try await systemService.activateAerial(assetID: wallpaper.id)
+            try ensureCatalogueCompatibility(repair: false, requireCurrent: true)
             return
         }
         if let pending {
@@ -1204,6 +1244,7 @@ final class AppModel {
             ? .fixedVariant(assetID: wallpaper.id) : .single(assetID: wallpaper.id)
         let expectedProtection = pending == nil ? nil : try AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
         try await systemService.activateAerial(request, verifyingPair: request == .single(assetID: wallpaper.id) ? nil : pair)
+        try ensureCatalogueCompatibility(repair: false, requireCurrent: true)
         try AppPreferences.clearPendingDayNightAssetIDs(
             expectingAssetIDs: expectedProtection,
             expectingMalformedValue: malformedProtection,
@@ -1273,12 +1314,69 @@ final class AppModel {
         activationFailureMessage = error.localizedDescription
     }
 
+    private func refreshCatalogueCompatibilityStatus() {
+        do {
+            if let catalogueCompatibilityOverride {
+                try catalogueCompatibilityOverride()
+                catalogueCompatibilityStatus = .current
+            } else {
+                switch try manifestStore.assessCatalogueCompatibility() {
+                case .current: catalogueCompatibilityStatus = .current
+                case .promotion: catalogueCompatibilityStatus = .repairAvailable
+                }
+            }
+        } catch {
+            catalogueCompatibilityStatus = .unavailable(error.localizedDescription)
+        }
+    }
+
+    private func ensureCatalogueCompatibility(repair: Bool, requireCurrent: Bool = false) throws {
+        if let catalogueCompatibilityOverride {
+            try catalogueCompatibilityOverride()
+            return
+        }
+        if case .promotion = try manifestStore.assessCatalogueCompatibility() {
+            if repair {
+                try manifestStore.repairCatalogueCompatibility()
+            } else if requireCurrent {
+                throw CatalogueRepairNeeded.required
+            }
+        }
+    }
+
+    func repairCatalogueCompatibility() {
+        guard !isWorking else { return }
+        Task { await performCatalogueCompatibilityRepair() }
+    }
+
+    func performCatalogueCompatibilityRepair() async {
+        guard !isWorking else { return }
+        isWorking = true
+        operationLabel = "Checking catalogue…"
+        defer { isWorking = false; operationLabel = nil }
+        do {
+            let changed = try manifestStore.repairCatalogueCompatibility()
+            await systemService.refresh()
+            try ensureCatalogueCompatibility(repair: false, requireCurrent: true)
+            await reload()
+            activeAlert = AppAlert(
+                title: changed ? "Catalogue Updated" : "Catalogue Already Current",
+                message: "The catalogue passed AerialDrop’s compatibility checks. Check Wallpaper Settings to confirm playback."
+            )
+        } catch {
+            await reload()
+            activeAlert = AppAlert(title: "Couldn’t Repair Catalogue", message: error.localizedDescription,
+                                   actions: [.openWallpaperSettings])
+        }
+    }
+
     func validateCatalogue() {
         do {
             try manifestStore.validateCurrentManifest()
+            try ensureCatalogueCompatibility(repair: false, requireCurrent: true)
             activeAlert = AppAlert(
                 title: "Catalogue Valid",
-                message: "The current Aerial catalogue is valid and ready to use."
+                message: "The catalogue passed AerialDrop’s checks. Check Wallpaper Settings to confirm playback."
             )
         } catch {
             activeAlert = AppAlert(

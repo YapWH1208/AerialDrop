@@ -227,6 +227,10 @@ struct LibraryPane: View {
                 .accessibilityElement(children: .combine)
             }
 
+            if let status = model.catalogueCompatibilityStatus {
+                catalogueCompatibilityBanner(status)
+            }
+
             if let recovery = model.bulkRemovalRecovery {
                 bulkRecoveryBanner(recovery)
             } else if selectedWallpapers.count > 1 {
@@ -253,6 +257,42 @@ struct LibraryPane: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func catalogueCompatibilityBanner(_ status: CatalogueCompatibilityStatus) -> some View {
+        switch status {
+        case .current:
+            EmptyView()
+        case .repairAvailable:
+            compatibilityNotice("The wallpaper catalogue needs an update for this macOS version.") {
+                Button("Repair Catalogue") { model.repairCatalogueCompatibility() }
+                    .disabled(model.isWorking)
+            }
+        case .unavailable(let message):
+            compatibilityNotice(message) {
+                Button("Open Wallpaper Settings") { model.openWallpaperSettings() }
+                    .disabled(model.isWorking)
+            }
+        }
+    }
+
+    private func compatibilityNotice<Actions: View>(
+        _ message: String, @ViewBuilder actions: () -> Actions
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                actions()
+            }
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .contain)
     }
 
     private var selectedWallpapers: [ManagedWallpaper] {

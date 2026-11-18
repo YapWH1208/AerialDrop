@@ -45,6 +45,43 @@ source. Use a separate test account for the setup-required checks; do not move o
 edit a real Aerial catalogue to simulate failure. Reimport sources with this
 version before evaluating native playback.
 
+## Catalogue compatibility and recovery
+
+Automated compatibility and repair tests use synthetic bundled catalogues and
+temporary home directories. Run `swift test --filter AerialCatalogueCompatibilityTests`,
+`swift test --filter ManifestCatalogueRepairTests`, and
+`swift test --filter ManifestCatalogueImportGuardTests` for the focused checks.
+They cover eligible promotion, current/newer versions, conflicting or missing
+Apple records, foreign-data preservation, backups, and concurrent changes; they
+do not establish which catalogue the native extension loaded or whether video plays.
+
+For native acceptance, use a disposable macOS 27.2.x account or VM with a
+recoverable baseline and nonpersonal test media. Record the OS and extension
+build, the installed and bundled catalogue versions, and the prior selection.
+Use a test catalogue whose bundled records are compatible; do not change a
+normal account's catalogue to create a mismatch.
+
+1. When an older installed catalogue is available, check discovery and playback
+   of a fixed imported video before repair, then use **Maintenance → Repair
+   Catalogue Compatibility**. Confirm Library remains available, including when
+   that item is already marked Active, and that the original catalogue was backed up.
+2. Check the same video after repair in System Settings → Wallpaper, then play it
+   on the desktop and lock screen. Exercise lock/unlock, quit and relaunch the
+   app, reboot, and inspect the extension logs. Record which catalogue-loading
+   message is observed; an on-disk selection or **Catalogue Valid** alone is
+   not a playback result.
+3. In isolated fixtures or the disposable environment, verify that a differing
+   Apple record, missing bundled entry, unreadable source, or concurrent update
+   fails safely without replacing foreign data. Confirm current/newer versions
+   are not downgraded and explicit repair can refresh an already-current catalogue.
+   If a catalogue changes during recovery, retain the safety backup and do not
+   overwrite the newer data. A pre-repair backup may be refused by restore because
+   the catalogue version is foreign data.
+
+A prior manual observation on macOS 27.2.1 showed that imports appeared and
+played after the downloaded manifest was promoted to version 2. The same imports
+were not tested at version 1, so this was not a controlled before/after comparison.
+
 ## Onboarding and import UX
 
 1. On a test account that has not downloaded an Apple Aerial, build and open

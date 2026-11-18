@@ -28,14 +28,14 @@ Choose an MP4 or MOV, preview its 16:9 framing, then import it into the native A
 - **Native catalogue integration** — imports videos as full Tahoe Aerial catalogue entries with HEIF previews, visible under the AerialDrop section in System Settings → Wallpaper.
 - **Native-compatible encoding** — re-encodes sources to HEVC Main10, 30 fps, Rec.709 MOV with HEVC temporal scalability (two sub-layers, base layer at 15 fps) matching the `tscl`/`tsas` sample groups of Apple's own aerials. Lock/unlock slowdown and the fade back to the desktop run natively.
 - **Loop-safe passthrough repeats** — sources shorter than 80 seconds are repeated by passthrough export, with the loop duration snapped to whole 30 fps frames so every loop boundary lands on a sync sample.
-- **Automatic backups** — every write to the Aerial catalogue manifest is backed up first, so the last known-good catalogue state always survives at `aerials/AerialDropBackups`.
+- **Automatic backups** — before each Aerial catalogue write, AerialDrop saves the previous catalogue at `aerials/AerialDropBackups`. A restore is offered only when it passes the current safety checks.
 - **Inline preview** — the Import pane shows the source with a live 16:9 crop mask, and crop, quality, and output resolution are tuned in place before importing.
 - **Findable Library actions** — Preview is visible on every card; activation and more actions stay available when a card is selected or keyboard-focused. The sort menu shows its current order.
 - **Controllable Library preview** — installed wallpapers loop in a native preview sheet with a visible Play/Pause control that respects Reduced Motion.
 - **Visible import status** — the Library shows the current stage, progress, available encode estimate, safe Cancel, and a way back to Import while an import runs.
 - **In-app activation** — imported Aerials are applied across all Spaces and displays by default; Library also provides a manual Set as Wallpaper action and Active status.
 - **Native Day/Night pairs** — on supported macOS 27 systems, choose two distinct imports as Day and Night and explicitly apply native Automatic solar selection. Custom-media native playback acceptance is still pending.
-- **Maintenance tools** — validate the catalogue, open the storage folder, or remove all imported wallpapers.
+- **Maintenance tools** — validate or repair catalogue compatibility, open the storage folder, restore a backup, or remove imported wallpapers.
 
 ## Requirements
 
@@ -137,7 +137,7 @@ for full Xcode and its macOS SDK before removing previous build output.
 1. **Set up Apple Aerials** — before the first import, open System Settings → Wallpaper and download at least one Apple Aerial wallpaper. If the native catalogue is not ready, AerialDrop shows **Open Wallpaper Settings** and **Check Again** instead of an empty Library.
 2. **Choose and configure** — use **Choose Video…** or drop an MP4/MOV in the Import pane. Import becomes available after the source dimensions and duration are ready; preparation errors offer **Try Again** or **Replace Video…**. Review the name, crop, quality, and output resolution. Every source wider than 16:9 has horizontal framing controls. The source file is never modified. **Set as wallpaper after importing** is enabled by default and applies the new wallpaper across all Spaces and displays; turn it off inline to keep the current wallpaper. If you visit Library while configuring, **Continue Import** returns to the draft without replacing it.
 3. **Import** — choose **Import Wallpaper** in the toolbar or press Command-Return. Both Import and Library keep the current stage, progress, available encode estimate, and safe cancellation above their scrolling content. Library also offers **View Import**. Press Escape or choose **Cancel** before catalogue installation begins. Once installation starts, AerialDrop finishes without offering cancellation. The video is re-encoded into an 80-second, 30 fps HEVC Main10 stream with temporal sub-layers and registered in the native catalogue.
-4. **Continue** — the focused completion summary replaces the configuration form and states whether the wallpaper was activated everywhere or installed without changing the desktop. Choose **View in Library** or **Import Another**.
+4. **Continue** — the focused completion summary replaces the configuration form and states whether the wallpaper was selected everywhere or installed without changing the desktop. Check System Settings and playback to confirm macOS is displaying it. Choose **View in Library** or **Import Another**.
 5. **Quit** — AerialDrop can be quit after setup; macOS handles playback natively.
 
 The Library sort menu labels its current order (**Title** or **Recently Added**). Every wallpaper card keeps **Preview** visible; the activation and more actions remain available when a card is selected or keyboard-focused.
@@ -156,8 +156,13 @@ Day/Night and catalogue-restore failures offer relevant retry, reload, or Wallpa
 
 - Open Aerial Storage Folder
 - Validate Current Catalogue
+- Repair Catalogue Compatibility (also available when an imported wallpaper is marked Active)
 - Restore Catalogue Backup (choose a backup by date and operation, newest first, then confirm that exact snapshot; cancel without changing anything. Catalogue backups cannot recover deleted videos or thumbnails. Restore is refused if the selected backup changes, newer Apple catalogue data would be lost, or a currently active AerialDrop wallpaper would be removed. If active-wallpaper verification fails after the catalogue write, AerialDrop keeps the safety backup and reloads the Library. A concurrent catalogue update remains untouched; the safety backup can be restored if it still passes the foreign-data checks.)
 - Remove All AerialDrop Wallpapers
+
+AerialDrop checks the installed catalogue against the one bundled with macOS. When the installed version is older and the bundled records can be verified as compatible, it can update the version while preserving existing entries and backing up the previous catalogue. If the older catalogue conflicts with Apple records, lacks entries, or cannot be checked, AerialDrop does not promote it and reports the problem. Use a built-in wallpaper or check for an AerialDrop update in that case. A backup from before a version repair may not be restorable over the newer version if the foreign-data checks would reject it; AerialDrop never automatically overwrites a later catalogue to roll back the repair.
+
+**Validate Current Catalogue** checks the on-disk catalogue and compatibility; it does not verify that macOS loaded it or rendered a video. The **Active** badge reflects the stored selection, so check Wallpaper settings and playback if the wallpaper does not appear.
 
 ## How it works
 
