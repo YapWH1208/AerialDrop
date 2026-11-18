@@ -382,6 +382,10 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    wallpapers and a partial draft identifies the saved role and the missing
    role. For draft prompts, only a complete draft should suggest Apply. Actual
    native selection and recovery messages must still take precedence.
+   In a disposable test account, remove an inactive selected member or its
+   video or preview, then select another imported wallpaper for the missing
+   role and apply again. Repeat for Day and Night, and confirm the other choice
+   and unrelated incomplete entries remain intact after relaunch.
    Search for a matching title and for a title with no results, then clear the
    search. Confirm the section remains usable, card keyboard navigation and
    post-import scrolling still work, and operation/bulk-selection banners remain

@@ -146,6 +146,8 @@ If a selected batch is only partly removed, Library keeps the remaining wallpape
 
 On a supported macOS 27 system, the compact **Day/Night Wallpaper** summary shows the registered pair and any different saved choices. Choose **Edit** to open the selectors and **Done** to close them. A first or incomplete setup and pending recovery open the editor when attention is needed; a manual collapse is remembered. Changing selectors saves a draft. **Apply Day/Night Wallpaper** registers that pair and requests Automatic selection across all Spaces and displays. To select a fixed member, choose **Use Day only** or **Use Night only** on that video's card; applying an ordinary imported wallpaper replaces the active pair. Apply Day/Night again to return to Automatic.
 
+If a saved Day or Night wallpaper or its media is missing, choose **Edit**, select another imported wallpaper for each missing role, and apply the pair again. Both selected videos and previews must be present; unrelated incomplete entries are retained.
+
 Automatic mode uses the native sun-position format and is intended to continue after AerialDrop quits. It follows solar position rather than Light/Dark appearance; exact transition times are not established. Custom-pair playback, natural switching after quit and lock/unlock remain unverified for this unreleased feature; see [TESTING.md](TESTING.md).
 
 If a wallpaper change cannot be verified, previous and new pair videos remain protected across relaunch. Retry **Apply Day/Night Wallpaper** or apply another imported wallpaper in AerialDrop. Protection clears only after a verified native reload; **Remove Anyway** cannot bypass it. The Library distinguishes saved choices from actual native Automatic or fixed-member selection.
