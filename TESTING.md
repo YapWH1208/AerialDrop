@@ -386,6 +386,9 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    video or preview, then select another imported wallpaper for the missing
    role and apply again. Repeat for Day and Night, and confirm the other choice
    and unrelated incomplete entries remain intact after relaunch.
+   With only the registered pair in Library, remove one member's video or
+   preview externally, import another test video, and use it to replace the
+   missing member. Confirm the registered pair remains intact until Apply.
    Search for a matching title and for a title with no results, then clear the
    search. Confirm the section remains usable, card keyboard navigation and
    post-import scrolling still work, and operation/bulk-selection banners remain

@@ -419,7 +419,20 @@ struct ManifestStore {
             throw AerialDropError.installedFileMissing(thumbnailURL)
         }
 
-        try mutateManifest(operation: "import", requiringCompatibleCatalogue: requiringCompatibleCatalogue) { root in
+        var preservingIncompletePair = false
+        try mutateManifest(
+            operation: "import",
+            allowMissingManagedFiles: { preservingIncompletePair },
+            commitValidation: {
+                guard self.fileManager.fileExists(atPath: videoURL.path) else {
+                    throw AerialDropError.installedFileMissing(videoURL)
+                }
+                guard self.fileManager.fileExists(atPath: thumbnailURL.path) else {
+                    throw AerialDropError.installedFileMissing(thumbnailURL)
+                }
+            },
+            requiringCompatibleCatalogue: requiringCompatibleCatalogue
+        ) { root in
             guard var assets = root["assets"] as? [[String: Any]] else {
                 throw AerialDropError.malformedManifest("missing top-level assets array")
             }
@@ -428,8 +441,18 @@ struct ManifestStore {
             }
 
             let pair = try managedDayNightPair(in: root)
-            assets.removeAll { ($0["id"] as? String) == id }
-            assets = try normalizeManagedAssets(assets, preserving: pair)
+            if let pair, pair.memberAssetIDs.contains(where: { member in
+                !fileManager.fileExists(atPath: paths.videoURL(for: member).path)
+                    || !fileManager.fileExists(atPath: paths.thumbnailURL(for: member).path)
+            }), !assets.contains(where: { ($0["id"] as? String) == id }) {
+                // Keep the incomplete registered pair and every other entry until
+                // an explicit pair replacement protects the old and new members.
+                try validateCandidate(root, preservingForeignEntriesFrom: root, requireManagedFiles: false)
+                preservingIncompletePair = true
+            } else {
+                assets.removeAll { ($0["id"] as? String) == id }
+                assets = try normalizeManagedAssets(assets, preserving: pair)
+            }
 
             let managedCount = assets.filter {
                 (($0["categories"] as? [String]) ?? []).contains(Self.categoryID)
@@ -447,7 +470,8 @@ struct ManifestStore {
                 categories,
                 assets: assets,
                 preferredRepresentativeAssetID: id,
-                pair: pair
+                pair: pair,
+                preferPreviewBackedRepresentatives: preservingIncompletePair
             )
 
             root["assets"] = assets
@@ -954,6 +978,7 @@ struct ManifestStore {
     private func mutateManifest(
         operation: String,
         requireManagedFiles: Bool = true,
+        allowMissingManagedFiles: (() -> Bool)? = nil,
         commitValidation: (() throws -> Void)? = nil,
         requiringCompatibleCatalogue: Bool = false,
         mutation: (inout [String: Any]) throws -> Void
@@ -985,7 +1010,7 @@ struct ManifestStore {
         try validateCandidate(
             candidateRoot,
             preservingForeignEntriesFrom: originalRoot,
-            requireManagedFiles: requireManagedFiles
+            requireManagedFiles: requireManagedFiles && !(allowMissingManagedFiles?() ?? false)
         )
 
         guard JSONSerialization.isValidJSONObject(candidateRoot) else {
@@ -1085,7 +1110,7 @@ struct ManifestStore {
             try validateCandidate(
                 writtenRoot,
                 preservingForeignEntriesFrom: originalRoot,
-                requireManagedFiles: requireManagedFiles
+                requireManagedFiles: requireManagedFiles && !(allowMissingManagedFiles?() ?? false)
             )
         } catch {
             if requiringCompatibleCatalogue { throw importOutcomeAfterWriteFailure() }
