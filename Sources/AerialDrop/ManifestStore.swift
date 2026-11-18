@@ -474,11 +474,15 @@ struct ManifestStore {
         try requireManifest()
         try prepareDirectories()
 
-        try mutateManifest(operation: "configure-day-night") { root in
-            // Applying a pair must start from a fully valid installed catalogue.
-            // Unlike import/rename normalization, configuration must not repair
-            // malformed paths or silently discard unrelated managed assets.
-            try validateCandidate(root, preservingForeignEntriesFrom: root)
+        try mutateManifest(
+            operation: "configure-day-night",
+            requireManagedFiles: false,
+            commitValidation: { try requireDayNightFiles(pair) }
+        ) { root in
+            // An existing member's media may have disappeared. Validate its
+            // metadata without requiring every installed file, and retain all
+            // catalogue entries instead of normalizing away missing assets.
+            try validateCandidate(root, preservingForeignEntriesFrom: root, requireManagedFiles: false)
             guard var assets = root["assets"] as? [[String: Any]] else {
                 throw AerialDropError.malformedManifest("missing top-level assets array")
             }
@@ -501,6 +505,7 @@ struct ManifestStore {
                     )
                 }
             }
+            try requireDayNightFiles(pair)
 
             if let previousPair, previousPair != pair {
                 guard let protectPreviousMembers else {
@@ -509,7 +514,23 @@ struct ManifestStore {
                 try protectPreviousMembers(previousPair.memberAssetIDs.union(pair.memberAssetIDs))
             }
 
-            assets = try normalizeManagedAssets(assets, preserving: pair)
+            assets = assets.map { asset in
+                guard let id = asset["id"] as? String,
+                      ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
+                    return asset
+                }
+                var updated = asset
+                updated["subcategories"] = [pair.memberAssetIDs.contains(id)
+                    ? Self.dayNightSubcategoryID : Self.subcategoryID]
+                if id == pair.dayAssetID {
+                    updated["variant"] = solarVariant(altitude: Self.daySolarAltitude)
+                } else if id == pair.nightAssetID {
+                    updated["variant"] = solarVariant(altitude: Self.nightSolarAltitude)
+                } else {
+                    updated.removeValue(forKey: "variant")
+                }
+                return updated
+            }
             let existingRepresentative = categories.first {
                 ($0["id"] as? String) == Self.categoryID
             }?["representativeAssetID"] as? String
@@ -523,6 +544,16 @@ struct ManifestStore {
             root["assets"] = assets
             root["categories"] = categories
             root["initialAssetCount"] = assets.count
+        }
+    }
+
+    private func requireDayNightFiles(_ pair: DayNightWallpaperPair) throws {
+        for id in pair.memberAssetIDs {
+            for url in [paths.videoURL(for: id), paths.thumbnailURL(for: id)] {
+                guard fileManager.fileExists(atPath: url.path) else {
+                    throw AerialDropError.installedFileMissing(url)
+                }
+            }
         }
     }
 

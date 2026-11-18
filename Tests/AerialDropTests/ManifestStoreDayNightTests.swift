@@ -91,6 +91,78 @@ final class ManifestStoreDayNightTests: XCTestCase {
         XCTAssertEqual(try directoryNames(at: paths.thumbnails), Set([firstID, secondID, thirdID].map { "\($0).png" }))
     }
 
+    func testConfigureReplacesMissingPairMediaWithoutDroppingOtherEntries() throws {
+        let scenarios: [(missingDay: Bool, missingNight: Bool)] = [
+            (true, false), (false, true), (true, true)
+        ]
+        for scenario in scenarios {
+            let scenarioHome = home.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let scenarioPaths = WallpaperPaths(homeDirectory: scenarioHome)
+            let scenarioStore = ManifestStore(paths: scenarioPaths)
+            try scenarioStore.prepareDirectories()
+            try fixtureData().write(to: scenarioPaths.manifest, options: .atomic)
+            let ids = ["OLD-DAY", "OLD-NIGHT", "NEW-DAY", "NEW-NIGHT", "UNRELATED"]
+            for id in ids {
+                try Data("video".utf8).write(to: scenarioPaths.videoURL(for: id))
+                try Data("thumbnail".utf8).write(to: scenarioPaths.thumbnailURL(for: id))
+                try scenarioStore.addWallpaper(id: id, title: id)
+            }
+            let previous = DayNightWallpaperPair(dayAssetID: "OLD-DAY", nightAssetID: "OLD-NIGHT")
+            try scenarioStore.configureDayNightPair(previous)
+            if scenario.missingDay {
+                try FileManager.default.removeItem(at: scenarioPaths.videoURL(for: "OLD-DAY"))
+            }
+            if scenario.missingNight {
+                try FileManager.default.removeItem(at: scenarioPaths.thumbnailURL(for: "OLD-NIGHT"))
+            }
+            // A missing unrelated thumbnail must not cause that asset or its video to be discarded.
+            try FileManager.default.removeItem(at: scenarioPaths.thumbnailURL(for: "UNRELATED"))
+            let before = try json(at: scenarioPaths.manifest)
+            let unrelated = try managedAsset(id: "UNRELATED", in: before)
+            let foreignAsset = try XCTUnwrap((before["assets"] as? [[String: Any]])?.first)
+            let foreignCategory = try XCTUnwrap((before["categories"] as? [[String: Any]])?.first)
+            let replacement = DayNightWallpaperPair(
+                dayAssetID: scenario.missingDay ? "NEW-DAY" : "OLD-DAY",
+                nightAssetID: scenario.missingNight ? "NEW-NIGHT" : "OLD-NIGHT"
+            )
+            let beforeData = try Data(contentsOf: scenarioPaths.manifest)
+            XCTAssertThrowsError(try scenarioStore.configureDayNightPair(replacement))
+            XCTAssertEqual(try Data(contentsOf: scenarioPaths.manifest), beforeData)
+            var protected = Set<String>()
+            try scenarioStore.configureDayNightPair(replacement) { protected = $0 }
+
+            XCTAssertEqual(protected, previous.memberAssetIDs.union(replacement.memberAssetIDs))
+            XCTAssertEqual(try scenarioStore.dayNightPair(), replacement)
+            let after = try json(at: scenarioPaths.manifest)
+            let assets = try XCTUnwrap(after["assets"] as? [[String: Any]])
+            let categories = try XCTUnwrap(after["categories"] as? [[String: Any]])
+            XCTAssertEqual(Set(assets.compactMap { $0["id"] as? String }), Set(ids + ["FOREIGN-ASSET"]))
+            XCTAssertEqual(canonical(try managedAsset(id: "UNRELATED", in: after)), canonical(unrelated))
+            XCTAssertEqual(canonical(assets[0]), canonical(foreignAsset))
+            XCTAssertEqual(canonical(categories[0]), canonical(foreignCategory))
+            XCTAssertEqual(after["foreignRoot"] as? [String: String], ["preserved": "yes"])
+            XCTAssertTrue(FileManager.default.fileExists(atPath: scenarioPaths.videoURL(for: "UNRELATED").path))
+            XCTAssertEqual(scenarioStore.latestBackup()?.operation, "configure-day-night")
+        }
+    }
+
+    func testConfigureDoesNotWriteIfReplacementMediaDisappearsDuringProtection() throws {
+        for id in ["OLD-DAY", "OLD-NIGHT", "NEW-DAY"] {
+            try install(id: id, title: id)
+        }
+        try store.configureDayNightPair(.init(dayAssetID: "OLD-DAY", nightAssetID: "OLD-NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "OLD-DAY"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        let replacement = DayNightWallpaperPair(dayAssetID: "NEW-DAY", nightAssetID: "OLD-NIGHT")
+
+        XCTAssertThrowsError(try store.configureDayNightPair(replacement) { _ in
+            try FileManager.default.removeItem(at: self.paths.thumbnailURL(for: "NEW-DAY"))
+        })
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+    }
+
     func testReconfigurationRequiresProtectionBeforeChangingTheCatalogue() throws {
         let firstID = "FIRST-ASSET"
         let secondID = "SECOND-ASSET"
