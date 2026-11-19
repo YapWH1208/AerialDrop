@@ -134,15 +134,19 @@ for full Xcode and its macOS SDK before removing previous build output.
 
 ## Updating AerialDrop
 
-Updater-enabled releases check at launch when a check is due, and about once
-a day while AerialDrop is open. Choose **AerialDrop → Check for Updates…** for an
+Updater-enabled releases check quietly at launch when a check is due, and about
+once a day while AerialDrop is open. Choose **AerialDrop → Check for Updates** for an
 immediate check. **AerialDrop → Settings → Updates** offers the same check and
 a switch for automatic checks.
 
-When a compatible release is available, choose **Install Update**, then
-**Install and Relaunch** when prompted. AerialDrop verifies the download and waits
-for active imports or catalogue operations before restarting. Installed
-wallpapers and preferences are stored separately from the app bundle.
+When AerialDrop finds a compatible release, **Install Update** appears above the
+main pane and in **Settings → Updates**. Click it once to download, verify, install,
+and relaunch. AerialDrop finishes any active import or catalogue operation before
+restarting. Installed wallpapers and preferences are stored separately from the
+app bundle.
+
+If AerialDrop reports that it cannot update in place, move the app into an
+Applications folder you can write to or update it manually using the steps above.
 
 Use one of the installation methods above to get the first updater-enabled
 release. The updater handles subsequent releases. [Signing and Homebrew rollout](TESTING.md#maintaining-updater-releases)

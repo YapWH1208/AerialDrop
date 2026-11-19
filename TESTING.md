@@ -64,17 +64,19 @@ Point them at a test feed and use a temporary wallpaper home in `WallpaperPaths`
 Keep the app bundle installation path writable, and sign the ZIP and appcast
 after the final packaging changes.
 
-1. Start the older build without a prior check timestamp. Verify that it fetches
-   the feed. Dismiss the offer and confirm that the ZIP stays on the server.
+1. Start the older build without a prior check timestamp. Confirm that
+   **Install Update** is initially hidden and appears inline after a compatible
+   update is found. Verify that the check opens no window and requests no ZIP.
 2. Turn off automatic checks in **Settings → Updates** and verify persistence
    after relaunch. Check from both Settings and the AerialDrop menu. Exercise a
    current build, an offline server, and a release that requires a newer macOS.
-3. Accept a signed compatible update. If **Install and Relaunch** appears, select
-   it while an import or catalogue operation is active. Confirm the restart
-   waits, then verify the new build number, test catalogue, and preferences.
+3. Click **Install Update** once while an import or catalogue operation is active.
+   Confirm that download and installation progress appear inline, the restart
+   waits for the operation, and the newer build relaunches without another
+   prompt. Verify the new build number, test catalogue, and preferences.
 4. Serve a modified or wrong-key appcast, then a validly signed feed paired with
-   a modified ZIP. Confirm that the app reports the failure during a manual
-   check or install and the original bundle still launches.
+   a modified ZIP. Confirm that an explicit check or install reports the failure
+   inline and that the original bundle still launches.
 
 ## Maintaining updater releases
 
