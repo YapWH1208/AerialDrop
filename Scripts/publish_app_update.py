@@ -21,6 +21,7 @@ REPOSITORY = "YapWH1208/AerialDrop"
 RELEASES_API = f"repos/{REPOSITORY}/releases"
 APPCAST = "appcast.xml"
 NOTES = "release-notes.md"
+PREDECESSOR = "predecessor.json"
 LEGACY_TAG = "v1.1.10"
 RETRY = "Rerun the failed publication job with the original signed workflow artifact."
 
@@ -156,6 +157,23 @@ def latest_predecessor(tag: str) -> dict:
     return release
 
 
+def predecessor_snapshot(release: dict) -> dict:
+    tag = release["tag_name"]
+    archive, feed = asset_slots(tag)
+    assets = release_assets(release)
+    if archive not in assets:
+        raise PublishError(f"latest release {tag} is missing {archive}")
+    archive_digest = remote_digest(tag, archive, assets[archive])
+    feed_digest = remote_digest(tag, feed, assets[feed]) if feed in assets else None
+    return {
+        "tag": tag,
+        "id": release_id(release),
+        "archive_size": archive_digest.size,
+        "archive_sha256": archive_digest.sha256,
+        "feed_sha256": feed_digest.sha256 if feed_digest is not None else None,
+    }
+
+
 def published_archives(catalogue: dict[str, dict], policy: dict) -> dict[str, int]:
     archives = {}
     for record in policy["releases"]:
@@ -182,25 +200,15 @@ def verify_feed_head(path: Path, version: str, archive_size: int) -> None:
 def prepare(tag: str, archive: Path, notes: Path, sign_tool: Path, output: Path) -> None:
     predecessor = latest_predecessor(tag)
     previous_tag = predecessor["tag_name"]
+    snapshot = predecessor_snapshot(predecessor)
     catalogue = release_catalogue()
     listed = catalogue.get(previous_tag)
-    if listed is None or not is_published(listed) or release_id(listed) != release_id(predecessor):
+    if listed is None or not is_published(listed) or predecessor_snapshot(listed) != snapshot:
         raise PublishError(f"{previous_tag} changed while fetching published release metadata")
     policy = validate_policy(json.loads(DEFAULT_POLICY.read_text(encoding="utf-8")))
     archives = published_archives(catalogue, policy)
     previous_version = version_for(previous_tag)
-    archive_slot = asset_name(previous_version)
     assets = release_assets(predecessor)
-    if archive_slot not in assets:
-        raise PublishError(f"latest release {previous_tag} is missing {archive_slot}")
-    predecessor_archive = remote_digest(previous_tag, archive_slot, assets[archive_slot])
-    listed_assets = release_assets(listed)
-    for name in (archive_slot, APPCAST):
-        if (name in assets) != (name in listed_assets) or (
-            name in assets
-            and remote_digest(previous_tag, name, assets[name]) != remote_digest(previous_tag, name, listed_assets[name])
-        ):
-            raise PublishError(f"{previous_tag} changed while fetching published release metadata")
     with tempfile.TemporaryDirectory(prefix="aerialdrop-release-") as directory:
         previous_feed = None
         if APPCAST in assets:
@@ -215,8 +223,9 @@ def prepare(tag: str, archive: Path, notes: Path, sign_tool: Path, output: Path)
             tag=tag, archive=archive, output=output, sign_tool=sign_tool, policy=policy,
             key=os.environ.get(KEY_ENV, ""), notes=notes.read_text(encoding="utf-8"),
             previous_feed=previous_feed, published_archives=archives,
-            expected_predecessor=(previous_version, predecessor_archive.size) if previous_feed else None,
+            expected_predecessor=(previous_version, snapshot["archive_size"]) if previous_feed else None,
         )
+    output.with_name(PREDECESSOR).write_text(json.dumps(snapshot) + "\n", encoding="utf-8")
 
 
 def missing_draft_assets(tag: str, release: dict, notes: str,
@@ -259,7 +268,9 @@ def publish(tag: str, directory: Path) -> None:
     if not notes.strip():
         raise PublishError(f"expected nonempty release notes at {notes_path}")
     verify_feed_head(directory / feed, version_for(tag), expected[archive].size)
-    predecessor = latest_predecessor(tag)
+    snapshot = json.loads((directory / PREDECESSOR).read_text(encoding="utf-8"))
+    if predecessor_snapshot(latest_predecessor(tag)) != snapshot:
+        raise PublishError("GitHub's latest release changed since signing. Prepare the release again.")
     if release is None:
         gh_release("create", tag, "--verify-tag", "--draft", "--title", tag,
                    "--notes-file", str(notes_path))
@@ -268,8 +279,8 @@ def publish(tag: str, directory: Path) -> None:
     missing = missing_draft_assets(tag, release, notes, expected)
     if missing:
         gh_release("upload", tag, *(str(directory / name) for name in missing))
-    if release_id(latest_predecessor(tag)) != release_id(predecessor):
-        raise PublishError(f"GitHub's latest release changed during staging. {RETRY}")
+    if predecessor_snapshot(latest_predecessor(tag)) != snapshot:
+        raise PublishError("GitHub's latest release changed during staging. Prepare the release again.")
     draft = current_draft(tag, identifier)
     if missing_draft_assets(tag, draft, notes, expected):
         raise PublishError(f"draft {tag} is still missing prepared release assets. {RETRY}")

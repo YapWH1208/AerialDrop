@@ -248,11 +248,20 @@ class AppcastTests(unittest.TestCase):
         )
         self.generate(**options)
         signed = self.output.read_bytes()
-        self.assertEqual(len(appcast.parse_history(signed)), 2)
+        signed_releases = appcast.parse_history(signed)
+        self.assertEqual(len(signed_releases), 2)
         previous.write_bytes(original.replace(b"Release notes", b"Release edits"))
         with self.assertRaisesRegex(appcast.AppcastError, "previous appcast signature verification"):
             self.generate(**options)
         self.assertEqual(self.output.read_bytes(), signed)
+
+        archive = options["archive"]
+        archive.write_bytes(archive.read_bytes() + b"changed after signing")
+        with self.assertRaisesRegex(appcast.AppcastError, "modified ZIP verification failed"):
+            appcast.run_with_key([
+                os.environ["SPARKLE_SIGN_TOOL"], "--ed-key-file", "-", "--verify",
+                str(archive), signed_releases[0].signature,
+            ], seed, self.directory, "modified ZIP verification")
 
 
 if __name__ == "__main__":

@@ -116,6 +116,8 @@ class ReleasePublisherTests(unittest.TestCase):
         self.feed.write_bytes(feed(TAG))
         self.notes = self.directory / publisher.NOTES
         self.notes.write_text(NOTES, encoding="utf-8")
+        metadata = publisher.predecessor_snapshot(release(PREVIOUS, 1))
+        (self.directory / publisher.PREDECESSOR).write_text(json.dumps(metadata), encoding="utf-8")
         self.policy = self.directory / "policy.json"
         self.policy.write_text(json.dumps({"schema_version": 1, "releases": [
             {"version": tag[1:], "min_macos": 26, "max_macos": None,
@@ -153,6 +155,7 @@ class ReleasePublisherTests(unittest.TestCase):
         self.prepare(github, generate)
         self.assertEqual(len(generated), 1)
         self.assertEqual([(command, tag) for command, tag, _ in github.calls], [("download", PREVIOUS)])
+        self.assertEqual(json.loads((self.directory / publisher.PREDECESSOR).read_text())["tag"], PREVIOUS)
 
     def test_only_legacy_release_can_omit_appcast(self):
         github = FakeGitHub(publisher.LEGACY_TAG, include_feed=False)
@@ -191,6 +194,15 @@ class ReleasePublisherTests(unittest.TestCase):
             publisher.publish(TAG, self.directory)
         self.assertEqual([command for command, _, _ in github.calls], ["upload", "edit"])
         self.assertEqual(github.calls[0][2], (str(self.feed),))
+
+    def test_a_new_predecessor_requires_fresh_signing_before_mutation(self):
+        github = FakeGitHub()
+        prepared_against = publisher.predecessor_snapshot(release(publisher.LEGACY_TAG, 1, include_feed=False))
+        (self.directory / publisher.PREDECESSOR).write_text(json.dumps(prepared_against), encoding="utf-8")
+        with patch.object(publisher, "gh", github):
+            with self.assertRaisesRegex(publisher.PublishError, "changed since signing"):
+                publisher.publish(TAG, self.directory)
+        self.assertEqual(github.calls, [])
 
     def test_rejects_invalid_draft_before_mutation_and_checks_identity_after_upload(self):
         github = FakeGitHub()
