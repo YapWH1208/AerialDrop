@@ -4,18 +4,35 @@ import SwiftUI
 @main
 struct AerialDropApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model = AppModel()
+    @State private var model: AppModel
+    @State private var updates: AppUpdates
+
+    init() {
+        let model = AppModel()
+        _model = State(initialValue: model)
+        _updates = State(initialValue: AppUpdates(model: model))
+    }
 
     var body: some Scene {
         WindowGroup("AerialDrop") {
             ContentView()
                 .environment(model)
                 .frame(minWidth: 760, minHeight: 520)
-                .onAppear { appDelegate.model = model }
+                .onAppear {
+                    appDelegate.model = model
+                    appDelegate.updates = updates
+                    updates.start()
+                }
         }
         .defaultSize(width: 1040, height: 700)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                if updates.isConfigured {
+                    Button("Check for Updates…", action: updates.checkForUpdates)
+                        .disabled(!updates.canCheckForUpdates)
+                }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Choose Video…") {
                     model.showingFileImporter = true
@@ -31,7 +48,7 @@ struct AerialDropApp: App {
         }
 
         Settings {
-            SettingsView()
+            SettingsView(updates: updates)
         }
     }
 }
@@ -52,8 +69,15 @@ private enum HelpURLs {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
+    weak var updates: AppUpdates?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // A new operation can start after Sparkle has requested installation.
+        if let updates, updates.isInstallingUpdate,
+           updates.deferRelaunchIfBusy({ sender.reply(toApplicationShouldTerminate: true) }) {
+            return .terminateLater
+        }
+
         guard let model,
               model.isWorking,
               model.stage != .idle,

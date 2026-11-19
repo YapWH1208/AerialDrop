@@ -17,7 +17,10 @@ let package = Package(
             name: "AerialDrop",
             dependencies: [.product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/AerialDrop",
-            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+            linkerSettings: [.unsafeFlags([
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path"
+            ])]
         ),
         .testTarget(
             name: "AerialDropTests",
