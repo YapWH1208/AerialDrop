@@ -17,7 +17,7 @@ struct SettingsView: View {
                 Section("Updates") {
                     Toggle("Automatically check for updates", isOn: Binding(
                         get: { updates.automaticallyChecksForUpdates },
-                        set: updates.setAutomaticallyChecksForUpdates
+                        set: { updates.setAutomaticallyChecksForUpdates($0) }
                     ))
                     CheckForUpdatesButton(updates: updates)
                     InlineUpdateControls(updates: updates)
