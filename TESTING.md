@@ -355,7 +355,10 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    selection races; never corrupt real wallpaper stores to simulate failure.
    In the test account, check external selection changes and any naturally
    occurring activation failure. Pending protection must survive relaunch and
-   block removal of all previous/new members, including Remove Anyway. A fresh
+   block removal of all previous/new members, including Remove Anyway. If a
+   former member is missing a preview, verify that installing another video
+   with automatic activation off leaves the former member in the Library.
+   Renaming or removing an unrelated video must also keep that entry. A fresh
    ordinary wallpaper apply recovers the pending state. After relaunch, the
    selected ordinary wallpaper's card/menu and preview Set actions must remain
    enabled while protection is pending or malformed, even when no pair exists

@@ -96,7 +96,7 @@ struct ManifestStore {
         // foreign-data comparison still checks every other field and entry.
         var expectedRoot = originalRoot
         expectedRoot["version"] = version
-        try validateCandidate(candidateRoot, preservingForeignEntriesFrom: expectedRoot, requireManagedFiles: false)
+        try validateCandidate(candidateRoot, preservingForeignEntriesFrom: expectedRoot, fileValidation: .optional)
         let candidateData = try JSONSerialization.data(
             withJSONObject: candidateRoot, options: [.prettyPrinted, .withoutEscapingSlashes]
         )
@@ -157,7 +157,7 @@ struct ManifestStore {
         }
         do {
             try validateCandidate(
-                loadRoot(from: writtenData), preservingForeignEntriesFrom: expectedRoot, requireManagedFiles: false
+                loadRoot(from: writtenData), preservingForeignEntriesFrom: expectedRoot, fileValidation: .optional
             )
         } catch {
             throw ManifestCompatibilityRepairError.outcomeUnknown(
@@ -232,7 +232,7 @@ struct ManifestStore {
         // ordinary restored entry has missing media so activation and removal
         // checks for other wallpapers can still proceed. Pair-role mutations
         // validate installed files, while activation checks the selected media.
-        try validateCandidate(root, preservingForeignEntriesFrom: root, requireManagedFiles: false)
+        try validateCandidate(root, preservingForeignEntriesFrom: root, fileValidation: .optional)
         return try managedDayNightPair(in: root)
     }
 
@@ -243,7 +243,7 @@ struct ManifestStore {
         try validateCandidate(
             root,
             preservingForeignEntriesFrom: root,
-            requireManagedFiles: requireManagedFiles
+            fileValidation: requireManagedFiles ? .required() : .optional
         )
     }
 
@@ -372,7 +372,7 @@ struct ManifestStore {
             }
             try mutateManifest(
                 operation: "restore",
-                requireManagedFiles: false,
+                fileValidation: { .optional },
                 commitValidation: verifyActiveSelection
             ) { root in
                 try validateBaseManifest(backupRoot)
@@ -405,7 +405,14 @@ struct ManifestStore {
         }
     }
 
-    func addWallpaper(id: String, title: String, width: Int = 0, height: Int = 0, requiringCompatibleCatalogue: Bool = false) throws {
+    func addWallpaper(
+        id: String,
+        title: String,
+        width: Int = 0,
+        height: Int = 0,
+        requiringCompatibleCatalogue: Bool = false,
+        pendingDayNightAssetIDs: () -> Set<String>? = { [] }
+    ) throws {
         try validateManagedID(id)
         try requireManifest()
         try prepareDirectories()
@@ -413,10 +420,12 @@ struct ManifestStore {
         try requireInstalledFiles(for: [id])
 
         var preservingIncompletePair = false
+        var retainedMissingAssetIDs = Set<String>()
         try mutateManifest(
             operation: "import",
-            allowMissingManagedFiles: { preservingIncompletePair },
+            fileValidation: { preservingIncompletePair ? .optional : .required(except: retainedMissingAssetIDs) },
             requiringInstalledFilesFor: [id],
+            pendingDayNightAssetIDs: pendingDayNightAssetIDs,
             requiringCompatibleCatalogue: requiringCompatibleCatalogue
         ) { root in
             guard var assets = root["assets"] as? [[String: Any]] else {
@@ -433,11 +442,15 @@ struct ManifestStore {
             }), !assets.contains(where: { ($0["id"] as? String) == id }) {
                 // Keep the incomplete registered pair and every other entry until
                 // an explicit pair replacement protects the old and new members.
-                try validateCandidate(root, preservingForeignEntriesFrom: root, requireManagedFiles: false)
+                try validateCandidate(root, preservingForeignEntriesFrom: root, fileValidation: .optional)
                 preservingIncompletePair = true
             } else {
                 assets.removeAll { ($0["id"] as? String) == id }
-                assets = try normalizeManagedAssets(assets, preserving: pair)
+                assets = try normalizeManagedAssets(
+                    assets, preserving: pair,
+                    pendingAssetIDs: pendingDayNightAssetIDs(),
+                    retainedMissingAssetIDs: &retainedMissingAssetIDs
+                )
             }
 
             let managedCount = assets.filter {
@@ -457,7 +470,7 @@ struct ManifestStore {
                 assets: assets,
                 preferredRepresentativeAssetID: id,
                 pair: pair,
-                preferPreviewBackedRepresentatives: preservingIncompletePair
+                preferPreviewBackedRepresentatives: preservingIncompletePair || !retainedMissingAssetIDs.isEmpty
             )
 
             root["assets"] = assets
@@ -486,13 +499,13 @@ struct ManifestStore {
 
         try mutateManifest(
             operation: "configure-day-night",
-            requireManagedFiles: false,
+            fileValidation: { .optional },
             requiringInstalledFilesFor: pair.memberAssetIDs
         ) { root in
             // An existing member's media may have disappeared. Validate its
             // metadata without requiring every installed file, and retain all
             // catalogue entries instead of normalizing away missing assets.
-            try validateCandidate(root, preservingForeignEntriesFrom: root, requireManagedFiles: false)
+            try validateCandidate(root, preservingForeignEntriesFrom: root, fileValidation: .optional)
             guard var assets = root["assets"] as? [[String: Any]] else {
                 throw AerialDropError.malformedManifest("missing top-level assets array")
             }
@@ -568,11 +581,21 @@ struct ManifestStore {
         }
     }
 
-    func renameWallpaper(id: String, title: String) throws {
+    func renameWallpaper(
+        id: String,
+        title: String,
+        pendingDayNightAssetIDs: () -> Set<String>? = { [] }
+    ) throws {
         try validateManagedID(id)
         try requireManifest()
 
-        try mutateManifest(operation: "rename") { root in
+        var retainedMissingAssetIDs = Set<String>()
+        try mutateManifest(
+            operation: "rename",
+            fileValidation: { .required(except: retainedMissingAssetIDs) },
+            requiringInstalledFilesFor: [id],
+            pendingDayNightAssetIDs: pendingDayNightAssetIDs
+        ) { root in
             guard var assets = root["assets"] as? [[String: Any]] else {
                 throw AerialDropError.malformedManifest("missing top-level assets array")
             }
@@ -584,11 +607,7 @@ struct ManifestStore {
                 throw AerialDropError.wallpaperNotFound
             }
             // Renaming must not silently drop its own target during normalization.
-            for url in [paths.videoURL(for: id), paths.thumbnailURL(for: id)] {
-                guard fileManager.fileExists(atPath: url.path) else {
-                    throw AerialDropError.installedFileMissing(url)
-                }
-            }
+            try requireInstalledFiles(for: [id])
 
             let pair = try managedDayNightPair(in: root)
             var asset = assets[index]
@@ -596,7 +615,11 @@ struct ManifestStore {
             asset["accessibilityLabel"] = title
             assets[index] = asset
 
-            let normalized = try normalizeManagedAssets(assets, preserving: pair)
+            let normalized = try normalizeManagedAssets(
+                assets, preserving: pair,
+                pendingAssetIDs: pendingDayNightAssetIDs(),
+                retainedMissingAssetIDs: &retainedMissingAssetIDs
+            )
             let remainingIDs = normalized.compactMap { asset -> String? in
                 guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else { return nil }
                 return asset["id"] as? String
@@ -610,7 +633,8 @@ struct ManifestStore {
                 categories,
                 assets: normalized,
                 preferredRepresentativeAssetID: representative,
-                pair: pair
+                pair: pair,
+                preferPreviewBackedRepresentatives: !retainedMissingAssetIDs.isEmpty
             )
             root["assets"] = normalized
             root["categories"] = categories
@@ -620,6 +644,7 @@ struct ManifestStore {
 
     func removeWallpaper(
         id: String,
+        pendingDayNightAssetIDs: () -> Set<String>? = { [] },
         protectingActiveAssetIDs activeIDs: (() throws -> Set<String>)? = nil
     ) throws {
         try validateManagedID(id)
@@ -646,8 +671,11 @@ struct ManifestStore {
             }
         }
 
+        var retainedMissingAssetIDs = Set<String>()
         try mutateManifest(
             operation: "remove",
+            fileValidation: { .required(except: retainedMissingAssetIDs) },
+            pendingDayNightAssetIDs: pendingDayNightAssetIDs,
             commitValidation: verifyActiveSelection
         ) { root in
             guard var assets = root["assets"] as? [[String: Any]] else {
@@ -677,7 +705,11 @@ struct ManifestStore {
                 throw AerialDropError.wallpaperNotFound
             }
             let remainingPair = removedPair == nil ? pair : nil
-            assets = try normalizeManagedAssets(assets, preserving: remainingPair)
+            assets = try normalizeManagedAssets(
+                assets, preserving: remainingPair,
+                pendingAssetIDs: pendingDayNightAssetIDs(),
+                retainedMissingAssetIDs: &retainedMissingAssetIDs
+            )
 
             let remainingIDs = assets.compactMap { asset -> String? in
                 guard
@@ -691,7 +723,8 @@ struct ManifestStore {
                 categories,
                 assets: assets,
                 preferredRepresentativeAssetID: remainingIDs.first,
-                pair: remainingPair
+                pair: remainingPair,
+                preferPreviewBackedRepresentatives: !retainedMissingAssetIDs.isEmpty
             )
 
             root["assets"] = assets
@@ -906,39 +939,32 @@ struct ManifestStore {
         fileManager.fileExists(atPath: paths.thumbnailURL(for: id).path)
     }
 
-    /// Drops AerialDrop-owned assets whose installed files are missing while leaving foreign
-    /// entries untouched.
-    private func dropMissingManagedAssets(_ assets: [[String: Any]]) -> [[String: Any]] {
-        assets.filter { asset in
+    /// Keeps the registered pair and any incomplete entry that may still be needed
+    /// for pending Day/Night recovery. Nil protection means its IDs are unknown.
+    private func normalizeManagedAssets(
+        _ assets: [[String: Any]],
+        preserving pair: DayNightWallpaperPair?,
+        pendingAssetIDs: Set<String>?,
+        retainedMissingAssetIDs: inout Set<String>
+    ) throws -> [[String: Any]] {
+        let pairAssetIDs = pair?.memberAssetIDs ?? []
+        try requireInstalledFiles(for: pairAssetIDs)
+        let retained = assets.filter { asset in
             guard ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID) else {
                 return true
             }
-            guard let assetID = asset["id"] as? String else { return false }
-            return fileManager.fileExists(atPath: paths.videoURL(for: assetID).path)
-                && fileManager.fileExists(atPath: paths.thumbnailURL(for: assetID).path)
-        }
-    }
-
-    /// Drops AerialDrop-owned assets whose installed files are missing and normalizes the
-    /// metadata (titles and preferred order) of the remaining AerialDrop-owned assets while
-    /// leaving foreign entries untouched.
-    private func normalizeManagedAssets(
-        _ assets: [[String: Any]],
-        preserving pair: DayNightWallpaperPair?
-    ) throws -> [[String: Any]] {
-        if let pair {
-            for id in pair.memberAssetIDs {
-                for url in [paths.videoURL(for: id), paths.thumbnailURL(for: id)] {
-                    guard fileManager.fileExists(atPath: url.path) else {
-                        throw AerialDropError.installedFileMissing(url)
-                    }
-                }
+            guard let id = asset["id"] as? String else { return false }
+            if pairAssetIDs.contains(id) { return true }
+            if fileManager.fileExists(atPath: paths.videoURL(for: id).path), hasManagedPreview(for: id) {
+                return true
             }
+            if let pendingAssetIDs, !pendingAssetIDs.contains(id) { return false }
+            retainedMissingAssetIDs.insert(id)
+            return true
         }
-        let present = dropMissingManagedAssets(assets)
 
         var managedOrder = 0
-        return present.map { asset in
+        return retained.map { asset in
             guard
                 let assetID = asset["id"] as? String,
                 ((asset["categories"] as? [String]) ?? []).contains(Self.categoryID)
@@ -961,11 +987,16 @@ struct ManifestStore {
         }
     }
 
+    private enum ManagedFileValidation {
+        case required(except: Set<String> = [])
+        case optional
+    }
+
     private func mutateManifest(
         operation: String,
-        requireManagedFiles: Bool = true,
-        allowMissingManagedFiles: (() -> Bool)? = nil,
+        fileValidation: () -> ManagedFileValidation = { .required() },
         requiringInstalledFilesFor requiredAssetIDs: Set<String> = [],
+        pendingDayNightAssetIDs: () -> Set<String>? = { [] },
         commitValidation: (() throws -> Void)? = nil,
         requiringCompatibleCatalogue: Bool = false,
         mutation: (inout [String: Any]) throws -> Void
@@ -988,17 +1019,23 @@ struct ManifestStore {
         try validateBaseManifest(originalRoot)
         // Candidate-only validation misses unsafe IDs whose entries are removed or dropped
         // during normalization. Reject them before any path lookup or catalogue mutation.
-        if let originalAssets = originalRoot["assets"] as? [[String: Any]] {
-            try validateManagedIDs(in: originalAssets)
-        }
+        let originalManagedIDs = try managedAssetIDs(in: originalRoot)
 
         var candidateRoot = originalRoot
         try mutation(&candidateRoot)
+        let managedFileValidation = fileValidation()
         try validateCandidate(
             candidateRoot,
             preservingForeignEntriesFrom: originalRoot,
-            requireManagedFiles: requireManagedFiles && !(allowMissingManagedFiles?() ?? false)
+            fileValidation: managedFileValidation
         )
+        let removedIDs = try originalManagedIDs.subtracting(managedAssetIDs(in: candidateRoot))
+        func verifyPendingProtection() throws {
+            // Protection may have changed since normalization chose which entries to keep.
+            guard removedIDs.isEmpty || pendingDayNightAssetIDs()?.isDisjoint(with: removedIDs) == true else {
+                throw AerialDropError.activeWallpaperCannotBeRemoved
+            }
+        }
 
         guard JSONSerialization.isValidJSONObject(candidateRoot) else {
             throw AerialDropError.malformedManifest("generated JSON is invalid")
@@ -1017,6 +1054,7 @@ struct ManifestStore {
 
         try commitValidation?()
         try checkCompatibilitySnapshot(originalData)
+        try verifyPendingProtection()
         try requireInstalledFiles(for: requiredAssetIDs)
         let backup = try backupManifest(data: originalData, operation: operation)
         // Backup creation takes time. Check the write prerequisites again,
@@ -1024,6 +1062,7 @@ struct ManifestStore {
         do {
             try commitValidation?()
             try checkCompatibilitySnapshot(originalData)
+            try verifyPendingProtection()
             try requireInstalledFiles(for: requiredAssetIDs)
         } catch {
             try fileManager.removeItem(at: backup)
@@ -1054,6 +1093,7 @@ struct ManifestStore {
         do {
             try commitValidation?()
             try checkCompatibilitySnapshot(candidateData)
+            try verifyPendingProtection()
         } catch {
             do {
                 let latestData = try Data(contentsOf: paths.manifest)
@@ -1099,7 +1139,7 @@ struct ManifestStore {
             try validateCandidate(
                 writtenRoot,
                 preservingForeignEntriesFrom: originalRoot,
-                requireManagedFiles: requireManagedFiles && !(allowMissingManagedFiles?() ?? false)
+                fileValidation: managedFileValidation
             )
             try requireInstalledFiles(for: requiredAssetIDs)
         } catch {
@@ -1144,7 +1184,7 @@ struct ManifestStore {
     private func validateCandidate(
         _ candidate: [String: Any],
         preservingForeignEntriesFrom original: [String: Any],
-        requireManagedFiles: Bool = true
+        fileValidation: ManagedFileValidation = .required()
     ) throws {
         try validateBaseManifest(candidate)
 
@@ -1201,7 +1241,7 @@ struct ManifestStore {
         }
 
         for asset in managedAssets {
-            try validateManagedAsset(asset, requireFiles: requireManagedFiles)
+            try validateManagedAsset(asset, fileValidation: fileValidation)
         }
 
         guard let category = candidateCategories.first(where: { ($0["id"] as? String) == Self.categoryID }) else {
@@ -1215,7 +1255,7 @@ struct ManifestStore {
         )
     }
 
-    private func validateManagedAsset(_ asset: [String: Any], requireFiles: Bool = true) throws {
+    private func validateManagedAsset(_ asset: [String: Any], fileValidation: ManagedFileValidation) throws {
         guard let id = asset["id"] as? String else {
             throw AerialDropError.malformedManifest("AerialDrop asset is missing 'id'")
         }
@@ -1232,7 +1272,7 @@ struct ManifestStore {
         else {
             throw AerialDropError.malformedManifest("AerialDrop asset paths are invalid")
         }
-        if requireFiles {
+        if case .required(let exceptions) = fileValidation, !exceptions.contains(id) {
             guard fileManager.fileExists(atPath: paths.thumbnailURL(for: id).path),
                   fileManager.fileExists(atPath: paths.videoURL(for: id).path)
             else {

@@ -780,6 +780,48 @@ final class ManifestStoreDayNightTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: paths.backups.appending(path: backup)), original)
     }
 
+    func testImportRefusesLatePendingProtectionForIncompleteOrdinaryEntry() throws {
+        try install(id: "PENDING", title: "Pending")
+        try FileManager.default.removeItem(at: paths.videoURL(for: "PENDING"))
+        try Data("video".utf8).write(to: paths.videoURL(for: "NEW"))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "NEW"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        var reads = 0
+        var pending: Set<String> = []
+        let guardedStore = ManifestStore(paths: paths, bundledManifestReader: {
+            reads += 1
+            if reads == 3 { pending = ["PENDING"] }
+            return original
+        })
+
+        XCTAssertThrowsError(try guardedStore.addWallpaper(
+            id: "NEW", title: "New", requiringCompatibleCatalogue: true,
+            pendingDayNightAssetIDs: { pending }
+        )) { error in
+            guard case AerialDropError.activeWallpaperCannotBeRemoved = error else {
+                return XCTFail("Expected activeWallpaperCannotBeRemoved, got \(error)")
+            }
+        }
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+    }
+
+    func testImportRetainsIncompleteOrdinaryEntryWhenPendingProtectionIsUnknown() throws {
+        try install(id: "PENDING", title: "Pending")
+        try FileManager.default.removeItem(at: paths.videoURL(for: "PENDING"))
+        try Data("video".utf8).write(to: paths.videoURL(for: "NEW"))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "NEW"))
+
+        try store.addWallpaper(id: "NEW", title: "New", pendingDayNightAssetIDs: { nil })
+
+        let root = try json(at: paths.manifest)
+        _ = try managedAsset(id: "PENDING", in: root)
+        _ = try managedAsset(id: "NEW", in: root)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: "PENDING").path))
+    }
+
     private func install(id: String, title: String) throws {
         try Data("video".utf8).write(to: paths.videoURL(for: id))
         try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: id))

@@ -346,6 +346,69 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: h.paths.videoURL(for: h.dayID).path))
     }
 
+    func testImportPreservesPendingFormerPairMemberWithMissingThumbnail() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        try h.store.configureDayNightPair(h.pair)
+        try FileManager.default.removeItem(at: h.paths.thumbnailURL(for: h.dayID))
+        h.service.selected = .fixedVariant(assetID: h.dayID)
+        h.service.activeIDs = [h.dayID]
+        await h.model.reload()
+        h.model.dayWallpaperID = h.thirdID
+        h.model.nightWallpaperID = h.nightID
+        h.service.activationError = AerialDropError.nativeWallpaperRefreshFailed("simulated failure")
+        await h.model.activateDayNightWallpaper()
+
+        let replacement = DayNightWallpaperPair(dayAssetID: h.thirdID, nightAssetID: h.nightID)
+        let pending = h.pair.memberAssetIDs.union(replacement.memberAssetIDs)
+        XCTAssertEqual(try h.store.dayNightPair(), replacement)
+        XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), pending)
+
+        let processor = SuspendedVideoProcessor()
+        let model = AppModel(
+            paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service,
+            videoProcessor: processor, automaticallyReload: false,
+            automaticActivationEnabled: { false }, preferencesDefaults: h.defaults,
+            availableCapacityProvider: { _ in nil }
+        )
+        await model.reload()
+        model.selectedVideo = h.home.appending(path: "source.mov")
+        model.isSelectedVideoValid = true
+        model.title = "Imported"
+        model.sourceResolution = CGSize(width: 1920, height: 1080)
+        model.importSelectedVideo()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while await processor.request(at: 0) == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        guard await processor.request(at: 0) != nil else {
+            XCTFail("The import never reached its suspended encode")
+            return
+        }
+        try await processor.completeEncode(0)
+        await waitForRecovery { !model.isWorking }
+
+        XCTAssertEqual(model.stage, .finished)
+        XCTAssertEqual(model.importOutcome?.activationResult, .installedOnly)
+        XCTAssertTrue(model.wallpapers.contains { $0.id == h.dayID })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: h.paths.videoURL(for: h.dayID).path))
+        XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), pending)
+
+        let imported = try XCTUnwrap(model.importOutcome?.wallpaper)
+        model.rename(imported, to: "Renamed")
+        await waitForRecovery { !model.isWorking }
+        XCTAssertEqual(model.wallpapers.first { $0.id == imported.id }?.title, "Renamed")
+        XCTAssertTrue(model.wallpapers.contains { $0.id == h.dayID })
+
+        await model.removeWallpaper(imported)
+        XCTAssertFalse(model.wallpapers.contains { $0.id == imported.id })
+        XCTAssertTrue(model.wallpapers.contains { $0.id == h.dayID })
+
+        await model.removeWallpaper(h.wallpaper(h.dayID), allowingUnverifiedSelection: true)
+        XCTAssertTrue(try h.store.importedWallpapers().contains { $0.id == h.dayID })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: h.paths.videoURL(for: h.dayID).path))
+    }
+
     func testAutomaticAndFixedSelectionsProtectBothMembers() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }
