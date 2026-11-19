@@ -691,7 +691,8 @@ final class AppModel {
                     title: cleanTitle,
                     width: Int(encodedSize.width),
                     height: Int(encodedSize.height),
-                    requiringCompatibleCatalogue: catalogueCompatibilityOverride == nil
+                    requiringCompatibleCatalogue: catalogueCompatibilityOverride == nil,
+                    pendingDayNightAssetIDs: readPendingDayNightAssetIDs
                 )
                 manifestInstalled = true
 
@@ -777,7 +778,9 @@ final class AppModel {
                 operationLabel = nil
             }
             do {
-                try manifestStore.renameWallpaper(id: wallpaper.id, title: cleanTitle)
+                try manifestStore.renameWallpaper(
+                    id: wallpaper.id, title: cleanTitle, pendingDayNightAssetIDs: readPendingDayNightAssetIDs
+                )
                 await reload()
             } catch {
                 activeAlert = AppAlert(
@@ -834,9 +837,13 @@ final class AppModel {
             if pendingLibraryHighlightID == wallpaper.id {
                 pendingLibraryHighlightID = nil
             }
-            try manifestStore.removeWallpaper(id: wallpaper.id, protectingActiveAssetIDs: {
-                try self.removalProtectionIDs(allowingUnverifiedSelection: allowingUnverifiedSelection)
-            })
+            try manifestStore.removeWallpaper(
+                id: wallpaper.id,
+                pendingDayNightAssetIDs: readPendingDayNightAssetIDs,
+                protectingActiveAssetIDs: {
+                    try self.removalProtectionIDs(allowingUnverifiedSelection: allowingUnverifiedSelection)
+                }
+            )
             await systemService.refresh()
             await reload()
         } catch {
@@ -887,9 +894,13 @@ final class AppModel {
                 let previousPair = try? manifestStore.dayNightPair()
                 do {
                     try requireRemovalReadiness(for: [id], allowingUnverifiedSelection: allowingUnverifiedSelection)
-                    try manifestStore.removeWallpaper(id: id, protectingActiveAssetIDs: {
-                        try self.removalProtectionIDs(allowingUnverifiedSelection: allowingUnverifiedSelection)
-                    })
+                    try manifestStore.removeWallpaper(
+                        id: id,
+                        pendingDayNightAssetIDs: readPendingDayNightAssetIDs,
+                        protectingActiveAssetIDs: {
+                            try self.removalProtectionIDs(allowingUnverifiedSelection: allowingUnverifiedSelection)
+                        }
+                    )
                     removedCount += 1
                 } catch {
                     let message = preservePairAfterPartialMutation(previousPair, error: error)
@@ -1180,6 +1191,11 @@ final class AppModel {
         try expandedActiveAerialAssetIDs().union(
             AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
         )
+    }
+
+    private func readPendingDayNightAssetIDs() -> Set<String>? {
+        // Unknown protection keeps incomplete entries while allowing a recovery import.
+        try? AppPreferences.pendingDayNightAssetIDs(defaults: preferencesDefaults)
     }
 
     private func removalProtectionIDs(allowingUnverifiedSelection: Bool) throws -> Set<String> {

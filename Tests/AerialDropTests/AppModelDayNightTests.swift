@@ -167,6 +167,81 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertEqual(reopened.dayNightMediaRecoveryMessages, recoveryMessages)
     }
 
+    func testReplacingExternallyMissingPairMediaPersistsAndActivates() async throws {
+        for (missingDay, missingNight) in [(true, false), (false, true), (true, true)] {
+            let h = try DayNightModelHarness()
+            defer { h.cleanup() }
+            let fourthID = "77777777-2222-4333-8444-555555555555"
+            try Data("video".utf8).write(to: h.paths.videoURL(for: fourthID))
+            try Data("thumbnail".utf8).write(to: h.paths.thumbnailURL(for: fourthID))
+            try h.store.addWallpaper(id: fourthID, title: fourthID)
+            try h.store.configureDayNightPair(h.pair)
+            h.choosePair()
+            h.service.selected = .automatic(groupID: ManifestStore.dayNightSubcategoryID)
+            h.service.activeIDs = [ManifestStore.dayNightSubcategoryID]
+            if missingDay { try FileManager.default.removeItem(at: h.paths.videoURL(for: h.dayID)) }
+            if missingNight { try FileManager.default.removeItem(at: h.paths.thumbnailURL(for: h.nightID)) }
+            await h.model.reload()
+            XCTAssertFalse(h.model.canApplyDayNightWallpaper)
+            XCTAssertFalse(h.model.dayNightMediaRecoveryMessages.isEmpty)
+
+            if missingDay { h.model.dayWallpaperID = h.thirdID }
+            if missingNight { h.model.nightWallpaperID = missingDay ? fourthID : h.thirdID }
+            let replacement = DayNightWallpaperPair(
+                dayAssetID: missingDay ? h.thirdID : h.dayID,
+                nightAssetID: missingNight ? (missingDay ? fourthID : h.thirdID) : h.nightID
+            )
+            XCTAssertEqual(h.model.dayNightDraft, .init(dayAssetID: replacement.dayAssetID, nightAssetID: replacement.nightAssetID))
+            XCTAssertTrue(h.model.canApplyDayNightWallpaper)
+            h.service.onTypedActivation = {
+                XCTAssertEqual(try h.store.dayNightPair(), replacement)
+                XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), h.pair.memberAssetIDs.union(replacement.memberAssetIDs))
+            }
+            await h.model.activateDayNightWallpaper()
+            XCTAssertNil(h.model.activeAlert)
+            XCTAssertEqual(h.service.typedRequests, [.automatic(groupID: ManifestStore.dayNightSubcategoryID)])
+            XCTAssertEqual(h.service.verifyingPairs, [replacement])
+            XCTAssertTrue(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults).isEmpty)
+            let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+            await reopened.reload()
+            XCTAssertEqual(reopened.dayNightDraft, .init(dayAssetID: replacement.dayAssetID, nightAssetID: replacement.nightAssetID))
+            XCTAssertEqual(reopened.registeredDayNightPair, replacement)
+        }
+    }
+
+    func testReplacingInAppDeletedInactivePairMemberPreservesOtherChoice() async throws {
+        for deleteDay in [true, false] {
+            let h = try DayNightModelHarness()
+            defer { h.cleanup() }
+            try h.store.configureDayNightPair(h.pair)
+            h.choosePair()
+            h.service.selected = .single(assetID: h.thirdID)
+            h.service.activeIDs = [h.thirdID]
+            await h.model.reload()
+            let removedID = deleteDay ? h.dayID : h.nightID
+            await h.model.removeWallpaper(h.wallpaper(removedID))
+            XCTAssertNil(try h.store.dayNightPair())
+            XCTAssertFalse(h.model.canApplyDayNightWallpaper)
+            XCTAssertTrue(h.model.dayNightMediaRecoveryMessages.contains { $0.contains("missing") })
+            if deleteDay { h.model.dayWallpaperID = h.thirdID }
+            else { h.model.nightWallpaperID = h.thirdID }
+            let replacement = DayNightWallpaperPair(
+                dayAssetID: deleteDay ? h.thirdID : h.dayID,
+                nightAssetID: deleteDay ? h.nightID : h.thirdID
+            )
+            XCTAssertEqual(h.model.dayNightDraft, .init(dayAssetID: replacement.dayAssetID, nightAssetID: replacement.nightAssetID))
+            XCTAssertTrue(h.model.canApplyDayNightWallpaper)
+            await h.model.activateDayNightWallpaper()
+            XCTAssertNil(h.model.activeAlert)
+            XCTAssertEqual(h.service.verifyingPairs, [replacement])
+            XCTAssertTrue(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults).isEmpty)
+            let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+            await reopened.reload()
+            XCTAssertEqual(reopened.registeredDayNightPair, replacement)
+            XCTAssertEqual(reopened.dayNightDraft, .init(dayAssetID: replacement.dayAssetID, nightAssetID: replacement.nightAssetID))
+        }
+    }
+
     func testDayNightStatusNormalizesSingleAndFixedPairMemberSelections() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }
@@ -268,6 +343,69 @@ final class AppModelDayNightTests: XCTestCase {
         XCTAssertTrue(reopened.isDayNightRecoveryPending)
         XCTAssertEqual(reopened.removalReadiness(for: [h.dayID]), .verifiedActive)
         await reopened.removeWallpaper(h.wallpaper(h.dayID), allowingUnverifiedSelection: true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: h.paths.videoURL(for: h.dayID).path))
+    }
+
+    func testImportPreservesPendingFormerPairMemberWithMissingThumbnail() async throws {
+        let h = try DayNightModelHarness()
+        defer { h.cleanup() }
+        try h.store.configureDayNightPair(h.pair)
+        try FileManager.default.removeItem(at: h.paths.thumbnailURL(for: h.dayID))
+        h.service.selected = .fixedVariant(assetID: h.dayID)
+        h.service.activeIDs = [h.dayID]
+        await h.model.reload()
+        h.model.dayWallpaperID = h.thirdID
+        h.model.nightWallpaperID = h.nightID
+        h.service.activationError = AerialDropError.nativeWallpaperRefreshFailed("simulated failure")
+        await h.model.activateDayNightWallpaper()
+
+        let replacement = DayNightWallpaperPair(dayAssetID: h.thirdID, nightAssetID: h.nightID)
+        let pending = h.pair.memberAssetIDs.union(replacement.memberAssetIDs)
+        XCTAssertEqual(try h.store.dayNightPair(), replacement)
+        XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), pending)
+
+        let processor = SuspendedVideoProcessor()
+        let model = AppModel(
+            paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service,
+            videoProcessor: processor, automaticallyReload: false,
+            automaticActivationEnabled: { false }, preferencesDefaults: h.defaults,
+            availableCapacityProvider: { _ in nil }
+        )
+        await model.reload()
+        model.selectedVideo = h.home.appending(path: "source.mov")
+        model.isSelectedVideoValid = true
+        model.title = "Imported"
+        model.sourceResolution = CGSize(width: 1920, height: 1080)
+        model.importSelectedVideo()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while await processor.request(at: 0) == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        guard await processor.request(at: 0) != nil else {
+            XCTFail("The import never reached its suspended encode")
+            return
+        }
+        try await processor.completeEncode(0)
+        await waitForRecovery { !model.isWorking }
+
+        XCTAssertEqual(model.stage, .finished)
+        XCTAssertEqual(model.importOutcome?.activationResult, .installedOnly)
+        XCTAssertTrue(model.wallpapers.contains { $0.id == h.dayID })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: h.paths.videoURL(for: h.dayID).path))
+        XCTAssertEqual(try AppPreferences.pendingDayNightAssetIDs(defaults: h.defaults), pending)
+
+        let imported = try XCTUnwrap(model.importOutcome?.wallpaper)
+        model.rename(imported, to: "Renamed")
+        await waitForRecovery { !model.isWorking }
+        XCTAssertEqual(model.wallpapers.first { $0.id == imported.id }?.title, "Renamed")
+        XCTAssertTrue(model.wallpapers.contains { $0.id == h.dayID })
+
+        await model.removeWallpaper(imported)
+        XCTAssertFalse(model.wallpapers.contains { $0.id == imported.id })
+        XCTAssertTrue(model.wallpapers.contains { $0.id == h.dayID })
+
+        await model.removeWallpaper(h.wallpaper(h.dayID), allowingUnverifiedSelection: true)
+        XCTAssertTrue(try h.store.importedWallpapers().contains { $0.id == h.dayID })
         XCTAssertTrue(FileManager.default.fileExists(atPath: h.paths.videoURL(for: h.dayID).path))
     }
 

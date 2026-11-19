@@ -91,6 +91,103 @@ final class ManifestStoreDayNightTests: XCTestCase {
         XCTAssertEqual(try directoryNames(at: paths.thumbnails), Set([firstID, secondID, thirdID].map { "\($0).png" }))
     }
 
+    func testConfigureReplacesMissingPairMediaWithoutDroppingOtherEntries() throws {
+        let scenarios: [(missingDay: Bool, missingNight: Bool)] = [
+            (true, false), (false, true), (true, true)
+        ]
+        for scenario in scenarios {
+            let scenarioHome = home.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let scenarioPaths = WallpaperPaths(homeDirectory: scenarioHome)
+            let scenarioStore = ManifestStore(paths: scenarioPaths)
+            try scenarioStore.prepareDirectories()
+            try fixtureData().write(to: scenarioPaths.manifest, options: .atomic)
+            let ids = ["OLD-DAY", "OLD-NIGHT", "NEW-DAY", "NEW-NIGHT", "UNRELATED"]
+            for id in ids {
+                try Data("video".utf8).write(to: scenarioPaths.videoURL(for: id))
+                try Data("thumbnail".utf8).write(to: scenarioPaths.thumbnailURL(for: id))
+                try scenarioStore.addWallpaper(id: id, title: id)
+            }
+            let previous = DayNightWallpaperPair(dayAssetID: "OLD-DAY", nightAssetID: "OLD-NIGHT")
+            try scenarioStore.configureDayNightPair(previous)
+            if scenario.missingDay {
+                try FileManager.default.removeItem(at: scenarioPaths.videoURL(for: "OLD-DAY"))
+            }
+            if scenario.missingNight {
+                try FileManager.default.removeItem(at: scenarioPaths.thumbnailURL(for: "OLD-NIGHT"))
+            }
+            // A missing unrelated thumbnail must not cause that asset or its video to be discarded.
+            try FileManager.default.removeItem(at: scenarioPaths.thumbnailURL(for: "UNRELATED"))
+            let before = try json(at: scenarioPaths.manifest)
+            let unrelated = try managedAsset(id: "UNRELATED", in: before)
+            let foreignAsset = try XCTUnwrap((before["assets"] as? [[String: Any]])?.first)
+            let foreignCategory = try XCTUnwrap((before["categories"] as? [[String: Any]])?.first)
+            let replacement = DayNightWallpaperPair(
+                dayAssetID: scenario.missingDay ? "NEW-DAY" : "OLD-DAY",
+                nightAssetID: scenario.missingNight ? "NEW-NIGHT" : "OLD-NIGHT"
+            )
+            let beforeData = try Data(contentsOf: scenarioPaths.manifest)
+            XCTAssertThrowsError(try scenarioStore.configureDayNightPair(replacement))
+            XCTAssertEqual(try Data(contentsOf: scenarioPaths.manifest), beforeData)
+            var protected = Set<String>()
+            try scenarioStore.configureDayNightPair(replacement) { protected = $0 }
+
+            XCTAssertEqual(protected, previous.memberAssetIDs.union(replacement.memberAssetIDs))
+            XCTAssertEqual(try scenarioStore.dayNightPair(), replacement)
+            let after = try json(at: scenarioPaths.manifest)
+            let assets = try XCTUnwrap(after["assets"] as? [[String: Any]])
+            let categories = try XCTUnwrap(after["categories"] as? [[String: Any]])
+            XCTAssertEqual(Set(assets.compactMap { $0["id"] as? String }), Set(ids + ["FOREIGN-ASSET"]))
+            XCTAssertEqual(canonical(try managedAsset(id: "UNRELATED", in: after)), canonical(unrelated))
+            XCTAssertEqual(canonical(assets[0]), canonical(foreignAsset))
+            XCTAssertEqual(canonical(categories[0]), canonical(foreignCategory))
+            XCTAssertEqual(after["foreignRoot"] as? [String: String], ["preserved": "yes"])
+            XCTAssertTrue(FileManager.default.fileExists(atPath: scenarioPaths.videoURL(for: "UNRELATED").path))
+            XCTAssertEqual(scenarioStore.latestBackup()?.operation, "configure-day-night")
+        }
+    }
+
+    func testReplacementUsesPreviewBackedOrdinaryRepresentative() throws {
+        for id in ["OLD-DAY", "OLD-NIGHT", "OTHER", "NEW-DAY"] {
+            try install(id: id, title: id)
+        }
+        try store.configureDayNightPair(.init(dayAssetID: "OLD-DAY", nightAssetID: "OLD-NIGHT"))
+        try FileManager.default.removeItem(at: paths.thumbnailURL(for: "OLD-DAY"))
+
+        let replacement = DayNightWallpaperPair(dayAssetID: "NEW-DAY", nightAssetID: "OLD-NIGHT")
+        try store.configureDayNightPair(replacement) { _ in }
+
+        let root = try json(at: paths.manifest)
+        let category = try XCTUnwrap((root["categories"] as? [[String: Any]])?.first {
+            ($0["id"] as? String) == ManifestStore.categoryID
+        })
+        XCTAssertEqual(category["representativeAssetID"] as? String, "NEW-DAY")
+        XCTAssertEqual(category["previewImage"] as? String, paths.thumbnailURL(for: "NEW-DAY").absoluteString)
+
+        let subcategories = try XCTUnwrap(category["subcategories"] as? [[String: Any]])
+        let ordinary = try XCTUnwrap(subcategories.first {
+            ($0["id"] as? String) == ManifestStore.subcategoryID
+        })
+        XCTAssertEqual(ordinary["representativeAssetID"] as? String, "OTHER")
+        XCTAssertEqual(ordinary["previewImage"] as? String, paths.thumbnailURL(for: "OTHER").absoluteString)
+    }
+
+    func testConfigureDoesNotWriteIfReplacementMediaDisappearsDuringProtection() throws {
+        for id in ["OLD-DAY", "OLD-NIGHT", "NEW-DAY"] {
+            try install(id: id, title: id)
+        }
+        try store.configureDayNightPair(.init(dayAssetID: "OLD-DAY", nightAssetID: "OLD-NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "OLD-DAY"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        let replacement = DayNightWallpaperPair(dayAssetID: "NEW-DAY", nightAssetID: "OLD-NIGHT")
+
+        XCTAssertThrowsError(try store.configureDayNightPair(replacement) { _ in
+            try FileManager.default.removeItem(at: self.paths.thumbnailURL(for: "NEW-DAY"))
+        })
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+    }
+
     func testReconfigurationRequiresProtectionBeforeChangingTheCatalogue() throws {
         let firstID = "FIRST-ASSET"
         let secondID = "SECOND-ASSET"
@@ -517,7 +614,57 @@ final class ManifestStoreDayNightTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: paths.manifest), collisionData)
     }
 
-    func testMissingPairMemberFileBlocksImportAndRenameWithoutDissolvingGroup() throws {
+    func testImportAllowsReplacementWhenPairMediaIsMissingAndPreservesCatalogue() throws {
+        for missingDay in [true, false] {
+            let scenarioHome = home.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            let scenarioPaths = WallpaperPaths(homeDirectory: scenarioHome)
+            let scenarioStore = ManifestStore(paths: scenarioPaths)
+            try scenarioStore.prepareDirectories()
+            try fixtureData().write(to: scenarioPaths.manifest, options: .atomic)
+            for id in ["DAY", "NIGHT", "UNRELATED"] {
+                try Data("video".utf8).write(to: scenarioPaths.videoURL(for: id))
+                try Data("thumbnail".utf8).write(to: scenarioPaths.thumbnailURL(for: id))
+                try scenarioStore.addWallpaper(id: id, title: id)
+            }
+            let previous = DayNightWallpaperPair(dayAssetID: "DAY", nightAssetID: "NIGHT")
+            try scenarioStore.configureDayNightPair(previous)
+            let missingID = missingDay ? "DAY" : "NIGHT"
+            try FileManager.default.removeItem(at: scenarioPaths.videoURL(for: missingID))
+            try FileManager.default.removeItem(at: scenarioPaths.thumbnailURL(for: "UNRELATED"))
+            let before = try json(at: scenarioPaths.manifest)
+            let beforeAssets = try XCTUnwrap(before["assets"] as? [[String: Any]])
+            let beforeCategories = try XCTUnwrap(before["categories"] as? [[String: Any]])
+            let groupBefore = try XCTUnwrap(groupSubcategory(in: before))
+
+            try Data("video".utf8).write(to: scenarioPaths.videoURL(for: "REPLACEMENT"))
+            try Data("thumbnail".utf8).write(to: scenarioPaths.thumbnailURL(for: "REPLACEMENT"))
+            try scenarioStore.addWallpaper(id: "REPLACEMENT", title: "Replacement")
+
+            let afterImport = try json(at: scenarioPaths.manifest)
+            let afterAssets = try XCTUnwrap(afterImport["assets"] as? [[String: Any]])
+            let afterCategories = try XCTUnwrap(afterImport["categories"] as? [[String: Any]])
+            XCTAssertEqual(try scenarioStore.dayNightPair(), previous)
+            XCTAssertEqual(canonical(try XCTUnwrap(groupSubcategory(in: afterImport))), canonical(groupBefore))
+            for id in ["DAY", "NIGHT", "UNRELATED", "FOREIGN-ASSET"] {
+                XCTAssertEqual(canonical(try XCTUnwrap(afterAssets.first { ($0["id"] as? String) == id })),
+                               canonical(try XCTUnwrap(beforeAssets.first { ($0["id"] as? String) == id })))
+            }
+            XCTAssertEqual(canonical(afterCategories[0]), canonical(beforeCategories[0]))
+            XCTAssertEqual(afterImport["foreignRoot"] as? [String: String], ["preserved": "yes"])
+            XCTAssertEqual(scenarioStore.latestBackup()?.operation, "import")
+
+            let replacement = DayNightWallpaperPair(
+                dayAssetID: missingDay ? "REPLACEMENT" : "DAY",
+                nightAssetID: missingDay ? "NIGHT" : "REPLACEMENT"
+            )
+            var protected = Set<String>()
+            try scenarioStore.configureDayNightPair(replacement) { protected = $0 }
+            XCTAssertEqual(protected, previous.memberAssetIDs.union(replacement.memberAssetIDs))
+            XCTAssertEqual(try scenarioStore.dayNightPair(), replacement)
+        }
+    }
+
+    func testMissingPairMemberFileStillBlocksRenameAndMissingReplacementMedia() throws {
         let dayID = "DAY-ASSET"
         let nightID = "NIGHT-ASSET"
         let laterID = "LATER-ASSET"
@@ -529,12 +676,150 @@ final class ManifestStoreDayNightTests: XCTestCase {
         let pairedData = try Data(contentsOf: paths.manifest)
         let backupsBefore = try directoryNames(at: paths.backups)
         try Data("video".utf8).write(to: paths.videoURL(for: laterID))
-        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: laterID))
-
         XCTAssertThrowsError(try store.addWallpaper(id: laterID, title: "Later"))
         XCTAssertThrowsError(try store.renameWallpaper(id: dayID, title: "Changed"))
         XCTAssertEqual(try Data(contentsOf: paths.manifest), pairedData)
         XCTAssertEqual(try directoryNames(at: paths.backups), backupsBefore)
+    }
+
+    func testIncompletePairImportRejectsForeignIDCollision() throws {
+        try install(id: "DAY", title: "Day")
+        try install(id: "NIGHT", title: "Night")
+        try store.configureDayNightPair(.init(dayAssetID: "DAY", nightAssetID: "NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "DAY"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        try Data("video".utf8).write(to: paths.videoURL(for: "FOREIGN-ASSET"))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "FOREIGN-ASSET"))
+
+        XCTAssertThrowsError(try store.addWallpaper(id: "FOREIGN-ASSET", title: "Collision"))
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+    }
+
+    func testIncompletePairImportRechecksNewMediaBeforeWrite() throws {
+        try install(id: "DAY", title: "Day")
+        try install(id: "NIGHT", title: "Night")
+        try store.configureDayNightPair(.init(dayAssetID: "DAY", nightAssetID: "NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "DAY"))
+        try Data("video".utf8).write(to: paths.videoURL(for: "NEW"))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "NEW"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        let newThumbnail = paths.thumbnailURL(for: "NEW")
+        var reads = 0
+        let guardedStore = ManifestStore(paths: paths, bundledManifestReader: {
+            reads += 1
+            if reads == 2 { try FileManager.default.removeItem(at: newThumbnail) }
+            return original
+        })
+
+        XCTAssertThrowsError(try guardedStore.addWallpaper(id: "NEW", title: "New", requiringCompatibleCatalogue: true))
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+        XCTAssertGreaterThanOrEqual(reads, 2)
+    }
+
+    func testIncompletePairImportRejectsMediaLostOnLastPrewriteCompatibilityRead() throws {
+        try install(id: "DAY", title: "Day")
+        try install(id: "NIGHT", title: "Night")
+        try store.configureDayNightPair(.init(dayAssetID: "DAY", nightAssetID: "NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "DAY"))
+        let missing = paths.videoURL(for: "NEW")
+        try Data("video".utf8).write(to: missing)
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "NEW"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        var reads = 0
+        let guardedStore = ManifestStore(paths: paths, bundledManifestReader: {
+            reads += 1
+            if reads == 3 { try FileManager.default.removeItem(at: missing) }
+            return original
+        })
+
+        XCTAssertThrowsError(try guardedStore.addWallpaper(id: "NEW", title: "New", requiringCompatibleCatalogue: true)) { error in
+            guard case AerialDropError.installedFileMissing(let url) = error else {
+                return XCTFail("Expected installedFileMissing, got \(error)")
+            }
+            XCTAssertEqual(url, missing)
+        }
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+    }
+
+    func testIncompletePairImportReportsCommittedWhenMediaLostOnPostwriteCompatibilityRead() throws {
+        try install(id: "DAY", title: "Day")
+        try install(id: "NIGHT", title: "Night")
+        try store.configureDayNightPair(.init(dayAssetID: "DAY", nightAssetID: "NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "DAY"))
+        try Data("video".utf8).write(to: paths.videoURL(for: "NEW"))
+        let missing = paths.thumbnailURL(for: "NEW")
+        try Data("thumbnail".utf8).write(to: missing)
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        var reads = 0
+        let guardedStore = ManifestStore(paths: paths, bundledManifestReader: {
+            reads += 1
+            if reads == 4 { try FileManager.default.removeItem(at: missing) }
+            return original
+        })
+
+        XCTAssertThrowsError(try guardedStore.addWallpaper(id: "NEW", title: "New", requiringCompatibleCatalogue: true)) { error in
+            guard case AerialDropError.manifestMutationCommitted = error else {
+                return XCTFail("Expected manifestMutationCommitted, got \(error)")
+            }
+        }
+        XCTAssertEqual(reads, 4)
+        let candidate = try Data(contentsOf: paths.manifest)
+        XCTAssertNotEqual(candidate, original)
+        XCTAssertNotNil(try managedAsset(id: "NEW", in: json(at: paths.manifest)))
+        let added = try directoryNames(at: paths.backups).subtracting(backups)
+        XCTAssertEqual(added.count, 1)
+        let backup = try XCTUnwrap(added.first)
+        XCTAssertEqual(try Data(contentsOf: paths.backups.appending(path: backup)), original)
+    }
+
+    func testImportRefusesLatePendingProtectionForIncompleteOrdinaryEntry() throws {
+        try install(id: "PENDING", title: "Pending")
+        try FileManager.default.removeItem(at: paths.videoURL(for: "PENDING"))
+        try Data("video".utf8).write(to: paths.videoURL(for: "NEW"))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "NEW"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        var reads = 0
+        var pending: Set<String> = []
+        let guardedStore = ManifestStore(paths: paths, bundledManifestReader: {
+            reads += 1
+            if reads == 3 { pending = ["PENDING"] }
+            return original
+        })
+
+        XCTAssertThrowsError(try guardedStore.addWallpaper(
+            id: "NEW", title: "New", requiringCompatibleCatalogue: true,
+            pendingDayNightAssetIDs: { pending }
+        )) { error in
+            guard case AerialDropError.activeWallpaperCannotBeRemoved = error else {
+                return XCTFail("Expected activeWallpaperCannotBeRemoved, got \(error)")
+            }
+        }
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+    }
+
+    func testImportRetainsIncompleteOrdinaryEntryWhenPendingProtectionIsUnknown() throws {
+        try install(id: "PENDING", title: "Pending")
+        try FileManager.default.removeItem(at: paths.videoURL(for: "PENDING"))
+        try Data("video".utf8).write(to: paths.videoURL(for: "NEW"))
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "NEW"))
+
+        try store.addWallpaper(id: "NEW", title: "New", pendingDayNightAssetIDs: { nil })
+
+        let root = try json(at: paths.manifest)
+        _ = try managedAsset(id: "PENDING", in: root)
+        _ = try managedAsset(id: "NEW", in: root)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.thumbnailURL(for: "PENDING").path))
     }
 
     private func install(id: String, title: String) throws {

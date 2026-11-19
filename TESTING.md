@@ -355,7 +355,10 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    selection races; never corrupt real wallpaper stores to simulate failure.
    In the test account, check external selection changes and any naturally
    occurring activation failure. Pending protection must survive relaunch and
-   block removal of all previous/new members, including Remove Anyway. A fresh
+   block removal of all previous/new members, including Remove Anyway. If a
+   former member is missing a preview, verify that installing another video
+   with automatic activation off leaves the former member in the Library.
+   Renaming or removing an unrelated video must also keep that entry. A fresh
    ordinary wallpaper apply recovers the pending state. After relaunch, the
    selected ordinary wallpaper's card/menu and preview Set actions must remain
    enabled while protection is pending or malformed, even when no pair exists
@@ -382,6 +385,13 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    wallpapers and a partial draft identifies the saved role and the missing
    role. For draft prompts, only a complete draft should suggest Apply. Actual
    native selection and recovery messages must still take precedence.
+   In a disposable test account, remove an inactive selected member or its
+   video or preview, then select another imported wallpaper for the missing
+   role and apply again. Repeat for Day and Night, and confirm the other choice
+   and unrelated incomplete entries remain intact after relaunch.
+   With only the registered pair in Library, remove one member's video or
+   preview externally, import another test video, and use it to replace the
+   missing member. Confirm the registered pair remains intact until Apply.
    Search for a matching title and for a title with no results, then clear the
    search. Confirm the section remains usable, card keyboard navigation and
    post-import scrolling still work, and operation/bulk-selection banners remain

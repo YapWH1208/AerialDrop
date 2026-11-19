@@ -77,5 +77,6 @@ skills-lock.json
 /docs/implementation-plan.md
 /docs/implementation-goal.md
 /docs/execution-log.md
+/docs/pr-description.md
 .harness/
 opencode.jsonc

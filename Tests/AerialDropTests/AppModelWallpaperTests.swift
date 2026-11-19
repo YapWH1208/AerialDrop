@@ -2004,7 +2004,7 @@ final class AppModelWallpaperTests: XCTestCase {
     }
 }
 
-private actor SuspendedVideoProcessor: VideoProcessing {
+actor SuspendedVideoProcessor: VideoProcessing {
     struct Request: Sendable {
         let source: URL
         let destination: URL
