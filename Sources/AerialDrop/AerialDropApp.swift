@@ -15,7 +15,7 @@ struct AerialDropApp: App {
 
     var body: some Scene {
         WindowGroup("AerialDrop") {
-            ContentView()
+            ContentView(updates: updates)
                 .environment(model)
                 .frame(minWidth: 760, minHeight: 520)
                 .onAppear {

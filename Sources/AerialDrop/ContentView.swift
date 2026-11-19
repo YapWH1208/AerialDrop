@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    let updates: AppUpdates
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @State private var destination: AppDestination? = .library
@@ -35,6 +36,7 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 160, ideal: 190, max: 240)
         } detail: {
             VStack(spacing: 0) {
+                InlineUpdateControls(updates: updates)
                 catalogueRefreshBanner
                 if isImportInProgress {
                     ImportStatusView(

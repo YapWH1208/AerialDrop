@@ -20,6 +20,7 @@ struct SettingsView: View {
                         set: updates.setAutomaticallyChecksForUpdates
                     ))
                     CheckForUpdatesButton(updates: updates)
+                    InlineUpdateControls(updates: updates)
                 }
             }
 
@@ -39,7 +40,7 @@ struct CheckForUpdatesButton: View {
     let updates: AppUpdates
 
     var body: some View {
-        Button("Check for Updates…", action: updates.checkForUpdates)
+        Button("Check for Updates", action: updates.checkForUpdates)
             .disabled(!updates.canCheckForUpdates)
     }
 }
