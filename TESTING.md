@@ -45,6 +45,70 @@ source. Use a separate test account for the setup-required checks; do not move o
 edit a real Aerial catalogue to simulate failure. Reimport sources with this
 version before evaluating native playback.
 
+## In-app updates
+
+Run the restart-safety, release publisher, and appcast checks after building the
+app bundle. The appcast test uses the Sparkle signer from the pinned package and
+generates a disposable key. The publisher tests use simulated GitHub responses.
+
+```sh
+swift test --filter AppUpdatesTests
+python3 Scripts/test-publish-app-update.py
+SPARKLE_SIGN_TOOL="$PWD/.build/artifacts/sparkle/Sparkle/bin/sign_update" \
+  python3 Scripts/test-sparkle-appcast.py
+```
+
+For a native smoke test, build two disposable app bundles with different build
+numbers, a shared test bundle identifier, and the same disposable public key.
+Point them at a test feed and use a temporary wallpaper home in `WallpaperPaths`.
+Keep the app bundle installation path writable, and sign the ZIP and appcast
+after the final packaging changes.
+
+1. Start the older build without a prior check timestamp. Verify that it fetches
+   the feed. Dismiss the offer and confirm that the ZIP stays on the server.
+2. Turn off automatic checks in **Settings → Updates** and verify persistence
+   after relaunch. Check from both Settings and the AerialDrop menu. Exercise a
+   current build, an offline server, and a release that requires a newer macOS.
+3. Accept a signed compatible update. If **Install and Relaunch** appears, select
+   it while an import or catalogue operation is active. Confirm the restart
+   waits, then verify the new build number, test catalogue, and preferences.
+4. Serve a modified or wrong-key appcast, then a validly signed feed paired with
+   a modified ZIP. Confirm that the app reports the failure during a manual
+   check or install and the original bundle still launches.
+
+## Maintaining updater releases
+
+The release workflow uses a dedicated Sparkle Ed25519 key. From the Sparkle
+tools in `.build/artifacts/sparkle/Sparkle/bin/`, run `generate_keys --account
+aerialdrop-release` and record the public key in the GitHub Actions repository
+variable `AERIALDROP_UPDATE_PUBLIC_KEY`. Use `generate_keys --account
+aerialdrop-release -x <private-file>` to export the private seed to a protected
+location. Set `AERIALDROP_UPDATE_PRIVATE_KEY` as a GitHub Actions secret from
+that file. Keep an offline backup of the key and keep the export outside the
+repository. Losing the key requires a fresh manual install to establish trust
+in a replacement signing key. [Sparkle signing documentation](https://sparkle-project.org/documentation/)
+
+Before tagging the first updater-enabled release, coordinate `auto_updates true`
+in the separate Homebrew tap so Homebrew accounts for versions installed from
+inside the app. Existing installs receive the updater through their usual
+installation method. [Homebrew self-updating apps](https://docs.brew.sh/FAQ#how-does-brew-upgrade-handle-apps-that-update-themselves)
+
+Advance the marketing version and build number through the usual release
+process and add the compatibility row. The workflow accepts `v1.1.10` as the
+legacy predecessor without an appcast. Later stable releases contribute signed
+history. Publish a new signed feed to apply changes to release eligibility.
+History can drop a release or narrow its declared compatibility. Expanding an
+older ZIP's supported architectures or lowering its signed minimum macOS requires
+a newly validated build.
+
+The signing job saves the exact ZIP, appcast, release notes, and predecessor
+metadata. The publish job checks the uploaded bytes before making the draft
+public. For a recoverable upload failure, rerun the failed publish job with the
+original signed artifact. If GitHub left an empty `starter` asset, remove that
+incomplete asset from the draft before retrying. A changed predecessor requires
+fresh signing and manual reconciliation of any existing draft assets.
+[GitHub release asset uploads](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset)
+
 ## Catalogue compatibility and recovery
 
 Automated compatibility and repair tests use synthetic bundled catalogues and
