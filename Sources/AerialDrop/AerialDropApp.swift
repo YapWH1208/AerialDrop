@@ -29,8 +29,7 @@ struct AerialDropApp: App {
         .commands {
             CommandGroup(after: .appInfo) {
                 if updates.isConfigured {
-                    Button("Check for Updates…", action: updates.checkForUpdates)
-                        .disabled(!updates.canCheckForUpdates)
+                    CheckForUpdatesButton(updates: updates)
                 }
             }
             CommandGroup(replacing: .newItem) {

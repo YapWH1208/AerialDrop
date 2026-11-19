@@ -19,8 +19,7 @@ struct SettingsView: View {
                         get: { updates.automaticallyChecksForUpdates },
                         set: updates.setAutomaticallyChecksForUpdates
                     ))
-                    Button("Check for Updates…", action: updates.checkForUpdates)
-                        .disabled(!updates.canCheckForUpdates)
+                    CheckForUpdatesButton(updates: updates)
                 }
             }
 
@@ -33,5 +32,14 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 460)
         .padding()
+    }
+}
+
+struct CheckForUpdatesButton: View {
+    let updates: AppUpdates
+
+    var body: some View {
+        Button("Check for Updates…", action: updates.checkForUpdates)
+            .disabled(!updates.canCheckForUpdates)
     }
 }

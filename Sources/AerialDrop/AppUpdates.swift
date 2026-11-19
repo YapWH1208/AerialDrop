@@ -9,19 +9,19 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
     @ObservationIgnored private var controller: SPUStandardUpdaterController?
     @ObservationIgnored private var availabilityObservation: NSKeyValueObservation?
 
-    private(set) var isConfigured = false
+    let isConfigured: Bool
     private(set) var canCheckForUpdates = false
     private(set) var automaticallyChecksForUpdates = false
     private(set) var isInstallingUpdate = false
 
     init(model: AppModel) {
         self.model = model
+        isConfigured = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") is String
+            && Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") is String
     }
 
     func start() {
-        guard controller == nil,
-              Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") is String,
-              Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") is String else { return }
+        guard isConfigured, controller == nil else { return }
 
         let controller = SPUStandardUpdaterController(
             startingUpdater: false,
@@ -37,7 +37,6 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
         controller.startUpdater()
         automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
         refreshCheckAvailability()
-        isConfigured = true
     }
 
     func checkForUpdates() {
