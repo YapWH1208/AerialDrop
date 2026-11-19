@@ -6,15 +6,31 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Release ${{ github.ref_name }}
+  prepare:
+    name: Sign ${{ github.ref_name }}
+    if: github.repository == 'YapWH1208/AerialDrop'
     runs-on: macos-26
+    outputs:
+      published: ${{ steps.status.outputs.published }}
+      artifact: ${{ steps.sign.outputs.artifact }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Check release status
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 Scripts/publish_app_update.py status --tag "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Swift version
         run: swift --version
@@ -39,20 +55,29 @@ jobs:
         run: swift test
 
       - name: Build app bundle
-        run: ./Scripts/build-app.sh
+        if: steps.status.outputs.published == 'false'
+        env:
+          AERIALDROP_UPDATE_PUBLIC_KEY: ${{ vars.AERIALDROP_UPDATE_PUBLIC_KEY }}
+        run: |
+          : "${AERIALDROP_UPDATE_PUBLIC_KEY:?Configure the AERIALDROP_UPDATE_PUBLIC_KEY repository variable}"
+          ./Scripts/build-app.sh
 
       - name: Validate packaged compatibility
+        if: steps.status.outputs.published == 'false'
         run: python3 Scripts/release_compatibility.py validate --tag "${GITHUB_REF_NAME}" --bundle dist/AerialDrop.app
 
       - name: Package artifact
+        if: steps.status.outputs.published == 'false'
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          ditto -c -k --keepParent "dist/AerialDrop.app" "dist/AerialDrop-$VERSION-macOS.zip"
+          mkdir -p release-assets
+          ditto -c -k --sequesterRsrc --keepParent "dist/AerialDrop.app" "release-assets/AerialDrop-$VERSION-macOS.zip"
 
       - name: Extract changelog for release
+        if: steps.status.outputs.published == 'false'
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          python3 - "$VERSION" > release-notes.md <<'EOF'
+          python3 - "$VERSION" > release-assets/release-notes.md <<'EOF'
           import re, sys
           version = sys.argv[1]
           text = open('CHANGELOG.md').read()
@@ -63,12 +88,56 @@ jobs:
           print(match.group(1).strip())
           EOF
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
+      - name: Sign release bundle and update feed
+        if: steps.status.outputs.published == 'false'
+        id: sign
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AERIALDROP_UPDATE_PRIVATE_KEY: ${{ secrets.AERIALDROP_UPDATE_PRIVATE_KEY }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 Scripts/publish_app_update.py prepare \
+            --tag "$GITHUB_REF_NAME" \
+            --archive "release-assets/AerialDrop-$VERSION-macOS.zip" \
+            --notes release-assets/release-notes.md \
+            --sign-tool .build/artifacts/sparkle/Sparkle/bin/sign_update \
+            --output release-assets/appcast.xml
+          printf 'artifact=signed-release-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Save signed release assets for publication retries
+        if: steps.status.outputs.published == 'false'
+        uses: actions/upload-artifact@v4
         with:
-          files: dist/AerialDrop-*.zip
-          body_path: release-notes.md
-          generate_release_notes: false
+          name: ${{ steps.sign.outputs.artifact }}
+          path: release-assets/
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish ${{ github.ref_name }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        if: needs.prepare.outputs.published == 'false'
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Retrieve signed release assets
+        if: needs.prepare.outputs.published == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.artifact }}
+          path: release-assets
+
+      - name: Publish the prepared release
+        if: needs.prepare.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 Scripts/publish_app_update.py publish --tag "$GITHUB_REF_NAME" --assets-dir release-assets
 
       - name: Notify Homebrew tap
         # Requires the TAP_UPDATE_TOKEN secret (fine-grained PAT with Contents: read & write on YapWH1208/homebrew-tap).
