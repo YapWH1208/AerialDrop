@@ -720,6 +720,66 @@ final class ManifestStoreDayNightTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(reads, 2)
     }
 
+    func testIncompletePairImportRejectsMediaLostOnLastPrewriteCompatibilityRead() throws {
+        try install(id: "DAY", title: "Day")
+        try install(id: "NIGHT", title: "Night")
+        try store.configureDayNightPair(.init(dayAssetID: "DAY", nightAssetID: "NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "DAY"))
+        let missing = paths.videoURL(for: "NEW")
+        try Data("video".utf8).write(to: missing)
+        try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: "NEW"))
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        var reads = 0
+        let guardedStore = ManifestStore(paths: paths, bundledManifestReader: {
+            reads += 1
+            if reads == 3 { try FileManager.default.removeItem(at: missing) }
+            return original
+        })
+
+        XCTAssertThrowsError(try guardedStore.addWallpaper(id: "NEW", title: "New", requiringCompatibleCatalogue: true)) { error in
+            guard case AerialDropError.installedFileMissing(let url) = error else {
+                return XCTFail("Expected installedFileMissing, got \(error)")
+            }
+            XCTAssertEqual(url, missing)
+        }
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(try Data(contentsOf: paths.manifest), original)
+        XCTAssertEqual(try directoryNames(at: paths.backups), backups)
+    }
+
+    func testIncompletePairImportReportsCommittedWhenMediaLostOnPostwriteCompatibilityRead() throws {
+        try install(id: "DAY", title: "Day")
+        try install(id: "NIGHT", title: "Night")
+        try store.configureDayNightPair(.init(dayAssetID: "DAY", nightAssetID: "NIGHT"))
+        try FileManager.default.removeItem(at: paths.videoURL(for: "DAY"))
+        try Data("video".utf8).write(to: paths.videoURL(for: "NEW"))
+        let missing = paths.thumbnailURL(for: "NEW")
+        try Data("thumbnail".utf8).write(to: missing)
+        let original = try Data(contentsOf: paths.manifest)
+        let backups = try directoryNames(at: paths.backups)
+        var reads = 0
+        let guardedStore = ManifestStore(paths: paths, bundledManifestReader: {
+            reads += 1
+            if reads == 4 { try FileManager.default.removeItem(at: missing) }
+            return original
+        })
+
+        XCTAssertThrowsError(try guardedStore.addWallpaper(id: "NEW", title: "New", requiringCompatibleCatalogue: true)) { error in
+            guard case AerialDropError.manifestMutationCommitted = error else {
+                return XCTFail("Expected manifestMutationCommitted, got \(error)")
+            }
+        }
+        XCTAssertEqual(reads, 4)
+        let candidate = try Data(contentsOf: paths.manifest)
+        XCTAssertNotEqual(candidate, original)
+        XCTAssertNotNil(try managedAsset(id: "NEW", in: json(at: paths.manifest)))
+        let added = try directoryNames(at: paths.backups).subtracting(backups)
+        XCTAssertEqual(added.count, 1)
+        let backup = try XCTUnwrap(added.first)
+        XCTAssertEqual(try Data(contentsOf: paths.backups.appending(path: backup)), original)
+    }
+
     private func install(id: String, title: String) throws {
         try Data("video".utf8).write(to: paths.videoURL(for: id))
         try Data("thumbnail".utf8).write(to: paths.thumbnailURL(for: id))

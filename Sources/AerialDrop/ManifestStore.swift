@@ -410,27 +410,13 @@ struct ManifestStore {
         try requireManifest()
         try prepareDirectories()
 
-        let videoURL = paths.videoURL(for: id)
-        let thumbnailURL = paths.thumbnailURL(for: id)
-        guard fileManager.fileExists(atPath: videoURL.path) else {
-            throw AerialDropError.installedFileMissing(videoURL)
-        }
-        guard fileManager.fileExists(atPath: thumbnailURL.path) else {
-            throw AerialDropError.installedFileMissing(thumbnailURL)
-        }
+        try requireInstalledFiles(for: [id])
 
         var preservingIncompletePair = false
         try mutateManifest(
             operation: "import",
             allowMissingManagedFiles: { preservingIncompletePair },
-            commitValidation: {
-                guard self.fileManager.fileExists(atPath: videoURL.path) else {
-                    throw AerialDropError.installedFileMissing(videoURL)
-                }
-                guard self.fileManager.fileExists(atPath: thumbnailURL.path) else {
-                    throw AerialDropError.installedFileMissing(thumbnailURL)
-                }
-            },
+            requiringInstalledFilesFor: [id],
             requiringCompatibleCatalogue: requiringCompatibleCatalogue
         ) { root in
             guard var assets = root["assets"] as? [[String: Any]] else {
@@ -501,7 +487,7 @@ struct ManifestStore {
         try mutateManifest(
             operation: "configure-day-night",
             requireManagedFiles: false,
-            commitValidation: { try requireDayNightFiles(pair) }
+            requiringInstalledFilesFor: pair.memberAssetIDs
         ) { root in
             // An existing member's media may have disappeared. Validate its
             // metadata without requiring every installed file, and retain all
@@ -529,7 +515,7 @@ struct ManifestStore {
                     )
                 }
             }
-            try requireDayNightFiles(pair)
+            try requireInstalledFiles(for: pair.memberAssetIDs)
 
             if let previousPair, previousPair != pair {
                 guard let protectPreviousMembers else {
@@ -572,8 +558,8 @@ struct ManifestStore {
         }
     }
 
-    private func requireDayNightFiles(_ pair: DayNightWallpaperPair) throws {
-        for id in pair.memberAssetIDs {
+    private func requireInstalledFiles(for assetIDs: Set<String>) throws {
+        for id in assetIDs {
             for url in [paths.videoURL(for: id), paths.thumbnailURL(for: id)] {
                 guard fileManager.fileExists(atPath: url.path) else {
                     throw AerialDropError.installedFileMissing(url)
@@ -979,6 +965,7 @@ struct ManifestStore {
         operation: String,
         requireManagedFiles: Bool = true,
         allowMissingManagedFiles: (() -> Bool)? = nil,
+        requiringInstalledFilesFor requiredAssetIDs: Set<String> = [],
         commitValidation: (() throws -> Void)? = nil,
         requiringCompatibleCatalogue: Bool = false,
         mutation: (inout [String: Any]) throws -> Void
@@ -1030,17 +1017,19 @@ struct ManifestStore {
 
         try commitValidation?()
         try checkCompatibilitySnapshot(originalData)
+        try requireInstalledFiles(for: requiredAssetIDs)
         let backup = try backupManifest(data: originalData, operation: operation)
-        // Backup creation takes time. Check the selection again after it finishes,
+        // Backup creation takes time. Check the write prerequisites again,
         // and remove only our new backup if the operation has become unsafe.
         do {
             try commitValidation?()
             try checkCompatibilitySnapshot(originalData)
+            try requireInstalledFiles(for: requiredAssetIDs)
         } catch {
             try fileManager.removeItem(at: backup)
             throw error
         }
-        func importOutcomeAfterWriteFailure() -> AerialDropError {
+        func outcomeAfterWriteFailure() -> AerialDropError {
             guard let current = try? Data(contentsOf: paths.manifest) else {
                 return .manifestMutationOutcomeUnknown("Reload the catalogue. The safety backup \(backup.lastPathComponent) was retained.")
             }
@@ -1059,7 +1048,7 @@ struct ManifestStore {
                 try candidateData.write(to: paths.manifest, options: .atomic)
             }
         } catch {
-            if requiringCompatibleCatalogue { throw importOutcomeAfterWriteFailure() }
+            if requiringCompatibleCatalogue { throw outcomeAfterWriteFailure() }
             throw error
         }
         do {
@@ -1112,8 +1101,9 @@ struct ManifestStore {
                 preservingForeignEntriesFrom: originalRoot,
                 requireManagedFiles: requireManagedFiles && !(allowMissingManagedFiles?() ?? false)
             )
+            try requireInstalledFiles(for: requiredAssetIDs)
         } catch {
-            if requiringCompatibleCatalogue { throw importOutcomeAfterWriteFailure() }
+            if requiringCompatibleCatalogue || !requiredAssetIDs.isEmpty { throw outcomeAfterWriteFailure() }
             throw error
         }
     }
