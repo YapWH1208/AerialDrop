@@ -145,6 +145,10 @@ and relaunch. AerialDrop finishes any active import or catalogue operation befor
 restarting. Installed wallpapers and preferences are stored separately from the
 app bundle.
 
+If AerialDrop cancels a prepared installer for a newer release, the offer
+stays available after relaunch. Clicking **Install Update** checks the signed
+feed again before installing.
+
 If AerialDrop reports that it cannot update in place, move the app into an
 Applications folder you can write to or update it manually using the steps above.
 
