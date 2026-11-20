@@ -25,7 +25,6 @@ jobs:
         run: |
           python3 Scripts/release_compatibility.py validate
           python3 Scripts/test-release-compatibility.py
-          python3 Scripts/test-publish-app-update.py
           bash Scripts/test-install.sh
           node --check docs/compatibility.js
           node --check docs/app.js
@@ -68,3 +67,4 @@ jobs:
           AERIALDROP_UPDATE_PRIVATE_KEY="$(cat "$scratch/private-key")" python3 Scripts/sparkle_appcast.py \
             --tag "v$version" --archive "$archive" --sign-tool "$signer" --output "$scratch/appcast.xml"
           SPARKLE_SIGN_TOOL="$signer" python3 Scripts/test-sparkle-appcast.py
+          SPARKLE_SIGN_TOOL="$signer" python3 Scripts/test-publish-app-update.py

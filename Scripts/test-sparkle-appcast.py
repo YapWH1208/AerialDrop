@@ -11,7 +11,7 @@ import unittest
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import sparkle_appcast as appcast
 
@@ -36,6 +36,10 @@ def with_signing_block(payload):
         payload + b"<!-- sparkle-signatures:\nedSignature: " + FIXTURE_SIGNATURE
         + f"\nlength: {len(payload)}\n-->\n".encode("ascii")
     )
+
+
+def without_archive_digests(payload):
+    return re.sub(rb' aerialdrop:sha256="[0-9a-f]{64}"', b"", payload)
 
 
 class AppcastTests(unittest.TestCase):
@@ -174,22 +178,124 @@ class AppcastTests(unittest.TestCase):
                         )
             self.assertEqual(self.output.read_bytes(), original)
 
+    def test_legacy_maximum_can_narrow_but_cannot_expand_or_disappear(self):
+        with patch.object(appcast, "run_with_key", side_effect=self.fake_signer):
+            self.generate(records=[declaration("1.0.0", maximum=27)])
+            payload, _ = appcast.split_signed_feed(self.output.read_bytes())
+            original = with_signing_block(without_archive_digests(payload))
+            self.output.write_bytes(original)
+            legacy = appcast.parse_history(original)[0]
+            self.assertEqual(legacy.maximum, 27)
+            self.assertIsNone(legacy.sha256)
+            archive = self.bundle("1.1.0", "2")
+            for maximum in (28, None):
+                with self.subTest(maximum=maximum):
+                    with self.assertRaisesRegex(appcast.AppcastError, "widens signed history"):
+                        self.generate(
+                            version="1.1.0", archive=archive, previous_feed=self.output,
+                            records=[declaration("1.0.0", maximum=maximum), declaration("1.1.0")],
+                        )
+                    self.assertEqual(self.output.read_bytes(), original)
+            self.generate(
+                version="1.1.0", archive=archive, previous_feed=self.output,
+                records=[declaration("1.0.0", maximum=26), declaration("1.1.0")],
+            )
+            current, retained = appcast.parse_history(self.output.read_bytes())
+            self.assertEqual(current.sha256, appcast.local_digest(archive).sha256)
+            self.assertEqual(retained.maximum, 26)
+            self.assertIsNone(retained.sha256)
+
+    def test_rejects_invalid_and_duplicate_maximum(self):
+        with patch.object(appcast, "run_with_key", side_effect=self.fake_signer):
+            self.generate(records=[declaration("1.0.0", maximum=27)])
+        payload, _ = appcast.split_signed_feed(self.output.read_bytes())
+        element = re.search(rb"<sparkle:maximumSystemVersion>.*?</sparkle:maximumSystemVersion>", payload)[0]
+        for replacement, message in (
+            (element.replace(b">27.", b">25."), "invalid maximum"),
+            (element.replace(b">27.", b">027."), "invalid maximum"),
+            (element.replace(str(appcast.MAX_INTEGER).encode(), b"999"), "invalid maximum"),
+            (element * 2, "duplicate compatibility fields"),
+        ):
+            with self.subTest(replacement=replacement), self.assertRaisesRegex(appcast.AppcastError, message):
+                appcast.parse_history(with_signing_block(payload.replace(element, replacement)))
+
     def test_predecessor_must_match_and_withdrawn_assets_are_omitted(self):
         with patch.object(appcast, "run_with_key", side_effect=self.fake_signer):
             old_zip = self.bundle()
             self.generate(archive=old_zip)
             original = self.output.read_bytes()
+            digest = appcast.local_digest(old_zip)
             options = dict(
                 version="1.1.0", archive=self.bundle("1.1.0", "2"),
-                records=[declaration("1.0.0"), declaration("1.1.0")],
+                records=[declaration("1.1.0")],
                 previous_feed=self.output,
             )
+            old_zip.write_bytes(old_zip.read_bytes()[:-1] + b"x")
+            changed = appcast.local_digest(old_zip)
+            self.assertEqual(changed.size, digest.size)
+            self.assertNotEqual(changed.sha256, digest.sha256)
             with self.assertRaisesRegex(appcast.AppcastError, "latest published release ZIP"):
-                self.generate(**options, expected_predecessor=("1.0.0", 1))
+                self.generate(**options, expected_predecessor=("1.0.0", changed))
             self.assertEqual(self.output.read_bytes(), original)
-            self.generate(**options, expected_predecessor=("1.0.0", old_zip.stat().st_size),
-                          published_archives={})
+            options["records"] = [declaration("1.0.0"), declaration("1.1.0")]
+            self.generate(**options, expected_predecessor=("1.0.0", digest),
+                          published_archives={"1.0.0": changed})
             self.assertEqual([r.version for r in appcast.parse_history(self.output.read_bytes())], ["1.1.0"])
+
+    def test_legacy_history_digest_requires_download_and_zip_signature(self):
+        with patch.object(appcast, "run_with_key", side_effect=self.fake_signer):
+            archive = self.bundle()
+            digest = appcast.local_digest(archive)
+            self.generate(archive=archive, records=[declaration("1.0.0", maximum=27)])
+        payload, _ = appcast.split_signed_feed(self.output.read_bytes())
+        previous = self.directory / "previous.xml"
+        previous.write_bytes(with_signing_block(without_archive_digests(payload)))
+        options = dict(
+            version="1.1.0", archive=self.bundle("1.1.0", "2"), previous_feed=previous,
+            records=[declaration("1.0.0", maximum=27), declaration("1.1.0")],
+            published_archives={"1.0.0": digest},
+        )
+
+        def load(version, work):
+            self.assertEqual(version, "1.0.0")
+            self.assertTrue(work.is_dir())
+            return archive
+
+        with patch.object(appcast, "run_with_key", side_effect=self.fake_signer) as signer:
+            self.generate(**options, expected_predecessor=("1.0.0", digest), load_historical_archive=load)
+            historical = appcast.parse_history(self.output.read_bytes())[1]
+            self.assertEqual(historical.sha256, digest.sha256)
+            self.assertEqual(historical.maximum, 27)
+            history_verifications = [call for call in signer.call_args_list
+                                     if call.args[-1].startswith("historical ZIP signature verification")]
+            self.assertEqual(len(history_verifications), 1)
+            self.assertEqual(history_verifications[0].args[0][-3:],
+                             ["--verify", str(archive), historical.signature])
+
+        def reject_zip(command, key, work, operation):
+            if operation.startswith("historical ZIP signature verification"):
+                raise appcast.AppcastError("historical ZIP signature verification failed")
+            return self.fake_signer(command, key, work, operation)
+
+        signed_output = self.output.read_bytes()
+        with patch.object(appcast, "run_with_key", side_effect=reject_zip):
+            with self.assertRaisesRegex(appcast.AppcastError, "historical ZIP signature verification failed"):
+                self.generate(**options, load_historical_archive=load)
+        self.assertEqual(self.output.read_bytes(), signed_output)
+
+        unavailable = Mock(side_effect=OSError("temporary download failure"))
+        with patch.object(appcast, "run_with_key", side_effect=self.fake_signer):
+            with self.assertRaisesRegex(OSError, "temporary download failure"):
+                self.generate(**options, load_historical_archive=unavailable)
+        self.assertEqual(self.output.read_bytes(), signed_output)
+
+        archive.write_bytes(archive.read_bytes()[:-1] + b"x")
+        with patch.object(appcast, "run_with_key", side_effect=self.fake_signer) as signer:
+            with self.assertRaisesRegex(appcast.AppcastError, "legacy ZIP for v1.0.0 changed while downloading"):
+                self.generate(**options, load_historical_archive=load)
+            self.assertFalse(any(call.args[-1].startswith("historical ZIP signature verification")
+                                 for call in signer.call_args_list))
+        self.assertEqual(self.output.read_bytes(), signed_output)
 
     def test_rejects_unsupported_architectures_and_build_ties(self):
         with patch.object(appcast, "run_with_key", side_effect=self.fake_signer):
@@ -210,6 +316,7 @@ class AppcastTests(unittest.TestCase):
                 (b'length="' + re.search(rb'length="([0-9]+)"', payload)[1] + b'"',
                  b'length="0"', "ZIP length"),
                 (FIXTURE_SIGNATURE, b"bad", "ZIP Ed25519 signature"),
+                (re.search(rb'aerialdrop:sha256="([0-9a-f]+)"', payload)[1], b"x" * 64, "ZIP SHA-256"),
                 (b"</channel>", re.search(rb"<item>.*?</item>", payload, re.S)[0]
                  + b"</channel>", "duplicate or non-increasing"),
             ]
@@ -237,20 +344,30 @@ class AppcastTests(unittest.TestCase):
             """,
         ], text=True).splitlines()
         overrides = {"SUPublicEDKey": public_key}
-        self.generate(archive=self.bundle(overrides=overrides), notes="Release notes", key=seed)
-        original = self.output.read_bytes()
-        self.assertEqual(appcast.parse_history(original)[0].version, "1.0.0")
+        old_archive = self.bundle(overrides=overrides)
+        old_digest = appcast.local_digest(old_archive)
+        self.generate(archive=old_archive, notes="Release notes", key=seed)
+        original, _ = appcast.split_signed_feed(self.output.read_bytes())
+        self.assertEqual(appcast.parse_history(self.output.read_bytes())[0].sha256, old_digest.sha256)
         previous = self.directory / "previous.xml"
-        previous.write_bytes(original)
+        previous.write_bytes(without_archive_digests(original))
+        appcast.run_with_key([
+            os.environ["SPARKLE_SIGN_TOOL"], "--ed-key-file", "-", str(previous),
+        ], seed, self.directory, "legacy fixture appcast signing")
+        legacy = previous.read_bytes()
+        self.assertIsNone(appcast.parse_history(legacy)[0].sha256)
         options = dict(
             version="1.1.0", archive=self.bundle("1.1.0", "2", overrides=overrides),
             records=[declaration("1.0.0"), declaration("1.1.0")], previous_feed=previous, key=seed,
+            expected_predecessor=("1.0.0", old_digest), published_archives={"1.0.0": old_digest},
+            load_historical_archive=lambda version, work: old_archive,
         )
         self.generate(**options)
         signed = self.output.read_bytes()
         signed_releases = appcast.parse_history(signed)
-        self.assertEqual(len(signed_releases), 2)
-        previous.write_bytes(original.replace(b"Release notes", b"Release edits"))
+        self.assertEqual([release.version for release in signed_releases], ["1.1.0", "1.0.0"])
+        self.assertEqual(signed_releases[1].sha256, old_digest.sha256)
+        previous.write_bytes(legacy.replace(b"Release notes", b"Release edits"))
         with self.assertRaisesRegex(appcast.AppcastError, "previous appcast signature verification"):
             self.generate(**options)
         self.assertEqual(self.output.read_bytes(), signed)

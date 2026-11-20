@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import plistlib
@@ -14,7 +15,8 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from release_compatibility import BASE_URL, DEFAULT_POLICY, validate_policy, version_key
@@ -23,6 +25,9 @@ from release_compatibility import BASE_URL, DEFAULT_POLICY, validate_policy, ver
 KEY_ENV = "AERIALDROP_UPDATE_PRIVATE_KEY"
 FEED_URL = "https://github.com/YapWH1208/AerialDrop/releases/latest/download/appcast.xml"
 NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+AERIALDROP_NS = "https://github.com/YapWH1208/AerialDrop/xml-namespaces/appcast"
+ARCHIVE_SHA256 = f"{{{AERIALDROP_NS}}}sha256"
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
 MAX_INTEGER = 2**63 - 1
 INFO_PATH = "AerialDrop.app/Contents/Info.plist"
 REQUIRED_SETTINGS = {
@@ -45,10 +50,17 @@ let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
 print(privateKey.publicKey.rawRepresentation.base64EncodedString())
 """
 ET.register_namespace("sparkle", NS)
+ET.register_namespace("aerialdrop", AERIALDROP_NS)
 
 
 class AppcastError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class FileDigest:
+    size: int
+    sha256: str
 
 
 @dataclass(frozen=True)
@@ -60,6 +72,8 @@ class Release:
     notes: str | None
     minimum: int
     architectures: frozenset[str]
+    maximum: int | None = None
+    sha256: str | None = None
 
 
 def sparkle(name: str) -> str:
@@ -72,6 +86,20 @@ def asset_name(version: str) -> str:
 
 def asset_url(version: str) -> str:
     return f"{BASE_URL}/v{version}/{asset_name(version)}"
+
+
+def local_digest(path: Path) -> FileDigest:
+    if path.is_symlink() or not path.is_file():
+        raise AppcastError(f"expected a nonempty regular file at {path}")
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+            size += len(chunk)
+    if size == 0:
+        raise AppcastError(f"expected a nonempty regular file at {path}")
+    return FileDigest(size, digest.hexdigest())
 
 
 def positive_integer(value: str, label: str) -> int:
@@ -139,13 +167,19 @@ def read_bundle(archive: Path, version: str, minimum: int) -> tuple[int, bytes]:
     )
 
 
-def parse_history(data: bytes) -> list[Release]:
-    # Parse only the bytes covered by the verified signature.
+def split_signed_feed(data: bytes) -> tuple[bytes, str]:
+    """Extract the signing payload and its canonical signature for verification."""
     block = SIGNING_BLOCK.search(data)
     if block is None or int(block[2]) != block.start():
         raise AppcastError("previous appcast has an invalid signature block or signed length")
-    decoded_key(block[1].decode("ascii"), 64, "appcast Ed25519 signature")
-    root = ET.fromstring(data[:block.start()])
+    signature = block[1].decode("ascii")
+    decoded_key(signature, 64, "appcast Ed25519 signature")
+    return data[:block.start()], signature
+
+
+def parse_history(data: bytes) -> list[Release]:
+    payload, _ = split_signed_feed(data)
+    root = ET.fromstring(payload)
     channels = root.findall("channel")
     if root.tag != "rss" or root.get("version") != "2.0" or len(channels) != 1:
         raise AppcastError("previous appcast is not a Sparkle RSS feed")
@@ -161,15 +195,19 @@ def parse_history(data: bytes) -> list[Release]:
         version_key(version)
         build = positive_integer(builds[0].text, "previous appcast build version")
         enclosure = enclosures[0]
+        attrs = {"url", "length", "type", sparkle("edSignature")}
         if (
             enclosure.get("url") != asset_url(version)
             or enclosure.get("type") != "application/octet-stream"
-            or set(enclosure.attrib) != {"url", "length", "type", sparkle("edSignature")}
+            or set(enclosure.attrib) - {ARCHIVE_SHA256} != attrs
         ):
             raise AppcastError("previous appcast has an unexpected enclosure")
         size = positive_integer(enclosure.get("length"), "previous appcast ZIP length")
         signature = enclosure.get(sparkle("edSignature"))
         decoded_key(signature, 64, "previous appcast ZIP Ed25519 signature")
+        sha256 = enclosure.get(ARCHIVE_SHA256)
+        if sha256 is not None and SHA256_RE.fullmatch(sha256) is None:
+            raise AppcastError("previous appcast has an invalid ZIP SHA-256 digest")
         notes = None
         if descriptions:
             description = descriptions[0]
@@ -177,16 +215,27 @@ def parse_history(data: bytes) -> list[Release]:
                 raise AppcastError("previous appcast has unexpected inline release notes")
             notes = description.text
         minimum_elements = item.findall(sparkle("minimumSystemVersion"))
+        maximum_elements = item.findall(sparkle("maximumSystemVersion"))
         hardware = item.findall(sparkle("hardwareRequirements"))
-        if len(minimum_elements) != 1 or len(hardware) > 1:
+        if len(minimum_elements) != 1 or len(maximum_elements) > 1 or len(hardware) > 1:
             raise AppcastError("previous appcast has missing or duplicate compatibility fields")
-        minimum = re.fullmatch(r"([0-9]{2,3})\.0", minimum_elements[0].text or "")
-        if minimum is None or not 26 <= int(minimum[1]) <= 999:
+        minimum_match = re.fullmatch(r"([1-9][0-9]{1,2})\.0", minimum_elements[0].text or "")
+        if minimum_match is None or int(minimum_match[1]) < 26:
             raise AppcastError("previous appcast has an invalid minimum macOS version")
+        minimum = int(minimum_match[1])
+        maximum = None
+        if maximum_elements:
+            element = maximum_elements[0]
+            maximum_match = re.fullmatch(
+                rf"([1-9][0-9]{{1,2}})\.{MAX_INTEGER}\.{MAX_INTEGER}", element.text or "",
+            )
+            if element.attrib or len(element) or maximum_match is None or int(maximum_match[1]) < minimum:
+                raise AppcastError("previous appcast has an invalid maximum macOS version")
+            maximum = int(maximum_match[1])
         if hardware and hardware[0].text != "arm64":
             raise AppcastError("previous appcast has an unsupported hardware requirement")
         architectures = frozenset(("arm64",)) if hardware else frozenset(("arm64", "x86_64"))
-        releases.append(Release(version, build, size, signature, notes, int(minimum[1]), architectures))
+        releases.append(Release(version, build, size, signature, notes, minimum, architectures, maximum, sha256))
     if not releases:
         raise AppcastError("previous appcast contains no releases")
     return releases
@@ -210,19 +259,22 @@ def write_item(channel: ET.Element, release: Release, record: dict) -> None:
         raise AppcastError(f"Sparkle cannot represent architectures for v{release.version}")
     if release.notes:
         ET.SubElement(item, "description", {sparkle("format"): "markdown"}).text = release.notes
-    ET.SubElement(item, "enclosure", {
+    enclosure = ET.SubElement(item, "enclosure", {
         "url": asset_url(release.version),
         "length": str(release.size),
         "type": "application/octet-stream",
         sparkle("edSignature"): release.signature,
     })
+    if release.sha256 is not None:
+        enclosure.set(ARCHIVE_SHA256, release.sha256)
 
 
 def generate_appcast(
     tag: str, archive: Path, output: Path, sign_tool: Path, policy: dict, key: str,
     notes: str | None = None, previous_feed: Path | None = None,
-    published_archives: dict[str, int] | None = None,
-    expected_predecessor: tuple[str, int] | None = None,
+    published_archives: dict[str, FileDigest] | None = None,
+    expected_predecessor: tuple[str, FileDigest] | None = None,
+    load_historical_archive: Callable[[str, Path], Path] | None = None,
 ) -> None:
     decoded_key(key, 32, KEY_ENV)
     if not tag.startswith("v"):
@@ -232,15 +284,33 @@ def generate_appcast(
     declarations = {record["version"]: record for record in validate_policy(policy)["releases"]}
     if version not in declarations:
         raise AppcastError(f"{tag} is missing from the compatibility policy")
+    if expected_predecessor is not None and previous_feed is None:
+        raise AppcastError("expected a signed appcast for the latest published release")
+    archive_digest = local_digest(archive)
+    size = positive_integer(str(archive_digest.size), "release ZIP length")
     archive, sign_tool = archive.resolve(), sign_tool.resolve()
     build, pinned_key = read_bundle(archive, version, declarations[version]["min_macos"])
-    size = positive_integer(str(archive.stat().st_size), "release ZIP length")
 
     with tempfile.TemporaryDirectory(prefix=".appcast-", dir=output.parent) as directory:
         work = Path(directory).resolve()
 
         def sign(operation: str, *arguments: str) -> bytes:
             return run_with_key([str(sign_tool), "--ed-key-file", "-", *arguments], key, work, operation)
+
+        def verify_archive(release: Release, digest: FileDigest | None) -> Release | None:
+            if digest is None or release.size != digest.size:
+                return None
+            if release.sha256 is not None:
+                return release if release.sha256 == digest.sha256 else None
+            if load_historical_archive is None:
+                raise AppcastError(f"legacy ZIP for v{release.version} must be downloaded before it can be retained")
+            # Legacy feeds authenticate the ZIP signature, but did not record a SHA-256 digest.
+            downloaded = load_historical_archive(release.version, work)
+            if local_digest(downloaded) != digest:
+                raise AppcastError(f"legacy ZIP for v{release.version} changed while downloading")
+            sign(f"historical ZIP signature verification for v{release.version}",
+                 "--verify", str(downloaded), release.signature)
+            return replace(release, sha256=digest.sha256)
 
         derived_key = run_with_key(
             ["swift", "-module-cache-path", str(work / "module-cache"), "-e", DERIVE_PUBLIC_KEY],
@@ -256,8 +326,14 @@ def generate_appcast(
             snapshot.write_bytes(data)
             sign("previous appcast signature verification", "--verify", str(snapshot))
             history = parse_history(data)
-            if expected_predecessor is not None and (history[0].version, history[0].size) != expected_predecessor:
-                raise AppcastError("previous signed appcast does not match the latest published release ZIP")
+            if expected_predecessor is not None:
+                previous_version, previous_digest = expected_predecessor
+                predecessor = None
+                if history[0].version == previous_version:
+                    predecessor = verify_archive(history[0], previous_digest)
+                if predecessor is None:
+                    raise AppcastError("previous signed appcast does not match the latest published release ZIP")
+                history[0] = predecessor
             history.sort(key=lambda release: version_key(release.version))
 
         prior_version, prior_build = (-1, -1, -1), 0
@@ -272,6 +348,8 @@ def generate_appcast(
         signature = sign("release ZIP signing", "-p", str(archive)).strip().decode("ascii", errors="replace")
         decoded_key(signature, 64, "release ZIP Ed25519 signature")
         sign("release ZIP signature verification", "--verify", str(archive), signature)
+        if local_digest(archive) != archive_digest:
+            raise AppcastError("release ZIP changed while the appcast was being generated")
 
         root = ET.Element("rss", version="2.0")
         channel = ET.SubElement(root, "channel")
@@ -281,19 +359,21 @@ def generate_appcast(
         current_record = declarations[version]
         current = Release(
             version, build, size, signature, notes, current_record["min_macos"],
-            frozenset(current_record["architectures"]),
+            frozenset(current_record["architectures"]), current_record["max_macos"], archive_digest.sha256,
         )
-        available_history = (
-            release for release in reversed(history)
-            if published_archives is None or published_archives.get(release.version) == release.size
-        )
-        for release in [current, *available_history]:
+        write_item(channel, current, current_record)
+        for release in reversed(history):
             record = declarations.get(release.version)
             if record is None:
                 continue
-            if record["min_macos"] < release.minimum or not release.architectures.issuperset(
-                record["architectures"]
-            ):
+            if published_archives is not None:
+                release = verify_archive(release, published_archives.get(release.version))
+                if release is None:
+                    continue
+            maximum = record["max_macos"]
+            widens_maximum = release.maximum is not None and (maximum is None or maximum > release.maximum)
+            if (record["min_macos"] < release.minimum or widens_maximum
+                    or not release.architectures.issuperset(record["architectures"])):
                 raise AppcastError(f"compatibility policy widens signed history for v{release.version}")
             write_item(channel, release, record)
         ET.indent(root)

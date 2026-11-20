@@ -26,12 +26,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check release status
-        id: status
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 Scripts/publish_app_update.py status --tag "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-
       - name: Swift version
         run: swift --version
 
@@ -53,6 +47,15 @@ jobs:
 
       - name: Run tests
         run: swift test
+
+      - name: Check and verify any published release
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AERIALDROP_UPDATE_PUBLIC_KEY: ${{ vars.AERIALDROP_UPDATE_PUBLIC_KEY }}
+        run: |
+          python3 Scripts/publish_app_update.py status --tag "$GITHUB_REF_NAME" \
+            --commit "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Build app bundle
         if: steps.status.outputs.published == 'false'
@@ -137,7 +140,9 @@ jobs:
         if: needs.prepare.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 Scripts/publish_app_update.py publish --tag "$GITHUB_REF_NAME" --assets-dir release-assets
+        run: |
+          python3 Scripts/publish_app_update.py publish --tag "$GITHUB_REF_NAME" \
+            --commit "$(git rev-parse HEAD)" --assets-dir release-assets
 
       - name: Notify Homebrew tap
         # Requires the TAP_UPDATE_TOKEN secret (fine-grained PAT with Contents: read & write on YapWH1208/homebrew-tap).
