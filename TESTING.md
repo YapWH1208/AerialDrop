@@ -45,6 +45,179 @@ source. Use a separate test account for the setup-required checks; do not move o
 edit a real Aerial catalogue to simulate failure. Reimport sources with this
 version before evaluating native playback.
 
+## In-app updates
+
+Run these checks after building the app bundle. The publisher tests simulate
+GitHub responses. Both Python suites use the pinned signer and disposable keys
+to exercise real signature verification.
+
+```sh
+swift test --filter AppUpdatesTests
+export SPARKLE_SIGN_TOOL="$PWD/.build/artifacts/sparkle/Sparkle/bin/sign_update"
+python3 Scripts/test-publish-app-update.py
+python3 Scripts/test-sparkle-appcast.py
+```
+
+Run the native smoke test in a disposable Tahoe VM or macOS account with Xcode
+and network access for SwiftPM. Use the generated key and loopback feed for these
+test builds. The launch steps use a dedicated bundle ID and wallpaper home.
+
+From the repository root in the disposable environment, archive the current
+committed tree and generate a key in the scratch directory.
+
+```sh
+TEST_ROOT=$(mktemp -d /private/tmp/aerialdrop-update.XXXXXX)
+TEST_BUNDLE_ID="local.aerialdrop.$(basename "$TEST_ROOT")"
+printf 'Scratch directory: %s\n' "$TEST_ROOT"
+git archive HEAD | tar -x -C "$TEST_ROOT"
+cd "$TEST_ROOT"
+. Scripts/select-xcode.sh
+umask 077
+export AERIALDROP_UPDATE_PUBLIC_KEY
+AERIALDROP_UPDATE_PUBLIC_KEY=$(swift -e '
+  import CryptoKit
+  import Foundation
+  let key = Curve25519.Signing.PrivateKey()
+  try key.rawRepresentation.base64EncodedString().write(
+    toFile: CommandLine.arguments[1], atomically: true, encoding: .utf8
+  )
+  print(key.publicKey.rawRepresentation.base64EncodedString())
+' "$TEST_ROOT/private-ed-key")
+mkdir -p feed installed
+```
+
+Patch the scratch copy to use a temporary wallpaper home and an optional
+90-second busy state for testing restart deferral without importing media.
+Both builds share the test bundle ID, feed URL, and signing key.
+
+```sh
+python3 - <<'PYCODE'
+import json
+from pathlib import Path
+
+entry = Path("Sources/AerialDrop/AerialDropApp.swift")
+source = entry.read_text()
+home = json.dumps(str(Path.cwd() / "wallpaper-home"))
+original = "let model = AppModel()"
+assert source.count(original) == 1
+entry.write_text(source.replace(original, f"""let model = AppModel(
+            paths: WallpaperPaths(homeDirectory: URL(fileURLWithPath: {home}))
+        )
+        if ProcessInfo.processInfo.environment["AERIALDROP_SMOKE_BUSY"] == "1" {{
+            model.isWorking = true
+            Task {{ @MainActor in
+                try? await Task.sleep(for: .seconds(90))
+                model.isWorking = false
+            }}
+        }}"""))
+PYCODE
+
+for release in 1 2; do
+  SMOKE_RELEASE="$release" python3 - <<'PYCODE'
+import os
+import re
+from pathlib import Path
+
+version = Path("Sources/AerialDrop/AppVersion.swift")
+source = version.read_text()
+release = os.environ["SMOKE_RELEASE"]
+for name, value in {"shortVersion": f"90.0.{release}", "buildNumber": f"900{release}"}.items():
+    source, count = re.subn(rf'(static let {name} = )"[^"]+"', rf'\g<1>"{value}"', source)
+    assert count == 1
+version.write_text(source)
+PYCODE
+  Scripts/build-app.sh
+  plist=dist/AerialDrop.app/Contents/Info.plist
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $TEST_BUNDLE_ID" "$plist"
+  /usr/libexec/PlistBuddy -c 'Set :SUFeedURL http://localhost:8765/appcast.xml' "$plist"
+  /usr/libexec/PlistBuddy -c 'Add :NSAppTransportSecurity dict' "$plist"
+  /usr/libexec/PlistBuddy -c 'Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true' "$plist"
+  codesign --force --sign - dist/AerialDrop.app
+  codesign --verify --deep --strict dist/AerialDrop.app
+  if [ "$release" = 1 ]; then
+    ditto dist/AerialDrop.app "$TEST_ROOT/older/AerialDrop.app"
+    ditto "$TEST_ROOT/older/AerialDrop.app" "$TEST_ROOT/installed/AerialDrop.app"
+  else
+    ditto -c -k --sequesterRsrc --keepParent dist/AerialDrop.app feed/AerialDrop-9002.zip
+  fi
+done
+SPARKLE_BIN="$PWD/.build/artifacts/sparkle/Sparkle/bin"
+"$SPARKLE_BIN/generate_appcast" --ed-key-file "$TEST_ROOT/private-ed-key" \
+  --download-url-prefix http://localhost:8765/ --maximum-deltas 0 feed
+"$SPARKLE_BIN/sign_update" --ed-key-file "$TEST_ROOT/private-ed-key" --verify feed/appcast.xml
+python3 -m http.server 8765 --bind localhost --directory feed
+```
+
+Leave the server running and set `TEST_ROOT` to the printed scratch path in a
+second terminal. Launch with `open -n "$TEST_ROOT/installed/AerialDrop.app"`.
+Inspect the server requests and appcast enclosure URL. For repeat runs, quit
+all test instances and restore the app from `older/AerialDrop.app`. Use a fresh
+scratch directory when testing first-launch preferences.
+
+1. Start the older build without a prior check timestamp. Confirm **Install
+   Update** is initially hidden and appears inline after a compatible update is
+   found. Verify the check opens no window and requests no ZIP.
+2. Disable automatic checks in **Settings → Updates**, relaunch, and verify the
+   choice persists. Check from both Settings and the AerialDrop menu. Exercise a
+   current build, an offline server, and a feed requiring a newer macOS.
+3. Quit and reopen the older build with
+   `open -n --env AERIALDROP_SMOKE_BUSY=1 "$TEST_ROOT/installed/AerialDrop.app"`.
+   Check for updates and click **Install Update**. Verify inline progress and
+   **Waiting for current work to finish**. When the 90 seconds elapse, confirm
+   one-click relaunch into build 9002 and check the test preferences.
+4. Restore the older build. Repeat the busy launch and start installation. While
+   the first instance is still waiting, open a second instance with `open -n`
+   and use **Check for Updates** there. Confirm the second instance cancels the
+   prepared installer and exposes **Install Update**. Quit both instances after
+   cancellation and reopen the older build with automatic checks still off.
+   Confirm the offer persists. Stop the feed server and click Install to verify
+   it needs a fresh check. Restart the server and verify a new click can install.
+5. Restore the older build to test rejection. Change a copy of the signed
+   appcast without re-signing it and confirm an explicit check fails. Restore
+   the signed feed, change the ZIP, and confirm installation fails with the
+   older build still installed.
+
+Record OS and build, observed requests, and results. Remove the disposable
+scratch directory, including its private key, after testing.
+
+## Maintaining updater releases
+
+The release workflow uses a dedicated Sparkle Ed25519 key. From the Sparkle
+tools in `.build/artifacts/sparkle/Sparkle/bin/`, run `generate_keys --account
+aerialdrop-release` and record the public key in the GitHub Actions repository
+variable `AERIALDROP_UPDATE_PUBLIC_KEY`. Use `generate_keys --account
+aerialdrop-release -x <private-file>` to export the private seed to a protected
+location. Set `AERIALDROP_UPDATE_PRIVATE_KEY` as a GitHub Actions secret from
+that file. Keep an offline backup of the key and keep the export outside the
+repository. Losing the key requires a fresh manual install to establish trust
+in a replacement signing key. [Sparkle signing documentation](https://sparkle-project.org/documentation/)
+
+Before tagging the first updater-enabled release, coordinate `auto_updates true`
+in the separate Homebrew tap so Homebrew accounts for versions installed from
+inside the app. Existing installs receive the updater through their usual
+installation method. [Homebrew self-updating apps](https://docs.brew.sh/FAQ#how-does-brew-upgrade-handle-apps-that-update-themselves)
+
+Advance the marketing version and build number through the usual release
+process and add the compatibility row. The workflow accepts `v1.1.10` as the
+legacy predecessor without an appcast. Later stable releases contribute signed
+history. Publish a new signed feed to apply changes to release eligibility.
+History can drop a release or narrow its declared compatibility, including its
+maximum macOS version. Widening a maximum, expanding an older ZIP's supported
+architectures, or lowering its signed minimum macOS requires a newly validated
+build. A missing or changed historical ZIP requires fresh signing or manual
+reconciliation of the historical release and feed.
+
+The signing job saves the exact ZIP, appcast, release notes, and predecessor
+metadata. The publish job accepts temporary draft asset URLs by comparing their asset
+metadata, and checks the uploaded bytes before making the draft public. For a
+recoverable upload failure, rerun the failed publish job with the original signed
+artifact; retries verify exact uploaded bytes against it. Fresh runs against an
+already-public release verify signatures with the pinned public key before
+notifying Homebrew. If GitHub left an empty `starter` asset, remove that
+incomplete asset from the draft before retrying. A changed predecessor requires
+fresh signing and manual reconciliation of any existing draft assets.
+[GitHub release asset uploads](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset)
+
 ## Catalogue compatibility and recovery
 
 Automated compatibility and repair tests use synthetic bundled catalogues and

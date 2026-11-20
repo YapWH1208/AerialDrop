@@ -9,10 +9,18 @@ let package = Package(
     products: [
         .executable(name: "AerialDrop", targets: ["AerialDrop"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.1")
+    ],
     targets: [
         .executableTarget(
             name: "AerialDrop",
-            path: "Sources/AerialDrop"
+            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+            path: "Sources/AerialDrop",
+            linkerSettings: [.unsafeFlags([
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path"
+            ])]
         ),
         .testTarget(
             name: "AerialDropTests",

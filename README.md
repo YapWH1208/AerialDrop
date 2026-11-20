@@ -132,6 +132,29 @@ use your selected Xcode, or `/Applications/Xcode.app` when Command Line Tools
 is selected. Set `DEVELOPER_DIR` to use another Xcode installation. They check
 for full Xcode and its macOS SDK before removing previous build output.
 
+## Updating AerialDrop
+
+Updater-enabled releases check quietly at launch when a check is due, and about
+once a day while AerialDrop is open. Choose **AerialDrop → Check for Updates** for an
+immediate check. **AerialDrop → Settings → Updates** offers the same check and
+a switch for automatic checks.
+
+When AerialDrop finds a compatible release, **Install Update** appears above the
+main pane and in **Settings → Updates**. Click it once to download, verify, install,
+and relaunch. AerialDrop finishes any active import or catalogue operation before
+restarting. Installed wallpapers and preferences are stored separately from the
+app bundle.
+
+If AerialDrop cancels a prepared installer for a newer release, the offer
+stays available after relaunch. Clicking **Install Update** checks the signed
+feed again before installing.
+
+If AerialDrop reports that it cannot update in place, move the app into an
+Applications folder you can write to or update it manually using the steps above.
+
+Use one of the installation methods above to get the first updater-enabled
+release. The updater handles subsequent releases. [Signing and Homebrew rollout](TESTING.md#maintaining-updater-releases)
+
 ## Usage
 
 1. **Set up Apple Aerials** — before the first import, open System Settings → Wallpaper and download at least one Apple Aerial wallpaper. If the native catalogue is not ready, AerialDrop shows **Open Wallpaper Settings** and **Check Again** instead of an empty Library.
@@ -179,6 +202,10 @@ The installer, website, and Homebrew updater combine this policy with published
 GitHub releases and their exact ZIP assets. Versions are compared numerically;
 drafts, prereleases, undeclared releases, and assets without a valid official
 checksum or URL are excluded. Missing or malformed policy data stops selection.
+
+In-app checks use a signed update feed generated from the same compatibility
+policy. The feed retains signed releases for systems with different macOS
+requirements while their ZIPs remain available.
 
 Currently v1.1.10 supports macOS 26 and later on Apple Silicon. macOS 26 users
 therefore receive v1.1.10. If a later release requires macOS 27, macOS 26 users

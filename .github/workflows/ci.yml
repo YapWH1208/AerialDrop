@@ -43,8 +43,28 @@ jobs:
       - name: Build release binary
         run: swift build -c release
 
-      - name: Build app bundle
-        run: ./Scripts/build-app.sh
+      - name: Build and verify an update-enabled app bundle
+        run: |
+          scratch=$(mktemp -d "$RUNNER_TEMP/aerialdrop-signing.XXXXXX")
+          trap 'rm -rf "$scratch"' EXIT
+          umask 077
+          public_key=$(swift -e '
+            import CryptoKit
+            import Foundation
+            let key = Curve25519.Signing.PrivateKey()
+            try key.rawRepresentation.base64EncodedString().write(
+              toFile: CommandLine.arguments[1], atomically: true, encoding: .utf8
+            )
+            print(key.publicKey.rawRepresentation.base64EncodedString())
+          ' "$scratch/private-key")
+          AERIALDROP_UPDATE_PUBLIC_KEY="$public_key" ./Scripts/build-app.sh
 
-      - name: Validate packaged compatibility
-        run: python3 Scripts/release_compatibility.py validate --bundle dist/AerialDrop.app
+          python3 Scripts/release_compatibility.py validate --bundle dist/AerialDrop.app
+          version=$(plutil -extract CFBundleShortVersionString raw -o - dist/AerialDrop.app/Contents/Info.plist)
+          archive="$scratch/AerialDrop-$version-macOS.zip"
+          ditto -c -k --sequesterRsrc --keepParent dist/AerialDrop.app "$archive"
+          signer="$PWD/.build/artifacts/sparkle/Sparkle/bin/sign_update"
+          AERIALDROP_UPDATE_PRIVATE_KEY="$(cat "$scratch/private-key")" python3 Scripts/sparkle_appcast.py \
+            --tag "v$version" --archive "$archive" --sign-tool "$signer" --output "$scratch/appcast.xml"
+          SPARKLE_SIGN_TOOL="$signer" python3 Scripts/test-sparkle-appcast.py
+          SPARKLE_SIGN_TOOL="$signer" python3 Scripts/test-publish-app-update.py
