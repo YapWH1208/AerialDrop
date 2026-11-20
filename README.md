@@ -234,6 +234,7 @@ Day/Night support is gated by the observed extension-build allowlist above. The 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — processing pipeline
 - [TESTING.md](TESTING.md) — manual test procedure
 - [CHANGELOG.md](CHANGELOG.md) — release history
+- [release-note.md](release-note.md) — version highlights for the website
 
 ## License
 
