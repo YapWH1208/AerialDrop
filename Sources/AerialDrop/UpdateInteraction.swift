@@ -1,4 +1,5 @@
 import Foundation
+import Sparkle
 
 struct UpdateInteraction {
     struct Offer: Equatable {
@@ -42,8 +43,18 @@ struct UpdateInteraction {
     }
 
     private(set) var offer: Offer?
+    private(set) var recoveredOffer: Offer?
     private(set) var activity: Activity?
     private(set) var feedback: Feedback?
+
+    init(recoveredOffer: Offer? = nil) {
+        self.offer = recoveredOffer
+        self.recoveredOffer = recoveredOffer
+    }
+
+    static func isBuild(_ build: String, newerThan otherBuild: String) -> Bool {
+        SUStandardVersionComparator.default.compareVersion(build, toVersion: otherBuild) == .orderedDescending
+    }
 
     var installAuthorized: Bool {
         if case .installing = activity { true } else { false }
@@ -65,11 +76,27 @@ struct UpdateInteraction {
         return true
     }
 
+    mutating func recoverInstallerOffer(_ candidate: Offer) {
+        if let offer, Self.isBuild(offer.build, newerThan: candidate.build) { return }
+        recoveredOffer = candidate
+        offer = candidate
+    }
+
     mutating func discovered(
         _ candidate: Offer?,
         userInitiated: Bool,
+        fromSignedAppcast: Bool,
         canInstallInPlace: () -> Bool
     ) -> Bool {
+        if let recoveredOffer, candidate != recoveredOffer {
+            // Background checks can omit a build after Sparkle cancels and skips it.
+            let supersedesRecovery = candidate.map { Self.isBuild($0.build, newerThan: recoveredOffer.build) } ?? false
+            guard fromSignedAppcast, userInitiated || supersedesRecovery else {
+                if userInitiated { reportFailure() }
+                return false
+            }
+            self.recoveredOffer = nil
+        }
         offer = candidate
         guard let candidate else {
             if activity != nil { feedback = .noCompatibleUpdate }
@@ -78,6 +105,10 @@ struct UpdateInteraction {
 
         feedback = nil
         guard userInitiated, activity == .verifying(candidate) else { return false }
+        guard fromSignedAppcast else {
+            reportFailure()
+            return false
+        }
         guard canInstallInPlace() else {
             feedback = .needsWritableLocation
             return false
@@ -92,20 +123,32 @@ struct UpdateInteraction {
         activity = .installing(phase)
     }
 
-    mutating func reportedMissingUpdate() {
+    mutating func reportedMissingUpdate(userInitiated: Bool, fromSignedAppcast: Bool) {
+        if recoveredOffer != nil {
+            guard userInitiated, fromSignedAppcast else {
+                if userInitiated { reportFailure() }
+                return
+            }
+            recoveredOffer = nil
+        }
         offer = nil
         feedback = activity == nil ? nil : .noCompatibleUpdate
     }
 
     mutating func finish(failed: Bool = false) {
-        if failed, let activity {
-            feedback = activity == .checking ? .checkFailed : .installFailed
-        }
+        if failed { reportFailure() }
         activity = nil
     }
 
     mutating func finishedInstalling() {
         offer = nil
+        recoveredOffer = nil
         finish()
+    }
+
+    private mutating func reportFailure() {
+        if let activity {
+            feedback = activity == .checking ? .checkFailed : .installFailed
+        }
     }
 }

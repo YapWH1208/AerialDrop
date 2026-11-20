@@ -8,27 +8,44 @@ import Sparkle
 @Observable
 final class AppUpdates: NSObject, SPUUpdaterDelegate {
     private let model: AppModel
+    private let defaults: UserDefaults
     @ObservationIgnored private var updater: SPUUpdater?
     @ObservationIgnored private var availabilityObservation: NSKeyValueObservation?
-    private var interaction = UpdateInteraction()
+    @ObservationIgnored private var signedAppcastLoaded = false
+    private var interaction: UpdateInteraction {
+        didSet {
+            if interaction.recoveredOffer != oldValue.recoveredOffer {
+                AppPreferences.setRecoveredUpdateOffer(interaction.recoveredOffer, defaults: defaults)
+            }
+        }
+    }
 
     let isConfigured: Bool
     private(set) var canCheckForUpdates = false
     private(set) var automaticallyChecksForUpdates = false
     private(set) var isInstallingUpdate = false
 
-    var availableVersion: String? { interaction.offer?.version }
+    var availableVersion: String? { isConfigured ? interaction.offer?.version : nil }
     var progressDescription: LocalizedStringResource? { interaction.activity?.description }
     var message: LocalizedStringResource? { interaction.feedback?.description }
     var canInstallUpdate: Bool {
         interaction.offer != nil && interaction.activity == nil && canCheckForUpdates
     }
 
-    init(model: AppModel) {
+    init(model: AppModel, defaults: UserDefaults = .standard) {
         self.model = model
+        self.defaults = defaults
         isConfigured = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") is String
             && Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") is String
             && (Bundle.main.object(forInfoDictionaryKey: "SUAllowsAutomaticUpdates") as? Bool) == false
+        let savedOffer = AppPreferences.recoveredUpdateOffer(defaults: defaults)
+        let recoveredOffer = savedOffer.flatMap {
+            UpdateInteraction.isBuild($0.build, newerThan: AppVersion.buildNumber) ? $0 : nil
+        }
+        interaction = UpdateInteraction(recoveredOffer: recoveredOffer)
+        if savedOffer != recoveredOffer {
+            AppPreferences.setRecoveredUpdateOffer(nil, defaults: defaults)
+        }
     }
 
     func start() {
@@ -80,6 +97,11 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
         false
     }
 
+    func updater(_ updater: SPUUpdater, didFinishLoading appcast: SUAppcast) {
+        // Sparkle does not call this delegate method when it resumes an installer or download.
+        signedAppcastLoaded = appcast.signingValidationStatus == .succeeded
+    }
+
     func updater(
         _ updater: SPUUpdater,
         shouldPostponeRelaunchForUpdate item: SUAppcastItem,
@@ -100,7 +122,10 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
         let sparkleError = error as NSError?
         let noUpdate = sparkleError?.domain == SUSparkleErrorDomain
             && sparkleError?.code == Int(SUError.noUpdateError.rawValue)
-        if noUpdate { interaction.reportedMissingUpdate() }
+        if noUpdate {
+            interaction.reportedMissingUpdate(userInitiated: updateCheck == .updates, fromSignedAppcast: signedAppcastLoaded)
+        }
+        signedAppcastLoaded = false
         interaction.finish(failed: error != nil && !noUpdate)
         refreshCheckAvailability()
     }
@@ -135,25 +160,33 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
     }
 
     fileprivate func choice(for item: SUAppcastItem, state: SPUUserUpdateState) -> SPUUserUpdateChoice {
-        let isNewerBuild = SUStandardVersionComparator.default.compareVersion(
-            item.versionString, toVersion: AppVersion.buildNumber
-        ) == .orderedDescending
-        if state.stage == .installing {
-            // A prior installer may still be active after relaunch. Dismissing a
-            // prepared newer update would let it install on quit without this session's approval.
-            return isNewerBuild ? .skip : .dismiss
-        }
-
+        let isNewerBuild = UpdateInteraction.isBuild(item.versionString, newerThan: AppVersion.buildNumber)
         let offer: UpdateInteraction.Offer? = if isNewerBuild, item.signingValidationStatus == .succeeded,
             !item.isInformationOnlyUpdate, item.installationType == "application", let url = item.fileURL {
-            .init(version: item.displayVersionString, build: item.versionString, archiveURL: url)
+            .init(version: item.displayVersionString, build: item.versionString, archiveURL: url.absoluteURL)
         } else {
             nil
         }
-        if interaction.discovered(offer, userInitiated: state.userInitiated, canInstallInPlace: Self.canInstallInPlace) {
+        if state.stage == .installing {
+            return choiceForPreparedInstaller(recovering: offer)
+        }
+        if interaction.discovered(
+            offer,
+            userInitiated: state.userInitiated,
+            fromSignedAppcast: signedAppcastLoaded,
+            canInstallInPlace: Self.canInstallInPlace
+        ) {
             return .install
         }
+        // Clear a cached download so the next manual check can reach the appcast.
+        if state.stage == .downloaded, state.userInitiated, !signedAppcastLoaded { return .skip }
         return .dismiss
+    }
+
+    func choiceForPreparedInstaller(recovering offer: UpdateInteraction.Offer?) -> SPUUserUpdateChoice {
+        if let offer { interaction.recoverInstallerOffer(offer) }
+        // Sparkle can proceed on quit if any prepared install is dismissed.
+        return .skip
     }
 
     fileprivate func advance(to phase: UpdateInteraction.InstallPhase) {

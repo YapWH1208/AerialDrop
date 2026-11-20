@@ -23,6 +23,28 @@ enum AppPreferences {
     static let dayNightDraftKey = "dayNightWallpaperDraft"
     static let dayNightSectionExpansionPreferenceKey = "dayNightSectionExpansionPreference"
     static let pendingDayNightAssetIDsKey = "pendingDayNightAssetIDs"
+    private static let recoveredUpdateOfferKey = "recoveredUpdateOffer"
+
+    static func recoveredUpdateOffer(defaults: UserDefaults = .standard) -> UpdateInteraction.Offer? {
+        guard let values = defaults.dictionary(forKey: recoveredUpdateOfferKey),
+              let version = values["version"] as? String, !version.isEmpty,
+              let build = values["build"] as? String, !build.isEmpty,
+              let archive = values["archiveURL"] as? String,
+              let archiveURL = URL(string: archive), archiveURL.scheme != nil else { return nil }
+        return UpdateInteraction.Offer(version: version, build: build, archiveURL: archiveURL)
+    }
+
+    static func setRecoveredUpdateOffer(_ offer: UpdateInteraction.Offer?, defaults: UserDefaults = .standard) {
+        guard let offer else {
+            defaults.removeObject(forKey: recoveredUpdateOfferKey)
+            return
+        }
+        defaults.set([
+            "version": offer.version,
+            "build": offer.build,
+            "archiveURL": offer.archiveURL.absoluteString
+        ], forKey: recoveredUpdateOfferKey)
+    }
 
     static func dayNightDraft(defaults: UserDefaults = .standard) throws -> DayNightWallpaperDraft {
         guard let stored = defaults.object(forKey: dayNightDraftKey) else {
