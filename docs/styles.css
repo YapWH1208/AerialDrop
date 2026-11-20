@@ -679,7 +679,6 @@ html[data-theme="dark"] .icon-btn .icon--moon {
 }
 
 .compatibility-chooser select,
-.compatibility-chooser input,
 .compatibility-chooser button {
   min-height: 40px;
   padding: 6px 10px;
@@ -695,12 +694,11 @@ html[data-theme="dark"] .icon-btn .icon--moon {
   color: var(--text);
 }
 
-.compatibility-chooser :is(select, input, button):focus-visible {
+.compatibility-chooser :is(select, button):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.compatibility-chooser input { width: 7em; }
 .compatibility-chooser [hidden] { display: none; }
 .compatibility-chooser p { flex-basis: 100%; margin: 0; }
 .compatibility-chooser__help,

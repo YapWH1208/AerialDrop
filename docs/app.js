@@ -144,7 +144,7 @@
   var heroCopyBtn = $(".term-line--cmd .term-copy");
   if (heroCopyBtn) heroCopyBtn.classList.add("is-visible");
 
-  /* ---------- Compatible release for an explicitly selected macOS ---------- */
+  /* ---------- Compatible release for the selected macOS ---------- */
   function humanSize(bytes) {
     if (typeof bytes !== "number" || !isFinite(bytes) || bytes <= 0) return "\u2014";
     var units = ["B", "KB", "MB", "GB"], i = 0;
@@ -192,16 +192,30 @@
     });
     $$("[data-download-label]").forEach(function (el) { el.textContent = "Download unavailable"; });
   }
-  var macosSelect = $("#macosSelect"), customMacos = $("#customMacos"), releaseStatus = $("#releaseStatus");
-  var customMacosLabel = $("#customMacosLabel");
+  var macosSelect = $("#macosSelect"), releaseStatus = $("#releaseStatus");
+  var detectionStatus = $("#detectionStatus"), macosSelectedManually = false;
   var retryRelease = $("#retryRelease"), lookupId = 0, dataPromise = null;
   function showStatus(message, retry) {
     if (releaseStatus) releaseStatus.textContent = message;
     if (retryRelease) retryRelease.hidden = !retry;
   }
   function selectedMacos() {
-    if (!macosSelect || !macosSelect.value) return null;
-    return macosSelect.value === "other" ? Number(customMacos.value) : Number(macosSelect.value);
+    var version = macosSelect.value;
+    return version === "26" || version === "27" ? Number(version) : null;
+  }
+  async function detectMacos() {
+    try {
+      var hints = navigator.userAgentData;
+      if (!hints || hints.platform !== "macOS" || hints.mobile !== false ||
+          typeof hints.getHighEntropyValues !== "function") return null;
+      var values = await hints.getHighEntropyValues(["platformVersion"]);
+      var version = values && values.platformVersion;
+      if (typeof version !== "string") return null;
+      var match = /^(26|27)(?:\.(?:0|[1-9]\d*)){0,2}$/.exec(version);
+      return match ? match[1] : null;
+    } catch (error) {
+      return null;
+    }
   }
   function fetchWithTimeout(url, options) {
     if (!("AbortController" in window)) return fetch(url, options);
@@ -226,17 +240,7 @@
     var current = ++lookupId;
     clearRelease();
     var macos = selectedMacos();
-    if (macosSelect && macosSelect.value === "other") {
-      customMacos.hidden = false;
-      if (customMacosLabel) customMacosLabel.hidden = false;
-    } else if (customMacos) {
-      customMacos.hidden = true;
-      if (customMacosLabel) customMacosLabel.hidden = true;
-    }
     if (macos === null) { showStatus("Choose your Mac’s macOS major version to find its newest compatible release.", false); return; }
-    if (!Number.isInteger(macos) || macos < 26 || macos > 999) {
-      showStatus("Enter a macOS major version from 26 through 999.", false); return;
-    }
     if (!window.fetch || !window.AerialDropCompatibility) {
       showStatus("Release lookup is unavailable. Run the install script on your Mac or check the official release notes.", false); return;
     }
@@ -257,15 +261,33 @@
     });
   }
   if (macosSelect) {
-    clearRelease();
     macosSelect.disabled = false;
-    macosSelect.addEventListener("change", updateRelease);
-    if (customMacos) customMacos.addEventListener("input", updateRelease);
+    macosSelect.addEventListener("change", function () {
+      macosSelectedManually = true;
+      if (detectionStatus) detectionStatus.textContent = "";
+      updateRelease();
+    });
     if (retryRelease) retryRelease.addEventListener("click", function () {
       dataPromise = null;
       updateRelease();
     });
-    showStatus("Choose your Mac’s macOS major version to find its newest compatible release.", false);
+    updateRelease();
+    if (!macosSelect.value) {
+      detectMacos().then(function (version) {
+        if (macosSelectedManually || macosSelect.value) return;
+        if (!version) {
+          if (detectionStatus) {
+            detectionStatus.textContent =
+              "Choose macOS 26 or 27 if that matches your Mac. Find your version in Apple menu → About This Mac, or use the install script to check compatibility.";
+            if (releaseStatus) releaseStatus.textContent = "";
+          }
+          return;
+        }
+        macosSelect.value = version;
+        if (detectionStatus) detectionStatus.textContent = "Detected macOS " + version + ". You can change this selection.";
+        updateRelease();
+      });
+    }
   }
 
   /* ---------- Hero terminal typing ---------- */

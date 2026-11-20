@@ -7,6 +7,7 @@
 - Keep import progress and safe cancellation above scrolling content in Import and Library.
 - Offer contextual Day/Night and restore recovery, retain bulk-removal survivors for a fresh retry, and let users choose a dated catalogue backup before confirmation.
 - Keep installation guidance visible when scripts fail, show signing and quarantine details before commands, and improve copy feedback, keyboard tabs, responsive navigation, and verification instructions.
+- Highlight macOS 27.0+ on the website while retaining macOS 26 support, simplify the install selector, and detect the macOS version when the browser provides it.
 
 ## 1.1.10
 

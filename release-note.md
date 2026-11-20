@@ -39,14 +39,16 @@ Candidate highlights, not yet part of a published release:
   improve Day/Night, backup restore, and bulk-removal recovery.
 - Improve installation guidance, signing and quarantine explanations, copy
   feedback, keyboard navigation, and narrow-screen layouts on the website.
+- Highlight macOS 27.0+ while keeping macOS 26 support, simplify the website's
+  version selector, and detect macOS when the browser makes it available.
 
 ## 1.1.10
 
 ### Compatible release downloads
 
-The website, install script, and Homebrew tap select the newest published
-release for your macOS version and processor. Version pins are validated, and
-downloads are checked against their published SHA-256 checksums.
+The website added a selector for compatible Apple Silicon downloads. The install
+script and Homebrew tap select the newest published release for your Mac and
+verify its checksum. Version pins are validated.
 
 ## 1.1.9
 
