@@ -207,10 +207,10 @@ In-app checks use a signed update feed generated from the same compatibility
 policy. The feed retains signed releases for systems with different macOS
 requirements while their ZIPs remain available.
 
-Currently v1.1.10 supports macOS 26 and later on Apple Silicon. macOS 26 users
-therefore receive v1.1.10. If a later release requires macOS 27, macOS 26 users
-remain on the newest eligible release. Day/Night feature checks remain separate
-from whole-app installation compatibility.
+Version 1.1.11 supports macOS 26 and later on Apple Silicon. macOS 26 users
+receive the newest compatible published release. If a later release requires
+macOS 27, macOS 26 users remain on the newest eligible release. Day/Night feature
+checks remain separate from whole-app installation compatibility.
 
 Before publishing a release, add its compatibility record alongside the normal
 version and changelog changes. CI checks the source version and package minimum
