@@ -29,11 +29,12 @@ function element(value = '') {
   };
 }
 
-function page(fetcher) {
+function page(fetcher, navigator = {}) {
   const ids = {};
-  ['macosSelect', 'customMacos', 'customMacosLabel', 'releaseStatus', 'retryRelease',
+  ['macosSelect', 'detectionStatus', 'releaseStatus', 'retryRelease',
     'releaseTag', 'releaseSize', 'expectVersion', 'unzipCmd', 'unzipCopy', 'termOut1', 'termOut4']
     .forEach(id => { ids[id] = element(); });
+  ids.macosSelect.disabled = true;
   const downloads = [element(), element()];
   const labels = [element(), element()];
   const document = {
@@ -46,8 +47,8 @@ function page(fetcher) {
     },
     getElementById(id) { return ids[id] || null; }
   };
-  const window = { fetch: fetcher, AerialDropCompatibility: compatibility, matchMedia() { return { matches: true }; } };
-  const context = { document, window, fetch: fetcher, navigator: {}, setTimeout() {}, clearTimeout() {}, Date, Promise, Number, String, Object, Array, isFinite };
+  const window = { fetch: fetcher, navigator, AerialDropCompatibility: compatibility, matchMedia() { return { matches: true }; } };
+  const context = { document, window, fetch: fetcher, navigator, setTimeout() {}, clearTimeout() {}, Date, Promise, Number, String, Object, Array, isFinite };
   vm.runInNewContext(source, context, { filename: 'docs/app.js' });
   return { ids, downloads, labels };
 }
@@ -60,6 +61,131 @@ async function flush() {
 function response(data, ok = true, status = 200) { return { ok, status, json: async () => data }; }
 function standardFetch(policy = fixture.policy, releases = fixture.catalogues.base) {
   return async url => url === 'release-compatibility.json' ? response(policy) : response(releases);
+}
+
+function clientHints(platformVersion, { platform = 'macOS', mobile = false } = {}) {
+  return {
+    platform,
+    mobile,
+    async getHighEntropyValues() { return { platform, mobile, platformVersion }; }
+  };
+}
+
+function chooseMacos(ui, value) {
+  ui.ids.macosSelect.value = value;
+  ui.ids.macosSelect.trigger('change');
+}
+
+function assertZipUnavailable(ui, message) {
+  for (const download of ui.downloads) {
+    assert.equal(download.getAttribute('href'), null, message);
+    assert.equal(download.getAttribute('aria-disabled'), 'true', message);
+  }
+  assert.equal(ui.ids.unzipCopy.disabled, true, message);
+  assert.equal(ui.ids.unzipCopy.getAttribute('data-copy'), null, message);
+}
+
+async function testMacosDetection() {
+  for (const [macos, platformVersion, release] of [
+    ['26', '26.4.1', fixture.catalogues.base[1]],
+    ['27', '27.0.0', fixture.catalogues.base[2]]
+  ]) {
+    const requests = [];
+    const hints = {
+      ...clientHints(platformVersion),
+      async getHighEntropyValues(names) {
+        requests.push(Array.from(names));
+        return { platformVersion };
+      }
+    };
+    const ui = page(standardFetch(), { userAgentData: hints });
+    assert.equal(ui.ids.macosSelect.disabled, false, 'manual choice is available while detecting');
+    await flush();
+    assert.deepEqual(requests, [['platformVersion']], 'detection requests only the OS version hint');
+    assert.equal(ui.ids.macosSelect.value, macos);
+    assert.equal(ui.ids.detectionStatus.textContent, `Detected macOS ${macos}. You can change this selection.`);
+    assert.match(ui.ids.releaseStatus.textContent, new RegExp(`macOS ${macos} on Apple Silicon`));
+    assert.equal(ui.ids.releaseTag.textContent, release.tag_name);
+    assert.equal(ui.ids.unzipCopy.disabled, false);
+    for (const download of ui.downloads) {
+      assert.equal(download.getAttribute('href'), release.assets[0].browser_download_url);
+      assert.equal(download.getAttribute('aria-disabled'), null);
+    }
+    chooseMacos(ui, '');
+    assert.equal(ui.ids.detectionStatus.textContent, '');
+    assertZipUnavailable(ui);
+  }
+
+  const fallbackCases = [
+    ['missing hints despite a Mac user agent', {
+      platform: 'MacIntel',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 26_0) AppleWebKit/605.1.15 Version/26.0 Safari/605.1.15'
+    }],
+    ['missing high-entropy API', { userAgentData: { platform: 'macOS', mobile: false } }],
+    ['denied hints', { userAgentData: {
+      ...clientHints('26.0.0'),
+      async getHighEntropyValues() { throw new Error('Client hints denied'); }
+    } }],
+    ['throwing hints method', { userAgentData: {
+      ...clientHints('26.0.0'),
+      getHighEntropyValues() { throw new Error('Client hints unavailable'); }
+    } }],
+    ['throwing hints accessor', {
+      get userAgentData() { throw new Error('Client hints unavailable'); }
+    }],
+    ['missing hint result', { userAgentData: {
+      ...clientHints('26.0.0'),
+      async getHighEntropyValues() { return null; }
+    } }],
+    ['missing platform version', { userAgentData: clientHints(undefined) }],
+    ['malformed platform version', { userAgentData: clientHints('26.0.0-extra') }],
+    ['version with trailing whitespace', { userAgentData: clientHints('27.0.0 ') }],
+    ['non-string platform version', { userAgentData: clientHints(27) }],
+    ['non-macOS desktop', { userAgentData: clientHints('26.0.0', { platform: 'Windows' }) }],
+    ['mobile browser', { userAgentData: clientHints('27.0.0', { mobile: true }) }],
+    ['old macOS version', { userAgentData: clientHints('25.0.0') }],
+    ['future macOS version', { userAgentData: clientHints('28.0.0') }]
+  ];
+  for (const [name, navigator] of fallbackCases) {
+    const requests = [];
+    const fetch = standardFetch();
+    const ui = page(url => {
+      requests.push(url);
+      return fetch(url);
+    }, navigator);
+    await flush();
+    assert.equal(ui.ids.macosSelect.value, '', name);
+    assert.equal(ui.ids.macosSelect.disabled, false, name);
+    assert.match(ui.ids.detectionStatus.textContent, /Choose macOS 26 or 27.*install script/, name);
+    assert.match(ui.ids.detectionStatus.textContent, /Apple menu → About This Mac/, name);
+    assert.equal(ui.ids.releaseStatus.textContent, '', `${name}: avoid duplicate selection guidance`);
+    assert.deepEqual(requests, [], name);
+    assertZipUnavailable(ui, name);
+  }
+
+  for (const resetToBlank of [false, true]) {
+    let finishDetection;
+    const pendingDetection = new Promise(resolve => { finishDetection = resolve; });
+    const navigator = { userAgentData: {
+      ...clientHints('26.0.0'),
+      getHighEntropyValues() { return pendingDetection; }
+    } };
+    const ui = page(standardFetch(), navigator);
+    await flush();
+    assert.equal(ui.ids.macosSelect.value, '');
+    chooseMacos(ui, '27');
+    if (resetToBlank) chooseMacos(ui, '');
+    finishDetection({ platform: 'macOS', mobile: false, platformVersion: '26.0.0' });
+    await flush();
+    assert.equal(ui.ids.detectionStatus.textContent, '', 'a late detection leaves manual status intact');
+    if (resetToBlank) {
+      assert.equal(ui.ids.macosSelect.value, '', 'a late detection respects a return to the placeholder');
+      assertZipUnavailable(ui);
+    } else {
+      assert.equal(ui.ids.macosSelect.value, '27', 'a late detection respects a manual choice');
+      assert.equal(ui.ids.releaseTag.textContent, 'v1.1.10');
+    }
+  }
 }
 
 async function main() {
@@ -93,8 +219,27 @@ async function main() {
     return response({}, false, 503);
   }), /HTTP 503/);
 
-  assert.match(html, /<label for="macosSelect">/);
-  assert.match(html, /<noscript>/);
+  const chooser = html.match(/<div class="compatibility-chooser\b[\s\S]*?<\/div>/);
+  assert(chooser, 'macOS chooser is missing');
+  assert.match(chooser[0], /<label for="macosSelect">/);
+  assert.doesNotMatch(chooser[0], /<input\b/, 'there is no custom macOS field');
+  const select = chooser[0].match(/<select\b[^>]*\bid="macosSelect"[^>]*>([\s\S]*?)<\/select>/);
+  assert(select, 'macOS selector is missing');
+  const options = Array.from(select[1].matchAll(/<option\b[^>]*>/g), ([option]) => option);
+  const values = options.map(option => option.match(/\bvalue="([^"]*)"/)?.[1]);
+  assert.deepEqual(values, ['', '26', '27'], 'macOS selector offers a placeholder and the two supported versions');
+  assert(options.every(option => !/\bdisabled\b/.test(option)), 'all macOS selector options can be chosen');
+  assert.match(select[0], /^<select\b[^>]*\bdisabled\b/, 'selector stays disabled without JavaScript');
+  assert.match(select[0], /aria-describedby="[^"]*\bdetectionStatus\b/);
+  const detectionStatus = chooser[0].match(/<p\b(?=[^>]*\bid="detectionStatus")[^>]*>/);
+  assert(detectionStatus, 'detection status is missing');
+  assert.match(detectionStatus[0], /\brole="status"/);
+  assert.match(detectionStatus[0], /\baria-live="polite"/);
+  assert.match(chooser[0], /ZIP downloads are for Apple Silicon Macs; automatic detection checks only macOS/);
+  const noscript = html.match(/<noscript>([\s\S]*?)<\/noscript>/);
+  assert(noscript, 'no-JavaScript instructions are missing');
+  assert.match(noscript[1], /Homebrew checks compatibility on your Mac/);
+  assert.match(noscript[1], /bash install\.sh/);
   assert(!/html\.js\s+\.reveal\s*\{[^}]*opacity:\s*0/s.test(styles), 'head bootstrap must not hide unrevealed content');
   assert.match(styles, /\.reveal\.in\s*\{[^}]*animation:\s*reveal-in/s, 'initialized reveal should retain its entrance animation');
   assert.match(styles, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.reveal\.in\s*\{[^}]*animation:\s*none/s,
@@ -121,6 +266,7 @@ async function main() {
   assert.match(panelText('panel-homebrew'), /clears its download quarantine/);
   assert.match(panelText('panel-script'), /clears the quarantine/);
   assert.match(panelText('panel-release'), /retains its download quarantine/);
+  assert.match(panelText('panel-release'), /Apple Silicon Macs can download/);
   assert.match(panelText('panel-release'), /First-launch approval saves a Gatekeeper exception/);
   assert.match(panelText('panel-release'), /remove the quarantine attribute separately/);
   assert.match(panelText('panel-source'), /without a download quarantine because it was built locally/);
@@ -130,7 +276,9 @@ async function main() {
   assert.match(securityNotice, /manual ZIP retains the quarantine attribute/);
   assert.match(securityNotice, /saves a Gatekeeper exception but does not remove that attribute/);
   assert.match(securityNotice, /to remove it, run the provided/);
-  assert(!/data-download[^>]*href=/.test(html), 'static ZIP link must not target global latest');
+  const staticDownloads = Array.from(html.matchAll(/<a\b(?=[^>]*\bdata-download(?:\s|=|>))[^>]*>/g), ([tag]) => tag);
+  assert(staticDownloads.length > 0, 'ZIP download controls are missing');
+  staticDownloads.forEach(tag => assert.doesNotMatch(tag, /\bhref\s*=/i, 'ZIP links must stay disabled without verification'));
   const sourceCommand = html.match(/<pre><code>(VERSION="[\s\S]*?)<\/code><\/pre>\s*<button class="cmd__copy" type="button" data-copy="([^"]+)"/);
   assert(sourceCommand, 'source tag command and copy control are missing');
   const decode = text => text.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
@@ -174,12 +322,14 @@ async function main() {
     fs.rmSync(verificationHome, { recursive: true, force: true });
   }
 
+  await testMacosDetection();
+
   const ui = page(standardFetch());
-  assert.equal(ui.ids.unzipCopy.disabled, true);
-  assert.equal(ui.downloads[0].getAttribute('href'), null);
-  ui.ids.macosSelect.value = '26';
-  ui.ids.macosSelect.trigger('change');
+  assertZipUnavailable(ui);
   await flush();
+  chooseMacos(ui, '26');
+  await flush();
+  assert.equal(ui.ids.detectionStatus.textContent, '');
   assert.equal(ui.ids.releaseTag.textContent, 'v1.1.9');
   assert.equal(ui.ids.expectVersion.textContent, '1.1.9');
   assert.match(ui.ids.unzipCmd.textContent, /AerialDrop-1\.1\.9-macOS\.zip/);
@@ -188,36 +338,28 @@ async function main() {
   assert.equal(ui.downloads[0].getAttribute('href'), fixture.catalogues.base[1].assets[0].browser_download_url);
   assert.match(ui.ids.termOut1.textContent, /1\.1\.9/);
   assert.match(ui.ids.termOut4.textContent, /1\.1\.9/);
-  ui.ids.macosSelect.value = '27';
-  ui.ids.macosSelect.trigger('change');
-  assert.equal(ui.ids.unzipCopy.disabled, true, 'changing OS clears stale copy command immediately');
-  assert.equal(ui.downloads[0].getAttribute('href'), null, 'changing OS clears stale link immediately');
+  chooseMacos(ui, '27');
+  assertZipUnavailable(ui, 'changing OS clears stale ZIP controls immediately');
   await flush();
   assert.equal(ui.ids.releaseTag.textContent, 'v1.1.10');
   assert.equal(ui.ids.expectVersion.textContent, '1.1.10');
-  ui.ids.macosSelect.value = 'other';
-  ui.ids.customMacos.value = '25';
-  ui.ids.macosSelect.trigger('change');
-  assert.equal(ui.ids.customMacos.hidden, false);
-  assert.equal(ui.downloads[0].getAttribute('href'), null);
-  assert.equal(ui.ids.unzipCopy.getAttribute('data-copy'), null);
-  assert.match(ui.ids.releaseStatus.textContent, /Enter a macOS major version/);
+  chooseMacos(ui, '');
+  assertZipUnavailable(ui);
+  assert.match(ui.ids.releaseStatus.textContent, /Choose your Mac/);
   assert.equal(ui.ids.expectVersion.textContent, 'Resolve on this Mac');
 
   const noMatch = page(standardFetch(fixture.policy, fixture.catalogues.empty));
-  noMatch.ids.macosSelect.value = '26';
-  noMatch.ids.macosSelect.trigger('change');
+  chooseMacos(noMatch, '26');
   await flush();
   assert.match(noMatch.ids.releaseStatus.textContent, /No compatible published release/);
-  assert.equal(noMatch.downloads[0].getAttribute('href'), null);
+  assertZipUnavailable(noMatch);
 
   const network = page(async url => url === 'release-compatibility.json' ? response(fixture.policy) : response({}, false, 503));
-  network.ids.macosSelect.value = '26';
-  network.ids.macosSelect.trigger('change');
+  chooseMacos(network, '26');
   await flush();
   assert.match(network.ids.releaseStatus.textContent, /Couldn’t verify/);
   assert.equal(network.ids.retryRelease.hidden, false);
-  assert.equal(network.downloads[0].getAttribute('href'), null);
+  assertZipUnavailable(network);
 
   let policyRecovered = false, policyFetches = 0;
   const badPolicy = page(async url => {
@@ -227,11 +369,10 @@ async function main() {
     }
     return response(fixture.catalogues.base);
   });
-  badPolicy.ids.macosSelect.value = '26';
-  badPolicy.ids.macosSelect.trigger('change');
+  chooseMacos(badPolicy, '26');
   await flush();
   assert.match(badPolicy.ids.releaseStatus.textContent, /Couldn’t verify/);
-  assert.equal(badPolicy.downloads[0].getAttribute('href'), null);
+  assertZipUnavailable(badPolicy);
   policyRecovered = true;
   badPolicy.ids.retryRelease.trigger('click');
   await flush();
@@ -241,15 +382,13 @@ async function main() {
   let finish;
   const pending = new Promise(resolve => { finish = resolve; });
   const race = page(async url => url === 'release-compatibility.json' ? response(fixture.policy) : pending);
-  race.ids.macosSelect.value = '26';
-  race.ids.macosSelect.trigger('change');
-  race.ids.macosSelect.value = '27';
-  race.ids.macosSelect.trigger('change');
+  chooseMacos(race, '26');
+  chooseMacos(race, '27');
   finish(response(fixture.catalogues.base));
   await flush();
   assert.equal(race.ids.releaseTag.textContent, 'v1.1.10', 'stale selection cannot overwrite newer selection');
 
-  console.log(`Site compatibility: ${fixture.cases.length} shared cases, pagination, links, copy, empty, network and race passed.`);
+  console.log(`Site compatibility: ${fixture.cases.length} shared cases, detection, manual choice, pagination, links, copy, empty, network, retry and races passed.`);
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

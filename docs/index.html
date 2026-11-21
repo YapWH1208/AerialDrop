@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AerialDrop — your videos, natively on the macOS Tahoe desktop</title>
+<title>AerialDrop — your videos, natively on the macOS desktop</title>
 <meta name="description" content="Import your MP4/MOV videos into the native macOS Aerial wallpaper catalogue. AerialDrop 1.1.10 selects compatible releases for your Mac, following Day/Night pairs in 1.1.9. Free and open source.">
 <meta name="theme-color" content="#070b10">
 <meta property="og:type" content="website">
-<meta property="og:title" content="AerialDrop — your videos, natively on the macOS Tahoe desktop">
-<meta property="og:description" content="Native video wallpapers on macOS 26+, with safer activation and backup recovery. Day/Night pairs are available on verified macOS 27 builds; native playback checks for pairs remain pending.">
+<meta property="og:title" content="AerialDrop — your videos, natively on the macOS desktop">
+<meta property="og:description" content="Native video wallpapers on macOS 27.0+ and macOS 26, with safer activation and backup recovery. Day/Night pairs are available on verified macOS 27 builds; native playback checks for pairs remain pending.">
 <meta property="og:url" content="https://yapwh1208.github.io/AerialDrop/">
 <meta property="og:image" content="https://yapwh1208.github.io/AerialDrop/assets/icon.png">
 <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
@@ -66,9 +66,9 @@
   <section class="hero" id="top">
     <div class="container hero__grid">
       <div class="hero__copy reveal">
-        <p class="hero__eyebrow"><span class="pill">macOS 26+</span><span class="pill">Free &amp; open source</span><span class="pill">MIT</span></p>
-        <h1>Your videos, natively on the Tahoe desktop.</h1>
-        <p class="hero__lede">AerialDrop imports your MP4 or MOV into macOS Tahoe&rsquo;s own Aerial catalogue. Screen saver and lock screen, played by Apple&rsquo;s pipeline. No helper processes, no app-managed player.</p>
+        <p class="hero__eyebrow"><span class="pill">macOS 27.0+</span><span class="pill">Free &amp; open source</span><span class="pill">MIT</span></p>
+        <h1>Your videos, natively on the macOS desktop.</h1>
+        <p class="hero__lede">AerialDrop imports your MP4 or MOV into macOS&rsquo;s own Aerial catalogue. Screen saver and lock screen, played by Apple&rsquo;s pipeline. No helper processes, no app-managed player. Also compatible with macOS 26 on Apple Silicon.</p>
         <aside class="trust-summary" aria-label="Installation security notice">
           <strong>Before you install:</strong> AerialDrop is ad-hoc signed and not notarized by Apple. Homebrew and the install script clear the app&rsquo;s download quarantine. A manual ZIP keeps the quarantine attribute; approving first launch saves a Gatekeeper exception, while removing that attribute separately uses <code>xattr</code>. A local source build is not a quarantined download.
         </aside>
@@ -133,7 +133,7 @@
         <article class="spec reveal">
           <span class="spec__name mono">Version 1.1.10</span>
           <h3 class="spec__value">Compatible release downloads</h3>
-          <p class="spec__body">The website, install script, and Homebrew tap select the newest published release for your macOS version and processor. Version pins are validated, and downloads are checked against their published SHA-256 checksums.</p>
+          <p class="spec__body">For macOS 26 and 27, the website selects a compatible Apple Silicon download. The install script and Homebrew tap select the newest published release for your Mac and verify its checksum. Version pins are validated.</p>
           <p class="spec__body"><a href="https://github.com/YapWH1208/AerialDrop/releases/tag/v1.1.10" target="_blank" rel="noopener">Read the 1.1.10 release notes</a></p>
         </article>
         <article class="spec reveal">
@@ -200,7 +200,7 @@
         </article>
         <article class="spec reveal">
           <span class="spec__name mono">Compatibility</span>
-          <p class="spec__value">macOS 26+</p>
+          <p class="spec__value">macOS 27.0+</p>
           <p class="spec__body">Single wallpapers work on macOS Tahoe 26 and later. Day/Night pairs require a verified macOS 27 build; unfamiliar builds disable pair application. Native playback checks for custom pairs remain pending.</p>
         </article>
       </div>
@@ -220,20 +220,15 @@
 
       <div class="compatibility-chooser reveal">
         <label for="macosSelect">Your Mac’s macOS version</label>
-        <select id="macosSelect" aria-describedby="releaseStatus" disabled>
+        <select id="macosSelect" aria-describedby="detectionStatus releaseStatus" disabled>
           <option value="">Choose a version</option>
           <option value="26">macOS 26 (Tahoe)</option>
-          <option value="27">macOS 27</option>
-          <option value="28">macOS 28</option>
-          <option value="29">macOS 29</option>
-          <option value="30">macOS 30</option>
-          <option value="other">Another version…</option>
+          <option value="27">macOS 27 (Golden Gate)</option>
         </select>
-        <label class="compatibility-chooser__other" for="customMacos" id="customMacosLabel" hidden>Other macOS major version</label>
-        <input id="customMacos" type="number" min="26" max="999" step="1" inputmode="numeric" hidden>
+        <p id="detectionStatus" role="status" aria-live="polite"></p>
         <p id="releaseStatus" role="status" aria-live="polite">Choose your Mac’s macOS major version to find its newest compatible release.</p>
         <button id="retryRelease" type="button" hidden>Retry release lookup</button>
-        <p class="compatibility-chooser__help">Manual ZIP results are for Apple Silicon Macs. Homebrew and the install script detect your Mac directly. <a href="https://github.com/YapWH1208/AerialDrop/releases" target="_blank" rel="noopener">Inspect all releases</a> if this lookup is unavailable.</p>
+        <p class="compatibility-chooser__help">ZIP downloads are for Apple Silicon Macs; automatic detection checks only macOS. Homebrew and the install script detect your Mac directly. <a href="https://github.com/YapWH1208/AerialDrop/releases" target="_blank" rel="noopener">Inspect all releases</a> if this lookup is unavailable.</p>
       </div>
       <noscript>
         <p class="compatibility-chooser__noscript">JavaScript is needed to verify a manual ZIP for your macOS version. Homebrew checks compatibility on your Mac. To use the install script, run:</p>
@@ -356,7 +351,7 @@
           <div class="panel" id="panel-release" role="tabpanel" aria-labelledby="method-release" hidden>
             <div class="panel__head">
               <h3>Release zip</h3>
-              <p>Choose your macOS version above to get the matching <code>AerialDrop-&lt;version&gt;-macOS.zip</code>. A manual ZIP retains its download quarantine. First-launch approval saves a Gatekeeper exception; removing the quarantine attribute is a separate action shown below.</p>
+              <p>Apple Silicon Macs can download the <code>AerialDrop-&lt;version&gt;-macOS.zip</code> for the macOS version shown above. A manual ZIP retains its download quarantine. First-launch approval saves a Gatekeeper exception; removing the quarantine attribute is a separate action shown below.</p>
             </div>
             <ol class="steps">
               <li class="step">
@@ -634,7 +629,7 @@
   <section class="cta">
     <div class="container cta__inner reveal">
       <h2>Bring your own skies.</h2>
-      <p>Turn a flight, a hike, a city at night, anything you shot, into a living Tahoe wallpaper.</p>
+      <p>Turn a flight, a hike, a city at night, anything you shot, into a living macOS wallpaper.</p>
       <div class="cta__actions">
         <a class="btn btn--primary btn--lg" href="#install">Install</a>
         <a class="btn btn--glass btn--lg" href="https://github.com/YapWH1208/AerialDrop" target="_blank" rel="noopener">Star on GitHub</a>
@@ -650,7 +645,7 @@
         <img class="brand__icon" src="assets/icon.svg" alt="" width="28" height="28">
         <span class="brand__name">AerialDrop</span>
       </a>
-      <p>Import your own videos into macOS Tahoe&rsquo;s native Aerial catalogue. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/LICENSE" target="_blank" rel="noopener">MIT licensed</a>.</p>
+      <p>Import your own videos into the native macOS Aerial catalogue. <a href="https://github.com/YapWH1208/AerialDrop/blob/main/LICENSE" target="_blank" rel="noopener">MIT licensed</a>.</p>
     </div>
     <nav aria-label="Footer: project">
       <h4>Project</h4>

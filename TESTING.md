@@ -36,9 +36,11 @@ against the same upstream policy and fixture.
 For the website, serve `docs/` locally and check the labelled macOS selector
 with the keyboard. Change OS while metadata is loading, then simulate failed
 policy and release requests: direct ZIP links and copied version-specific
-commands must never retain a previous selection. Disable JavaScript and confirm
-the installation guidance still offers the compatible installer. Browser OS
-identification is not used for release selection.
+commands must never retain a previous selection. When browser Client Hints are
+available, verify macOS 26 or 27 is detected and a manual choice takes
+precedence; otherwise, select a version manually. The site does not infer the
+version from the user-agent string. Disable JavaScript and confirm the
+installation guidance still offers the compatible installer.
 
 Run this matrix on macOS Tahoe 26 with at least one short and one longer MP4/MOV
 source. Use a separate test account for the setup-required checks; do not move or
