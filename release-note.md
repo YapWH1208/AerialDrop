@@ -26,21 +26,27 @@ the page automatically.
 
 ## Unreleased
 
-Candidate highlights, not yet part of a published release:
+## 1.1.11
 
-- Add signed in-app updates, with automatic and manual checks and a single
-  install action. The first updater-enabled release must still be installed
-  using an existing installation method; it can then update subsequent releases.
-- Check Aerial catalogue compatibility and offer safe repair and recovery for
-  eligible older catalogues, without changing conflicting Apple records.
-- Prepare video dimensions and duration before import, with retryable errors
-  and framing controls for videos wider than 16:9.
-- Keep import progress and safe cancellation visible while scrolling, and
-  improve Day/Night, backup restore, and bulk-removal recovery.
-- Improve installation guidance, signing and quarantine explanations, copy
-  feedback, keyboard navigation, and narrow-screen layouts on the website.
-- Highlight macOS 27.0+ while keeping macOS 26 support, simplify the website's
-  version selector, and detect macOS when the browser makes it available.
+### Signed in-app updates
+
+Check for compatible updates automatically or manually, then install with one
+action. Install 1.1.11 using an existing method first; it can then update to
+subsequent releases.
+
+### Safer catalogue and import recovery
+
+AerialDrop checks catalogue compatibility and offers safe repair for eligible
+older catalogues without changing conflicting Apple records. Import prepares
+video details up front and keeps progress and cancellation visible. Day/Night,
+backup restore, and bulk-removal recovery are more resilient.
+
+### Clearer installation guidance
+
+The website highlights macOS 27.0+ while keeping macOS 26 support. It can
+detect macOS when the browser provides that information, and offers a manual
+selector, clearer signing and quarantine details, and improved keyboard and
+narrow-screen navigation.
 
 ## 1.1.10
 

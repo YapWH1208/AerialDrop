@@ -2,10 +2,14 @@
 
 ## Unreleased
 
+## 1.1.11
+
+- Add signed, compatibility-aware in-app updates with automatic and manual checks and a single install action. Install this first updater-enabled release using an existing installation method; it can then update to subsequent releases.
 - Check Aerial catalogue compatibility against the bundled macOS manifest, safely repair eligible older versions, and make recovery available for existing wallpapers. Conflicting Apple records are left unchanged for safety.
 - Prepare source dimensions and duration before enabling import, with retryable errors and accurate framing controls for every video wider than 16:9.
 - Keep import progress and safe cancellation above scrolling content in Import and Library.
 - Offer contextual Day/Night and restore recovery, retain bulk-removal survivors for a fresh retry, and let users choose a dated catalogue backup before confirmation.
+- Recover Day/Night pairs when media is missing while protecting pending pair members and validating replacement media before catalogue writes.
 - Keep installation guidance visible when scripts fail, show signing and quarantine details before commands, and improve copy feedback, keyboard tabs, responsive navigation, and verification instructions.
 - Highlight macOS 27.0+ on the website while retaining macOS 26 support, simplify the install selector, and detect the macOS version when the browser provides it.
 
