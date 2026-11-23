@@ -237,7 +237,7 @@ struct DayNightWallpaperSection: View {
                 }
             }
             .pickerStyle(.menu)
-            .disabled(model.dayNightUnavailableReason != nil || model.isWorking)
+            .disabled(!model.canEditDayNightChoices)
             .accessibilityHint("Choose an imported wallpaper for the \(title.lowercased()) role.")
 
             selectedWallpaperSummary(selectedID: selectedID)

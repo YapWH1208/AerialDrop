@@ -545,7 +545,11 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    works and Day/Night application is unavailable. Use injected capability
    tests for any non-allowlisted build, including newer builds; pair application
    must be gated with a clear explanation while ordinary single activation
-   remains available. Never modify an installed system extension for this test.
+   remains available. In a disposable account, check that **Edit** still opens
+   the Day and Night menus and that a missing saved entry or media can be replaced
+   in either role. Confirm the choices survive relaunch, Apply remains disabled,
+   and editing alone leaves the catalogue and system selection unchanged. Never
+   modify an installed system extension for this test.
 8. Check Library Day/Night menus, Apply, fixed-member actions, and pending/
    recovery messages with keyboard navigation and VoiceOver. Confirm previews
    distinguish the two members and communicate their Day/Night roles.

@@ -242,6 +242,80 @@ final class AppModelDayNightTests: XCTestCase {
         }
     }
 
+    func testMissingChoicesCanBeReplacedWhileDayNightSupportIsUnavailable() async throws {
+        for (missingDay, missingNight) in [(true, false), (false, true), (true, true)] {
+            for missingEntry in [true, false] {
+                let h = try DayNightModelHarness()
+                defer { h.cleanup() }
+                let fourthID = "77777777-2222-4333-8444-555555555555"
+                try Data("video".utf8).write(to: h.paths.videoURL(for: fourthID))
+                try Data("thumbnail".utf8).write(to: h.paths.thumbnailURL(for: fourthID))
+                try h.store.addWallpaper(id: fourthID, title: fourthID)
+                h.choosePair()
+                if !missingEntry { try h.store.configureDayNightPair(h.pair) }
+                if missingEntry {
+                    if missingDay { h.model.dayWallpaperID = UUID().uuidString }
+                    if missingNight { h.model.nightWallpaperID = UUID().uuidString }
+                } else {
+                    if missingDay { try FileManager.default.removeItem(at: h.paths.videoURL(for: h.dayID)) }
+                    if missingNight { try FileManager.default.removeItem(at: h.paths.thumbnailURL(for: h.nightID)) }
+                }
+                h.service.supportError = AerialDropError.dayNightUnavailable("Unverified native format")
+                await h.model.reload()
+
+                XCTAssertNotNil(h.model.dayNightUnavailableReason)
+                XCTAssertEqual(h.model.dayNightMediaRecoveryMessages.count, (missingDay ? 1 : 0) + (missingNight ? 1 : 0))
+                XCTAssertTrue(h.model.canEditDayNightChoices)
+                XCTAssertFalse(h.model.canApplyDayNightWallpaper)
+                let manifestBeforeEditing = try Data(contentsOf: h.paths.manifest)
+
+                if missingDay { h.model.dayWallpaperID = h.thirdID }
+                if missingNight { h.model.nightWallpaperID = missingDay ? fourthID : h.thirdID }
+                let replacementPair = DayNightWallpaperPair(
+                    dayAssetID: missingDay ? h.thirdID : h.dayID,
+                    nightAssetID: missingNight ? (missingDay ? fourthID : h.thirdID) : h.nightID
+                )
+                let replacement = DayNightWallpaperDraft(
+                    dayAssetID: replacementPair.dayAssetID,
+                    nightAssetID: replacementPair.nightAssetID
+                )
+                XCTAssertEqual(h.model.dayNightDraft, replacement)
+                if missingEntry {
+                    XCTAssertTrue(h.model.dayNightMediaRecoveryMessages.isEmpty)
+                } else {
+                    XCTAssertEqual(try h.store.dayNightPair(), h.pair)
+                    XCTAssertTrue(h.model.dayNightMediaRecoveryMessages.allSatisfy { $0.hasPrefix("Current pair:") })
+                }
+                XCTAssertEqual(try AppPreferences.dayNightDraft(defaults: h.defaults), replacement)
+                XCTAssertEqual(try Data(contentsOf: h.paths.manifest), manifestBeforeEditing)
+
+                h.model.isWorking = true
+                XCTAssertFalse(h.model.canEditDayNightChoices)
+                h.model.dayWallpaperID = nil
+                XCTAssertEqual(h.model.dayNightDraft, replacement)
+                h.model.isWorking = false
+
+                await h.model.activateDayNightWallpaper()
+                XCTAssertFalse(h.model.canApplyDayNightWallpaper)
+                XCTAssertEqual(try Data(contentsOf: h.paths.manifest), manifestBeforeEditing)
+                XCTAssertTrue(h.service.typedRequests.isEmpty)
+
+                let reopened = AppModel(paths: h.paths, catalogueCompatibilityOverride: {}, systemService: h.service, automaticallyReload: false, preferencesDefaults: h.defaults)
+                await reopened.reload()
+                XCTAssertEqual(reopened.dayNightDraft, replacement)
+                XCTAssertTrue(reopened.canEditDayNightChoices)
+                XCTAssertFalse(reopened.canApplyDayNightWallpaper)
+
+                h.service.supportError = nil
+                await reopened.reload()
+                XCTAssertTrue(reopened.canApplyDayNightWallpaper)
+                await reopened.activateDayNightWallpaper()
+                XCTAssertEqual(try h.store.dayNightPair(), replacementPair)
+                XCTAssertEqual(h.service.typedRequests, [.automatic(groupID: ManifestStore.dayNightSubcategoryID)])
+            }
+        }
+    }
+
     func testDayNightStatusNormalizesSingleAndFixedPairMemberSelections() async throws {
         let h = try DayNightModelHarness()
         defer { h.cleanup() }

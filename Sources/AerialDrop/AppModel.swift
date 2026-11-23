@@ -126,8 +126,11 @@ final class AppModel {
         set { saveDayNightDraft(.init(dayAssetID: dayNightDraft.dayAssetID, nightAssetID: newValue)) }
     }
 
+    /// Editing only saves a draft; native support is checked when applying it.
+    var canEditDayNightChoices: Bool { !isWorking }
+
     private func saveDayNightDraft(_ draft: DayNightWallpaperDraft) {
-        guard !isWorking else { return }
+        guard canEditDayNightChoices else { return }
         do {
             try AppPreferences.setDayNightDraft(draft, defaults: preferencesDefaults)
             dayNightDraft = draft
