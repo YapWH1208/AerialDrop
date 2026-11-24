@@ -5,6 +5,51 @@ import XCTest
 
 @MainActor
 final class WallpaperProcessControllerTests: XCTestCase {
+    func testCandidateIdentificationIgnoresCompleteWallpaperSettingsName() {
+        XCTAssertNil(WallpaperProcessController.candidateRole(
+            basename: "Wallpaper", name: "Wallpaper", shortName: "Wallpaper",
+            shortNameCapacity: 16, pathIsReadable: true
+        ))
+        XCTAssertNil(WallpaperProcessController.candidateRole(
+            basename: "Other", name: "Other", shortName: "WallpaperAeria",
+            shortNameCapacity: 16, pathIsReadable: true
+        ))
+    }
+
+    func testCandidateIdentificationKeepsExactAndTruncatedServiceNames() {
+        XCTAssertEqual(WallpaperProcessController.candidateRole(
+            basename: "WallpaperAgent", name: "", shortName: "",
+            shortNameCapacity: 16, pathIsReadable: true
+        ), .agent)
+        XCTAssertEqual(WallpaperProcessController.candidateRole(
+            basename: "Other", name: "WallpaperAgent", shortName: "Other",
+            shortNameCapacity: 16, pathIsReadable: true
+        ), .agent)
+        XCTAssertEqual(WallpaperProcessController.candidateRole(
+            basename: "Other", name: "", shortName: "WallpaperAgent",
+            shortNameCapacity: 16, pathIsReadable: true
+        ), .agent)
+        XCTAssertEqual(WallpaperProcessController.candidateRole(
+            basename: "Other", name: "", shortName: "WallpaperAerial",
+            shortNameCapacity: 16, pathIsReadable: true
+        ), .aerials)
+    }
+
+    func testCandidateIdentificationFailsClosedWhenPathCannotBeRead() {
+        XCTAssertEqual(WallpaperProcessController.candidateRole(
+            basename: "", name: "", shortName: "Wallpaper",
+            shortNameCapacity: 16, pathIsReadable: false
+        ), .agent)
+        XCTAssertEqual(WallpaperProcessController.candidateRole(
+            basename: "", name: "", shortName: "WallpaperAerial",
+            shortNameCapacity: 16, pathIsReadable: false
+        ), .aerials)
+        XCTAssertNil(WallpaperProcessController.candidateRole(
+            basename: "", name: "", shortName: "",
+            shortNameCapacity: 16, pathIsReadable: false
+        ))
+    }
+
     func testPreflightRequiresExactlyOneTrustedLaunchdAgent() throws {
         let agent = actor(.agent, pid: 101)
         let extensionActor = actor(.aerials, pid: 102)
