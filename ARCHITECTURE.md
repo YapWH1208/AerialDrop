@@ -86,6 +86,7 @@ ordinary removals too; partial failures retain media and expose the reloaded
 catalogue outcome.
 
 Automated fixtures and injected services verify these contracts without touching
-real wallpaper storage. They do not establish native custom-media rendering,
-natural solar transitions after quit, or lock/unlock playback. Those checks are
-tracked separately in `TESTING.md` and remain required runtime acceptance.
+real wallpaper storage. They do not establish native playback or solar switching.
+A user reported that the test build worked after lock and unlock on macOS 27.2.1;
+natural solar transitions after quit remain unobserved. Broader runtime acceptance
+is tracked in `TESTING.md`.

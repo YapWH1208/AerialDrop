@@ -89,7 +89,7 @@ struct DayNightWallpaperSection: View {
 
     private func dayNightEditor(model: AppModel) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Choosing videos saves these choices. Apply registers the pair and updates every Space and display. macOS switches between them using the sun’s position, even after AerialDrop quits.")
+            Text("Choosing videos saves these choices. Apply registers the pair and updates every Space and display. Automatic uses the sun’s position and is designed to keep switching after AerialDrop quits.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

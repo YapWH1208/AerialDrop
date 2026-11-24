@@ -42,7 +42,7 @@ Choose an MP4 or MOV, preview its 16:9 framing, then import it into the native A
 - macOS Tahoe 26 or later
 - Swift 6.2 or later with the macOS 26 SDK (Xcode)
 - Source videos: MP4 or MOV, H.264 or HEVC
-- Day/Night controls require verified macOS 27 and an observed `WallpaperAerialsExtension` build. The current allowlist contains `313.0.4.401` and `313.1.14.401`; unfamiliar builds and unverified macOS releases disable pair application. macOS 26 retains the single-wallpaper workflow.
+- Day/Night wallpaper application requires verified macOS 27 and an observed `WallpaperAerialsExtension` build. The current allowlist contains `313.0.4.401` and `313.1.14.401`; unfamiliar builds and unverified macOS releases disable pair application. macOS 26 retains the single-wallpaper workflow.
 
 ## Installation
 
@@ -171,7 +171,7 @@ On a supported macOS 27 system, the compact **Day/Night Wallpaper** summary show
 
 If a saved Day or Night wallpaper or its media is missing, import a replacement if needed, then choose **Edit**, select another imported wallpaper for each missing role, and apply the pair again. Both selected videos and previews must be present; unrelated incomplete entries are retained. When the catalogue is readable, you can edit saved choices on an unverified system, but applying them still requires a verified system.
 
-Automatic mode uses the native sun-position format and is intended to continue after AerialDrop quits. It follows solar position rather than Light/Dark appearance; exact transition times are not established. Custom-pair playback, natural switching after quit and lock/unlock remain unverified for this unreleased feature; see [TESTING.md](TESTING.md).
+Automatic mode uses the native sun-position format and is intended to continue after AerialDrop quits. It follows solar position rather than Light/Dark appearance; exact transition times are not established. A user reported that the test build worked after lock and unlock on macOS 27.2.1. Natural switching after quit has not yet been observed; see [TESTING.md](TESTING.md).
 
 If a wallpaper change cannot be verified, previous and new pair videos remain protected across relaunch. Retry **Apply Day/Night Wallpaper** or apply another imported wallpaper in AerialDrop. Protection clears only after a verified native reload; **Remove Anyway** cannot bypass it. The Library distinguishes saved choices from actual native Automatic or fixed-member selection.
 
