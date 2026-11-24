@@ -56,7 +56,7 @@ references remain visible even when the options are unfamiliar. Its nonmutating
 preflight checks target topology and preservation before registering a pair.
 
 Day/Night creation is enabled only on verified macOS 27 with an observed Aerial
-extension build (initially `313.0.4.401`), a valid catalogue and supported
+extension build (`313.0.4.401` or `313.1.14.401`), a valid catalogue and supported
 selection topology. Unrecognized builds and unverified macOS releases retain the
 ordinary single-wallpaper path. Typed activation
 uses a strict reload barrier: identify current-user native processes by executable,

@@ -503,17 +503,16 @@ Expected:
 
 ## macOS 27 Day/Night native acceptance
 
-The Day/Night feature is unreleased. A controlled experiment with the captured
-native Apple fixture manually rendered Day, Night, and Automatic, then restored
-the prior system selection. This confirms the observed Apple selection contract;
-it does not establish custom imported-pair playback. The fixture
-`Tests/AerialDropTests/Fixtures/MacOS27SolarAutomaticSelection.plist` and its
-companion note record an observed native Automatic solar selection contract.
-That validates the captured Apple selection format; it does not establish that
-custom imported pairs follow the solar schedule or play correctly through
-lock/unlock. Complete this acceptance matrix on a disposable macOS 27 account
-with an allowlisted `WallpaperAerialsExtension` build (currently only
-`313.0.4.401`) and nonpersonal test videos. Use the default installed catalogue
+The fixture `Tests/AerialDropTests/Fixtures/MacOS27SolarAutomaticSelection.plist`
+and its companion note record an observed native Automatic selection contract.
+On macOS 27.2.1 with WallpaperAerialsExtension `313.1.14.401`, a
+current-account trial selected Automatic, fixed Day, and fixed Night in System
+Settings. The user subsequently reported that the test build worked after lock
+and unlock. A natural solar transition with AerialDrop closed has not yet been
+observed, and test-video logs included image lookup and re-download errors whose
+impact is unclear. Continue this acceptance matrix on a disposable macOS 27
+account with an allowlisted `WallpaperAerialsExtension` build (`313.0.4.401` or
+`313.1.14.401`) and nonpersonal test videos. Use the default installed catalogue
 through the app's owned-entry writer. Do not enable native catalogue override
 preferences or simulate solar changes with Light/Dark appearance or a clock
 change. Arrange intended Spaces/displays before taking a recovery baseline.
