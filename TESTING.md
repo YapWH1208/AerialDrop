@@ -24,6 +24,27 @@ Applications. Wallpaper store and `AppModel` failure/relaunch/race tests use
 temporary home directories and test fixtures; they must never modify real
 wallpaper data.
 
+The Day/Night picker smoke tests are optional because they require a logged-in
+graphical macOS session with WindowServer access. Run them separately under a
+time limit in that session, for example:
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift build --build-tests && \
+test_bundle="$(swift build --show-bin-path)/AerialDropTests.xctest" && \
+/usr/bin/timeout -k 5 60 env AERIALDROP_RUN_GUI_SMOKE=1 \
+  "$(xcrun --find xctest)" -XCTest AerialDropTests.DayNightPickerSmokeTests "$test_bundle"
+```
+
+They use an isolated temporary catalogue, in-memory preferences and a fake
+wallpaper service. They open the real menus and replace missing choices; they do
+not apply a system wallpaper. Without the environment variable, they skip before
+initializing AppKit. GUI availability and accessibility behavior on each macOS
+version should be verified before adding these checks to required CI. The
+watchdog supervises XCTest directly, so a stuck native menu cannot outlive a
+timed-out SwiftPM parent. If `/usr/bin/timeout` is unavailable, use an
+equivalent process-level watchdog.
+
 The Python, Bash, and browser selectors share
 `Tests/DistributionFixtures/compatibility.json`. It covers current and future
 OS requirements, numeric version ordering, inclusive maximum OS bounds,

@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 import Foundation
 import XCTest
 @testable import AerialDrop
@@ -819,17 +821,23 @@ private final class DayNightModelHarness {
     let paths: WallpaperPaths
     let store: ManifestStore
     let defaults: UserDefaults
-    let suite: String
+    private let suite: String?
     let service = DayNightFakeService()
     let model: AppModel
     var pair: DayNightWallpaperPair { .init(dayAssetID: dayID, nightAssetID: nightID) }
 
-    init() throws {
+    init(preferences: UserDefaults? = nil) throws {
         home = FileManager.default.temporaryDirectory.appending(path: "AerialDropDayNightModel-\(UUID().uuidString)")
         paths = WallpaperPaths(homeDirectory: home)
         store = ManifestStore(paths: paths)
-        suite = "AerialDropDayNightModelTests.\(UUID().uuidString)"
-        defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        if let preferences {
+            suite = nil
+            defaults = preferences
+        } else {
+            let suiteName = "AerialDropDayNightModelTests.\(UUID().uuidString)"
+            suite = suiteName
+            defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        }
         try store.prepareDirectories()
         try JSONSerialization.data(withJSONObject: ["version": 1, "initialAssetCount": 0, "assets": [], "categories": []])
             .write(to: paths.manifest)
@@ -842,8 +850,10 @@ private final class DayNightModelHarness {
     }
 
     func cleanup() {
-        defaults.removePersistentDomain(forName: suite)
-        _ = defaults.synchronize()
+        if let suite {
+            defaults.removePersistentDomain(forName: suite)
+            _ = defaults.synchronize()
+        }
         try? FileManager.default.removeItem(at: home)
     }
     func choosePair() { model.dayWallpaperID = dayID; model.nightWallpaperID = nightID }
@@ -891,4 +901,224 @@ private final class DayNightFakeService: WallpaperServicing {
     func openWallpaperSettings() { }
     func openFolder(_: URL) { }
     func revealInFinder(_: URL) { }
+}
+
+@MainActor
+final class DayNightPickerSmokeTests: XCTestCase {
+    func testMissingIDsCanBeReplacedWhenNativeSupportIsUnavailable() async throws {
+        try await checkRecovery(missingEntry: true)
+    }
+
+    func testMissingMediaCanBeReplacedWhenNativeSupportIsAvailable() async throws {
+        try await checkRecovery(missingEntry: false)
+    }
+
+    private func checkRecovery(missingEntry: Bool) async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["AERIALDROP_RUN_GUI_SMOKE"] == "1",
+                          "Set AERIALDROP_RUN_GUI_SMOKE=1 in a logged-in macOS desktop session.")
+        guard CGSessionCopyCurrentDictionary() != nil else {
+            XCTFail("The requested picker smoke test needs a WindowServer session.")
+            return
+        }
+
+        if NSApp == nil {
+            let application = NSApplication.shared
+            application.setActivationPolicy(.accessory)
+            application.finishLaunching()
+        }
+
+        let fixture = try DayNightModelHarness(preferences: PickerSmokePreferences())
+        defer { fixture.cleanup() }
+        let fourthID = "77777777-2222-4333-8444-555555555555"
+        let fourthTitle = "Fixture Night Replacement"
+        try Data("video".utf8).write(to: fixture.paths.videoURL(for: fourthID))
+        try Data("thumbnail".utf8).write(to: fixture.paths.thumbnailURL(for: fourthID))
+        try fixture.store.addWallpaper(id: fourthID, title: fourthTitle)
+
+        if missingEntry {
+            fixture.model.dayWallpaperID = UUID().uuidString
+            fixture.model.nightWallpaperID = UUID().uuidString
+            fixture.service.supportError = AerialDropError.dayNightUnavailable("Fixture native support disabled")
+        } else {
+            fixture.choosePair()
+            try FileManager.default.removeItem(at: fixture.paths.videoURL(for: fixture.dayID))
+            try FileManager.default.removeItem(at: fixture.paths.thumbnailURL(for: fixture.nightID))
+        }
+        await fixture.model.reload()
+        XCTAssertEqual(fixture.model.dayNightMediaRecoveryMessages.count, 2)
+        let originalDraft = fixture.model.dayNightDraft
+        let manifestBefore = try Data(contentsOf: fixture.paths.manifest)
+        var expansion = AppPreferences.dayNightSectionExpansionPreference(defaults: fixture.defaults)
+        DayNightSectionExpansionState.recordUserChoice(
+            expanded: false,
+            attentionToken: fixture.model.dayNightSectionAttentionToken,
+            preference: &expansion
+        )
+        AppPreferences.setDayNightSectionExpansionPreference(expansion, defaults: fixture.defaults)
+
+        let host = NSHostingView(rootView: PickerSmokeView(defaults: fixture.defaults)
+            .environment(fixture.model)
+            .transaction { $0.disablesAnimations = true })
+        let window = NSWindow(contentRect: NSRect(x: 150, y: 150, width: 850, height: 450),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.title = "AerialDrop picker fixture \(UUID().uuidString)"
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+
+        let app = AXUIElementCreateApplication(getpid())
+        AXUIElementSetMessagingTimeout(app, 3)
+        let windowElement = try await wait("picker fixture visibility") {
+            (attribute(app, kAXWindowsAttribute) as? [AXUIElement])?.first {
+                attribute($0, kAXTitleAttribute) as? String == window.title
+            }
+        }
+        let edit = try await wait("Edit") { find(windowElement, id: "day-night-edit") }
+        XCTAssertEqual(attribute(edit, kAXValueAttribute) as? String, "Collapsed")
+        try press(edit)
+        let day = try await wait("Day picker") { find(windowElement, id: "day-night-choice-day") }
+        let night = try await wait("Night picker") { find(windowElement, id: "day-night-choice-night") }
+        XCTAssertEqual(attribute(day, kAXRoleAttribute) as? String, kAXPopUpButtonRole)
+        XCTAssertEqual(attribute(night, kAXRoleAttribute) as? String, kAXPopUpButtonRole)
+        XCTAssertEqual(attribute(day, kAXEnabledAttribute) as? Bool, true)
+        XCTAssertEqual(attribute(night, kAXEnabledAttribute) as? Bool, true)
+        XCTAssertEqual(attribute(day, kAXValueAttribute) as? String, missingEntry ? "Wallpaper Missing" : fixture.dayID)
+        XCTAssertEqual(attribute(night, kAXValueAttribute) as? String, missingEntry ? "Wallpaper Missing" : fixture.nightID)
+        let apply = try await wait("Apply") { find(windowElement, id: "day-night-apply") }
+        XCTAssertEqual(attribute(apply, kAXEnabledAttribute) as? Bool, false)
+        XCTAssertEqual(fixture.model.dayNightDraft, originalDraft)
+        XCTAssertEqual(try AppPreferences.dayNightDraft(defaults: fixture.defaults), originalDraft)
+        XCTAssertEqual(try Data(contentsOf: fixture.paths.manifest), manifestBefore)
+
+        try await choose(fixture.thirdID, menu: day,
+                         expectedSelection: missingEntry ? "Wallpaper Missing" : fixture.dayID,
+                         fixtureTitles: [fixture.thirdID, fourthTitle])
+        _ = try await wait("saved Day choice") {
+            fixture.model.dayWallpaperID == fixture.thirdID ? true : nil
+        }
+        XCTAssertEqual(fixture.model.nightWallpaperID, originalDraft.nightAssetID)
+        XCTAssertEqual(try AppPreferences.dayNightDraft(defaults: fixture.defaults).nightAssetID, originalDraft.nightAssetID)
+        let updatedNight = try await wait("Night after Day selection") {
+            find(windowElement, id: "day-night-choice-night")
+        }
+        try await choose(fourthTitle, menu: updatedNight,
+                         expectedSelection: missingEntry ? "Wallpaper Missing" : fixture.nightID,
+                         fixtureTitles: [fixture.thirdID, fourthTitle])
+        _ = try await wait("saved Night choice") {
+            fixture.model.nightWallpaperID == fourthID ? true : nil
+        }
+        XCTAssertEqual(try AppPreferences.dayNightDraft(defaults: fixture.defaults),
+                       .init(dayAssetID: fixture.thirdID, nightAssetID: fourthID))
+        XCTAssertTrue(fixture.model.dayNightMediaRecoveryMessages.isEmpty)
+        _ = try await wait("Apply state after replacements") { () -> Bool? in
+            guard let updatedApply = find(windowElement, id: "day-night-apply"),
+                  attribute(updatedApply, kAXEnabledAttribute) as? Bool == !missingEntry else { return nil }
+            return true
+        }
+        XCTAssertEqual(try Data(contentsOf: fixture.paths.manifest), manifestBefore)
+        XCTAssertTrue(fixture.service.typedRequests.isEmpty)
+        XCTAssertTrue(fixture.service.legacyRequests.isEmpty)
+    }
+
+    private func choose(_ title: String, menu: AXUIElement, expectedSelection: String,
+                        fixtureTitles: Set<String>) async throws {
+        let observer = PickerSmokeMenuObserver(choice: title, fixtureTitles: fixtureTitles)
+        NotificationCenter.default.addObserver(observer, selector: #selector(PickerSmokeMenuObserver.menuDidBegin(_:)),
+                                               name: NSMenu.didBeginTrackingNotification, object: nil)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        try press(menu)
+        _ = try await wait("tracked native menu item \(title)") {
+            observer.chose || observer.unexpectedMenu ? true : nil
+        }
+        guard !observer.unexpectedMenu else { throw PickerSmokeError(message: "Unexpected picker menu contents.") }
+        XCTAssertEqual(observer.selectedTitle, expectedSelection)
+    }
+
+    private func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
+    }
+
+    private func find(_ element: AXUIElement, id: String, depth: Int = 0) -> AXUIElement? {
+        guard depth < 20 else { return nil }
+        if attribute(element, kAXIdentifierAttribute) as? String == id { return element }
+        let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+        return children.lazy.compactMap { self.find($0, id: id, depth: depth + 1) }.first
+    }
+
+    private func press(_ element: AXUIElement) throws {
+        let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+        guard result == .success else {
+            throw PickerSmokeError(message: "AXPress failed with \(result).")
+        }
+    }
+
+    private func wait<Value>(_ description: String, until condition: () -> Value?) async throws -> Value {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(4)
+        while clock.now < deadline {
+            if let value = condition() { return value }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        throw PickerSmokeError(message: "Timed out waiting for \(description).")
+    }
+}
+
+private struct PickerSmokeView: View {
+    let defaults: UserDefaults
+    @State private var isExpanded = false
+
+    var body: some View {
+        DayNightWallpaperSection(isExpanded: $isExpanded, expansionDefaults: defaults)
+            .frame(width: 850, height: 450)
+    }
+}
+
+private final class PickerSmokePreferences: UserDefaults {
+    private var values: [String: Any] = [:]
+    override func object(forKey key: String) -> Any? { values[key] }
+    override func set(_ value: Any?, forKey key: String) { values[key] = value }
+    override func removeObject(forKey key: String) { values.removeValue(forKey: key) }
+    override func synchronize() -> Bool { true }
+}
+
+private struct PickerSmokeError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+@MainActor
+private final class PickerSmokeMenuObserver: NSObject {
+    let choice: String
+    let fixtureTitles: Set<String>
+    private(set) var chose = false
+    private(set) var unexpectedMenu = false
+    private(set) var selectedTitle: String?
+
+    init(choice: String, fixtureTitles: Set<String>) {
+        self.choice = choice
+        self.fixtureTitles = fixtureTitles
+    }
+
+    @objc func menuDidBegin(_ notification: Notification) {
+        guard let menu = notification.object as? NSMenu else { return }
+        let timer = Timer(timeInterval: 0.01, target: self, selector: #selector(selectItem(_:)),
+                          userInfo: menu, repeats: false)
+        RunLoop.main.add(timer, forMode: .eventTracking)
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    @objc private func selectItem(_ timer: Timer) {
+        guard let menu = timer.userInfo as? NSMenu else { return }
+        defer { menu.cancelTracking() }
+        guard !fixtureTitles.isDisjoint(with: menu.items.map(\.title)) else {
+            unexpectedMenu = true
+            return
+        }
+        selectedTitle = menu.items.first(where: { $0.state == .on })?.title
+        guard let index = menu.items.firstIndex(where: { $0.title == choice && $0.isEnabled }) else { return }
+        menu.performActionForItem(at: index)
+        chose = true
+    }
 }
