@@ -1,9 +1,9 @@
 import Foundation
 
-/// Private formats are enabled only for native builds whose solar selection
+/// Private formats are enabled only for native builds whose selection
 /// contract has been observed. Add builds after verifying their native behavior.
 enum DayNightWallpaperCapability {
-    static let supportedAerialBuilds: Set<String> = ["313.0.4.401"]
+    static let supportedAerialBuilds: Set<String> = ["313.0.4.401", "313.1.14.401"]
     static let bundleInfoURL = URL(fileURLWithPath:
         "/System/Library/ExtensionKit/Extensions/WallpaperAerialsExtension.appex/Contents/Info.plist")
 

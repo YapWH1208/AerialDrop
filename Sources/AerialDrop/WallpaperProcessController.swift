@@ -153,9 +153,11 @@ struct WallpaperProcessController {
         }
         let path = String(decoding: pathBuffer.prefix(while: { $0 != 0 }), as: UTF8.self)
         let basename = URL(fileURLWithPath: path).lastPathComponent
-        let role = NativeWallpaperProcess.Role(rawValue: basename)
-            ?? NativeWallpaperProcess.Role(rawValue: name)
-            ?? NativeWallpaperProcess.Role.allNames.first { $0.rawValue.hasPrefix(shortName) && !shortName.isEmpty }
+        let role = candidateRole(
+            basename: basename, name: name, shortName: shortName,
+            shortNameCapacity: MemoryLayout.size(ofValue: info.pbi_comm),
+            pathIsReadable: pathSize > 0
+        )
         guard let role else { return nil }
         guard pathSize > 0, info.pbi_uid == getuid() else { throw inspectionFailure() }
         var checked = proc_bsdinfo()
@@ -167,6 +169,22 @@ struct WallpaperProcessController {
             startSeconds: info.pbi_start_tvsec, startMicroseconds: info.pbi_start_tvusec,
             executablePath: path
         )
+    }
+
+    static func candidateRole(
+        basename: String, name: String, shortName: String,
+        shortNameCapacity: Int, pathIsReadable: Bool
+    ) -> NativeWallpaperProcess.Role? {
+        if let exact = NativeWallpaperProcess.Role(rawValue: basename)
+            ?? NativeWallpaperProcess.Role(rawValue: name)
+            ?? NativeWallpaperProcess.Role(rawValue: shortName) {
+            return exact
+        }
+        guard shortNameCapacity > 1, !shortName.isEmpty else { return nil }
+        return NativeWallpaperProcess.Role.allNames.first { role in
+            shortName.utf8.elementsEqual(role.rawValue.utf8.prefix(shortNameCapacity - 1))
+                || (!pathIsReadable && role.rawValue.hasPrefix(shortName))
+        }
     }
 
     private static func terminate(_ actor: NativeWallpaperProcess) throws {

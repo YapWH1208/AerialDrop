@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Enable Day/Night on the observed `313.1.14.401` Aerial extension build and avoid confusing the Wallpaper Settings process with WallpaperAgent.
+- Keep Day/Night choices editable when application is unavailable, so missing wallpapers can be replaced without bypassing native support checks.
+
 ## 1.1.11
 
 - Add signed, compatibility-aware in-app updates with automatic and manual checks and a single install action. Install this first updater-enabled release using an existing installation method; it can then update to subsequent releases.

@@ -34,7 +34,7 @@ Choose an MP4 or MOV, preview its 16:9 framing, then import it into the native A
 - **Controllable Library preview** — installed wallpapers loop in a native preview sheet with a visible Play/Pause control that respects Reduced Motion.
 - **Visible import status** — the Library shows the current stage, progress, available encode estimate, safe Cancel, and a way back to Import while an import runs.
 - **In-app activation** — imported Aerials are applied across all Spaces and displays by default; Library also provides a manual Set as Wallpaper action and Active status.
-- **Native Day/Night pairs** — on supported macOS 27 systems, choose two distinct imports as Day and Night and explicitly apply native Automatic solar selection. Custom-media native playback acceptance is still pending.
+- **Native Day/Night pairs** — on supported macOS 27 systems, choose two distinct imports as Day and Night and explicitly apply native Automatic solar selection.
 - **Maintenance tools** — validate or repair catalogue compatibility, open the storage folder, restore a backup, or remove imported wallpapers.
 
 ## Requirements
@@ -42,7 +42,7 @@ Choose an MP4 or MOV, preview its 16:9 framing, then import it into the native A
 - macOS Tahoe 26 or later
 - Swift 6.2 or later with the macOS 26 SDK (Xcode)
 - Source videos: MP4 or MOV, H.264 or HEVC
-- Day/Night controls require verified macOS 27 and an observed `WallpaperAerialsExtension` build. The current allowlist contains only `313.0.4.401`; unfamiliar builds and unverified macOS releases disable pair application. macOS 26 retains the single-wallpaper workflow.
+- Day/Night wallpaper application requires verified macOS 27 and an observed `WallpaperAerialsExtension` build. The current allowlist contains `313.0.4.401` and `313.1.14.401`; unfamiliar builds and unverified macOS releases disable pair application. macOS 26 retains the single-wallpaper workflow.
 
 ## Installation
 
@@ -169,9 +169,9 @@ If a selected batch is only partly removed, Library keeps the remaining wallpape
 
 On a supported macOS 27 system, the compact **Day/Night Wallpaper** summary shows the registered pair and any different saved choices. Choose **Edit** to open the selectors and **Done** to close them. A first or incomplete setup and pending recovery open the editor when attention is needed; a manual collapse is remembered. Changing selectors saves a draft. **Apply Day/Night Wallpaper** registers that pair and requests Automatic selection across all Spaces and displays. To select a fixed member, choose **Use Day only** or **Use Night only** on that video's card; applying an ordinary imported wallpaper replaces the active pair. Apply Day/Night again to return to Automatic.
 
-If a saved Day or Night wallpaper or its media is missing, import a replacement if needed, then choose **Edit**, select another imported wallpaper for each missing role, and apply the pair again. Both selected videos and previews must be present; unrelated incomplete entries are retained.
+If a saved Day or Night wallpaper or its media is missing, import a replacement if needed, then choose **Edit**, select another imported wallpaper for each missing role, and apply the pair again. Both selected videos and previews must be present; unrelated incomplete entries are retained. When the catalogue is readable, you can edit saved choices on an unverified system, but applying them still requires a verified system.
 
-Automatic mode uses the native sun-position format and is intended to continue after AerialDrop quits. It follows solar position rather than Light/Dark appearance; exact transition times are not established. Custom-pair playback, natural switching after quit and lock/unlock remain unverified for this unreleased feature; see [TESTING.md](TESTING.md).
+Automatic mode uses the native sun-position format and is intended to continue after AerialDrop quits. It follows solar position rather than Light/Dark appearance; exact transition times are not established. A user reported that the test build worked after lock and unlock on macOS 27.2.1. Natural switching after quit has not yet been observed; see [TESTING.md](TESTING.md).
 
 If a wallpaper change cannot be verified, previous and new pair videos remain protected across relaunch. Retry **Apply Day/Night Wallpaper** or apply another imported wallpaper in AerialDrop. Protection clears only after a verified native reload; **Remove Anyway** cannot bypass it. The Library distinguishes saved choices from actual native Automatic or fixed-member selection.
 
@@ -226,7 +226,7 @@ AerialDrop writes directly to Tahoe's private Aerial catalogue and restarts `Wal
 
 Every manifest write is backed up automatically first: backups live under `aerials/AerialDropBackups`. Linked-selection writes use separate binary-plist backups under `Store/AerialDropBackups` and refuse concurrent changes.
 
-Day/Night support is gated by the observed extension-build allowlist above. The Automatic fixture records Apple's observed native selection payload; it does not establish end-to-end solar playback for imported media. Apple may replace the downloaded catalogue during a system update, which can require reimporting or reapplying owned entries.
+Day/Night support is gated by the observed extension-build allowlist above. On macOS 27.2.1 with extension build `313.1.14.401`, a user reported that the test build worked after lock and unlock. A natural solar transition with AerialDrop closed has not yet been observed. Apple may replace the downloaded catalogue during a system update, which can require reimporting or reapplying owned entries.
 
 ## Documentation
 

@@ -5,20 +5,22 @@ import XCTest
 
 @MainActor
 final class SystemWallpaperServiceTests: XCTestCase {
-    func testCapabilityAllowsObservedBuildAndRejectsOlderOrUnknownFormats() throws {
-        let known: [String: Any] = [
-            "CFBundleIdentifier": "com.apple.wallpaper.extension.aerials",
-            "CFBundleVersion": "313.0.4.401"
-        ]
-        XCTAssertNoThrow(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: known))
-        XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 26, bundleInfo: known))
-        XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 28, bundleInfo: known))
+    func testCapabilityAllowsExactBuildsAndRejectsUnsupportedFormats() throws {
+        let aerialBundleID = "com.apple.wallpaper.extension.aerials"
+        for build in ["313.0.4.401", "313.1.14.401"] {
+            let known = ["CFBundleIdentifier": aerialBundleID, "CFBundleVersion": build]
+            XCTAssertNoThrow(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: known))
+            XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 26, bundleInfo: known))
+            XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 28, bundleInfo: known))
+        }
         XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: [:]))
+        for build in ["unknown", "313.1.14.402"] {
+            XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: [
+                "CFBundleIdentifier": aerialBundleID, "CFBundleVersion": build
+            ]))
+        }
         XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: [
-            "CFBundleIdentifier": "com.apple.wallpaper.extension.aerials", "CFBundleVersion": "unknown"
-        ]))
-        XCTAssertThrowsError(try DayNightWallpaperCapability.validate(osMajor: 27, bundleInfo: [
-            "CFBundleIdentifier": "other.provider", "CFBundleVersion": "313.0.4.401"
+            "CFBundleIdentifier": "other.provider", "CFBundleVersion": "313.1.14.401"
         ]))
     }
 

@@ -24,6 +24,27 @@ Applications. Wallpaper store and `AppModel` failure/relaunch/race tests use
 temporary home directories and test fixtures; they must never modify real
 wallpaper data.
 
+The Day/Night picker smoke tests are optional because they require a logged-in
+graphical macOS session with WindowServer access. Run them separately under a
+time limit in that session, for example:
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift build --build-tests && \
+test_bundle="$(swift build --show-bin-path)/AerialDropTests.xctest" && \
+/usr/bin/timeout -k 5 60 env AERIALDROP_RUN_GUI_SMOKE=1 \
+  "$(xcrun --find xctest)" -XCTest AerialDropTests.DayNightPickerSmokeTests "$test_bundle"
+```
+
+They use an isolated temporary catalogue, in-memory preferences and a fake
+wallpaper service. They open the real menus and replace missing choices; they do
+not apply a system wallpaper. Without the environment variable, they skip before
+initializing AppKit. GUI availability and accessibility behavior on each macOS
+version should be verified before adding these checks to required CI. The
+watchdog supervises XCTest directly, so a stuck native menu cannot outlive a
+timed-out SwiftPM parent. If `/usr/bin/timeout` is unavailable, use an
+equivalent process-level watchdog.
+
 The Python, Bash, and browser selectors share
 `Tests/DistributionFixtures/compatibility.json`. It covers current and future
 OS requirements, numeric version ordering, inclusive maximum OS bounds,
@@ -482,17 +503,16 @@ Expected:
 
 ## macOS 27 Day/Night native acceptance
 
-The Day/Night feature is unreleased. A controlled experiment with the captured
-native Apple fixture manually rendered Day, Night, and Automatic, then restored
-the prior system selection. This confirms the observed Apple selection contract;
-it does not establish custom imported-pair playback. The fixture
-`Tests/AerialDropTests/Fixtures/MacOS27SolarAutomaticSelection.plist` and its
-companion note record an observed native Automatic solar selection contract.
-That validates the captured Apple selection format; it does not establish that
-custom imported pairs follow the solar schedule or play correctly through
-lock/unlock. Complete this acceptance matrix on a disposable macOS 27 account
-with an allowlisted `WallpaperAerialsExtension` build (currently only
-`313.0.4.401`) and nonpersonal test videos. Use the default installed catalogue
+The fixture `Tests/AerialDropTests/Fixtures/MacOS27SolarAutomaticSelection.plist`
+and its companion note record an observed native Automatic selection contract.
+On macOS 27.2.1 with WallpaperAerialsExtension `313.1.14.401`, a
+current-account trial selected Automatic, fixed Day, and fixed Night in System
+Settings. The user subsequently reported that the test build worked after lock
+and unlock. A natural solar transition with AerialDrop closed has not yet been
+observed, and test-video logs included image lookup and re-download errors whose
+impact is unclear. Continue this acceptance matrix on a disposable macOS 27
+account with an allowlisted `WallpaperAerialsExtension` build (`313.0.4.401` or
+`313.1.14.401`) and nonpersonal test videos. Use the default installed catalogue
 through the app's owned-entry writer. Do not enable native catalogue override
 preferences or simulate solar changes with Light/Dark appearance or a clock
 change. Arrange intended Spaces/displays before taking a recovery baseline.
@@ -545,7 +565,11 @@ change. Arrange intended Spaces/displays before taking a recovery baseline.
    works and Day/Night application is unavailable. Use injected capability
    tests for any non-allowlisted build, including newer builds; pair application
    must be gated with a clear explanation while ordinary single activation
-   remains available. Never modify an installed system extension for this test.
+   remains available. In a disposable account, check that **Edit** still opens
+   the Day and Night menus and that a missing saved entry or media can be replaced
+   in either role. Confirm the choices survive relaunch, Apply remains disabled,
+   and editing alone leaves the catalogue and system selection unchanged. Never
+   modify an installed system extension for this test.
 8. Check Library Day/Night menus, Apply, fixed-member actions, and pending/
    recovery messages with keyboard navigation and VoiceOver. Confirm previews
    distinguish the two members and communicate their Day/Night roles.

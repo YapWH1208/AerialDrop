@@ -56,7 +56,7 @@ references remain visible even when the options are unfamiliar. Its nonmutating
 preflight checks target topology and preservation before registering a pair.
 
 Day/Night creation is enabled only on verified macOS 27 with an observed Aerial
-extension build (initially `313.0.4.401`), a valid catalogue and supported
+extension build (`313.0.4.401` or `313.1.14.401`), a valid catalogue and supported
 selection topology. Unrecognized builds and unverified macOS releases retain the
 ordinary single-wallpaper path. Typed activation
 uses a strict reload barrier: identify current-user native processes by executable,
@@ -86,6 +86,7 @@ ordinary removals too; partial failures retain media and expose the reloaded
 catalogue outcome.
 
 Automated fixtures and injected services verify these contracts without touching
-real wallpaper storage. They do not establish native custom-media rendering,
-natural solar transitions after quit, or lock/unlock playback. Those checks are
-tracked separately in `TESTING.md` and remain required runtime acceptance.
+real wallpaper storage. They do not establish native playback or solar switching.
+A user reported that the test build worked after lock and unlock on macOS 27.2.1;
+natural solar transitions after quit remain unobserved. Broader runtime acceptance
+is tracked in `TESTING.md`.

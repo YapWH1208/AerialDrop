@@ -6,8 +6,11 @@ struct DayNightWallpaperSection: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding private var isExpanded: Bool
 
-    init(isExpanded: Binding<Bool>) {
+    private let expansionDefaults: UserDefaults
+
+    init(isExpanded: Binding<Bool>, expansionDefaults: UserDefaults = .standard) {
         _isExpanded = isExpanded
+        self.expansionDefaults = expansionDefaults
     }
 
     var body: some View {
@@ -33,6 +36,7 @@ struct DayNightWallpaperSection: View {
                 .disabled(model.isWorking)
                 .accessibilityLabel(isExpanded ? "Done editing Day/Night choices" : "Edit Day/Night choices")
                 .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .accessibilityIdentifier("day-night-edit")
                 .help(isExpanded ? "Collapse Day/Night choices" : "Edit saved Day/Night choices")
             }
 
@@ -85,7 +89,7 @@ struct DayNightWallpaperSection: View {
 
     private func dayNightEditor(model: AppModel) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Choosing videos saves these choices. Apply registers the pair and updates every Space and display. macOS switches between them using the sun’s position, even after AerialDrop quits.")
+            Text("Choosing videos saves these choices. Apply registers the pair and updates every Space and display. Automatic uses the sun’s position and is designed to keep switching after AerialDrop quits.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -119,6 +123,7 @@ struct DayNightWallpaperSection: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(!model.canApplyDayNightWallpaper || model.isWorking)
                 .help(applyHelp)
+                .accessibilityIdentifier("day-night-apply")
             }
         }
     }
@@ -137,14 +142,14 @@ struct DayNightWallpaperSection: View {
     }
 
     private func reconcileExpansion() {
-        var preference = AppPreferences.dayNightSectionExpansionPreference()
+        var preference = AppPreferences.dayNightSectionExpansionPreference(defaults: expansionDefaults)
         let previousPreference = preference
         let shouldExpand = DayNightSectionExpansionState.reconcile(
             attentionToken: model.dayNightSectionAttentionToken,
             preference: &preference
         )
         if preference != previousPreference {
-            AppPreferences.setDayNightSectionExpansionPreference(preference)
+            AppPreferences.setDayNightSectionExpansionPreference(preference, defaults: expansionDefaults)
         }
         if isExpanded != shouldExpand {
             isExpanded = shouldExpand
@@ -152,13 +157,13 @@ struct DayNightWallpaperSection: View {
     }
 
     private func setExpanded(_ expanded: Bool) {
-        var preference = AppPreferences.dayNightSectionExpansionPreference()
+        var preference = AppPreferences.dayNightSectionExpansionPreference(defaults: expansionDefaults)
         DayNightSectionExpansionState.recordUserChoice(
             expanded: expanded,
             attentionToken: model.dayNightSectionAttentionToken,
             preference: &preference
         )
-        AppPreferences.setDayNightSectionExpansionPreference(preference)
+        AppPreferences.setDayNightSectionExpansionPreference(preference, defaults: expansionDefaults)
         isExpanded = expanded
     }
 
@@ -237,8 +242,9 @@ struct DayNightWallpaperSection: View {
                 }
             }
             .pickerStyle(.menu)
-            .disabled(model.dayNightUnavailableReason != nil || model.isWorking)
+            .disabled(!model.canEditDayNightChoices)
             .accessibilityHint("Choose an imported wallpaper for the \(title.lowercased()) role.")
+            .accessibilityIdentifier("day-night-choice-\(title.lowercased())")
 
             selectedWallpaperSummary(selectedID: selectedID)
         }
