@@ -26,6 +26,18 @@ the page automatically.
 
 ## Unreleased
 
+## 1.1.12
+
+### Day/Night recovery and compatibility
+
+Replace missing Day or Night choices even when applying the pair is unavailable.
+Day/Night also recognizes Aerial extension build `313.1.14.401` on macOS 27.2.1,
+and wallpaper service detection no longer confuses Wallpaper Settings with
+WallpaperAgent.
+
+Playback after lock and unlock was reported on that system. A natural solar
+transition with AerialDrop closed has not yet been observed.
+
 ## 1.1.11
 
 ### Signed in-app updates
