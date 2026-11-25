@@ -2,8 +2,12 @@
 
 ## Unreleased
 
+## 1.1.12
+
 - Enable Day/Night on the observed `313.1.14.401` Aerial extension build and avoid confusing the Wallpaper Settings process with WallpaperAgent.
 - Keep Day/Night choices editable when application is unavailable, so missing wallpapers can be replaced without bypassing native support checks.
+
+On macOS 27.2.1, a user reported successful playback after lock and unlock. A natural solar transition with AerialDrop closed has not yet been observed.
 
 ## 1.1.11
 

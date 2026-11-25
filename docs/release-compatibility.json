@@ -14,6 +14,7 @@
     {"version": "1.1.8", "min_macos": 26, "max_macos": null, "architectures": ["arm64"]},
     {"version": "1.1.9", "min_macos": 26, "max_macos": null, "architectures": ["arm64"]},
     {"version": "1.1.10", "min_macos": 26, "max_macos": null, "architectures": ["arm64"]},
-    {"version": "1.1.11", "min_macos": 26, "max_macos": null, "architectures": ["arm64"]}
+    {"version": "1.1.11", "min_macos": 26, "max_macos": null, "architectures": ["arm64"]},
+    {"version": "1.1.12", "min_macos": 26, "max_macos": null, "architectures": ["arm64"]}
   ]
 }
