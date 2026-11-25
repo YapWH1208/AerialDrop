@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from pathlib import Path
@@ -37,6 +38,7 @@ PREDECESSOR = "predecessor.json"
 LEGACY_TAG = "v1.1.10"
 RETRY = "Rerun the failed publication job with the original signed workflow artifact."
 PUBLIC_KEY_ENV = "AERIALDROP_UPDATE_PUBLIC_KEY"
+DRAFT_VISIBILITY_DELAYS = (1, 2, 4, 8)
 VERIFY_SIGNATURE = """
 import CryptoKit
 import Foundation
@@ -347,6 +349,19 @@ def current_draft(catalogue: dict[str, dict], tag: str, identifier: int | None =
     return release
 
 
+def wait_for_new_draft(tag: str) -> dict:
+    """Wait briefly for a newly created draft to appear in the release catalogue."""
+    for delay in (*DRAFT_VISIBILITY_DELAYS, None):
+        catalogue = release_catalogue()
+        if tag in catalogue:
+            draft = current_draft(catalogue, tag)
+            release_id(draft)
+            return draft
+        if delay is not None:
+            time.sleep(delay)
+    raise PublishError(f"expected GitHub to report a stable draft for {tag}. {RETRY}")
+
+
 def publish(tag: str, directory: Path, commit: str) -> None:
     archive, feed = asset_slots(tag)
     expected = {name: local_digest(directory / name) for name in (archive, feed)}
@@ -373,7 +388,7 @@ def publish(tag: str, directory: Path, commit: str) -> None:
     if release is None:
         gh_release("create", tag, "--verify-tag", "--draft", "--title", tag,
                    "--notes-file", str(notes_path), "--target", commit)
-        release = current_draft(release_catalogue(), tag)
+        release = wait_for_new_draft(tag)
     identifier = release_id(release)
     missing = missing_draft_assets(tag, release, notes, expected)
     if missing:

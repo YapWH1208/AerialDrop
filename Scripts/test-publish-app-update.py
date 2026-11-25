@@ -13,7 +13,7 @@ import unittest
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import publish_app_update as publisher
 import sparkle_appcast as appcast
@@ -73,6 +73,10 @@ class FakeGitHub:
         self.commit = COMMIT
         self.annotated = False
         self.downloads = {}
+        self.created_draft_lookups = 0
+        self.hidden_draft_lookups = 0
+        self.draft_lookup_error = False
+        self.created_draft_override = {}
 
     def __call__(self, *args):
         if args[0] == "api":
@@ -101,6 +105,16 @@ class FakeGitHub:
             assert args == ("api", "--hostname", "github.com", "--paginate", "--slurp",
                             f"{publisher.RELEASES_API}?per_page=100"), args
             releases = copy.deepcopy(list(self.releases.values()))
+            if TAG in self.releases and any(command == "create" for command, _, _ in self.calls):
+                self.created_draft_lookups += 1
+                if self.draft_lookup_error:
+                    raise publisher.PublishError("GitHub API unavailable")
+                if self.created_draft_lookups <= self.hidden_draft_lookups:
+                    releases = [entry for entry in releases if entry["tag_name"] != TAG]
+                else:
+                    next(entry for entry in releases if entry["tag_name"] == TAG).update(
+                        self.created_draft_override
+                    )
             for entry in releases:
                 for item in entry["assets"]:
                     item["download_count"] = self.download_count
@@ -226,6 +240,54 @@ class ReleasePublisherTests(unittest.TestCase):
         self.publish(github)
         self.assertEqual([command for command, _, _ in github.calls], ["create", "upload", "patch"])
         self.assertEqual([Path(path).name for path in github.calls[1][2]], [ZIP, publisher.APPCAST])
+
+    def test_new_draft_waits_for_visibility_before_upload(self):
+        github = FakeGitHub()
+        github.hidden_draft_lookups = 2
+        with patch.object(publisher.time, "sleep") as sleep:
+            self.publish(github)
+        self.assertEqual(sleep.call_args_list, [call(1), call(2)])
+        # Three visibility checks and two later publication checks.
+        self.assertEqual(github.created_draft_lookups, 5)
+        self.assertEqual([command for command, _, _ in github.calls], ["create", "upload", "patch"])
+
+    def test_new_draft_visibility_exhaustion_can_be_resumed(self):
+        github = FakeGitHub()
+        github.hidden_draft_lookups = 5
+        with patch.object(publisher.time, "sleep") as sleep:
+            with self.assertRaisesRegex(publisher.PublishError, "original signed workflow artifact"):
+                self.publish(github)
+        self.assertEqual(sleep.call_args_list, [call(1), call(2), call(4), call(8)])
+        self.assertEqual(github.created_draft_lookups, 5)
+        self.assertEqual([command for command, _, _ in github.calls], ["create"])
+        self.assertTrue(github.releases[TAG]["draft"])
+        with patch.object(publisher.time, "sleep") as sleep:
+            self.publish(github)
+        sleep.assert_not_called()
+        self.assertEqual([command for command, _, _ in github.calls], ["create", "upload", "patch"])
+
+    def test_visible_invalid_new_draft_fails_without_retry(self):
+        for override, message in (({"prerelease": True}, "stable draft"),
+                                  ({"id": 0}, "invalid GitHub release ID")):
+            with self.subTest(override=override):
+                github = FakeGitHub()
+                github.created_draft_override = override
+                with patch.object(publisher.time, "sleep") as sleep:
+                    with self.assertRaisesRegex(publisher.PublishError, message):
+                        self.publish(github)
+                sleep.assert_not_called()
+                self.assertEqual(github.created_draft_lookups, 1)
+                self.assertEqual([command for command, _, _ in github.calls], ["create"])
+
+    def test_new_draft_catalogue_api_error_fails_without_retry(self):
+        github = FakeGitHub()
+        github.draft_lookup_error = True
+        with patch.object(publisher.time, "sleep") as sleep:
+            with self.assertRaisesRegex(publisher.PublishError, "GitHub API unavailable"):
+                self.publish(github)
+        sleep.assert_not_called()
+        self.assertEqual(github.created_draft_lookups, 1)
+        self.assertEqual([command for command, _, _ in github.calls], ["create"])
 
     def test_public_rerun_rejects_bytes_that_differ_from_retained_artifact(self):
         github = FakeGitHub()
